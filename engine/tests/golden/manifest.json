@@ -1,5 +1,20 @@
 {
-  "_opis": "Zestaw złoty. Pliki CSV/JSON NIE trafiają do repozytorium — to dane taktyczne klienta. Manifest przechowuje wyłącznie skróty oczekiwanych wyjść. Pliki źródłowe leżą lokalnie i na serwerze w storage/golden/.",
-  "_uzupelnic": "Po otrzymaniu eksportów referencyjnych: minimum 3 mecze, najlepiej z różnych wersji LiveTag.",
-  "cases": []
+  "_opis": "Zestaw złoty. Pliki źródłowe CSV/JSON NIE trafiają do repozytorium — to dane taktyczne klienta. Tutaj leżą WZORCE WYJŚCIA, do których parser musi się dopasować co do bajtu.",
+  "_zrodlo_wzorcow": "Wyodrębnione z livetag_dashboard_v23.html (dane inline). To realne wyjście produkcyjne, którego klient używa dzisiaj.",
+  "cases": [
+    {
+      "id": "hutnik-pogon-v23",
+      "opis": "Mecz referencyjny, 294 zdarzenia, half_split 2733.6",
+      "csv": "hutnik-pogon.csv",
+      "json": "hutnik-pogon.json",
+      "expected_data": "v23_expected_DATA.json",
+      "expected_pal": "v23_expected_PAL.json",
+      "coverage": {
+        "events": 294, "shots": 29, "xg_parsed": 29, "xg_sum": 4.40,
+        "sbz": 34, "sbz_with_vector": 31, "third": 35, "third_with_pos": 33,
+        "half_split": 2733.6, "no_team": 196, "negative_begin": 2
+      },
+      "_brakuje": "Pliki csv/json do dostarczenia przez klienta. Do tego czasu test jest pomijany, a nie fałszywie zielony."
+    }
+  ]
 }

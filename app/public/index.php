@@ -11,7 +11,7 @@ declare(strict_types=1);
  * IDENTYCZNA (404, ten sam czas odpowiedzi). Inaczej klucz klubu da się wysondować.
  */
 
-require __DIR__ . '/app/src/bootstrap.php';
+require dirname(__DIR__) . '/src/bootstrap.php';
 
 // Router do implementacji w Etapie 4a.
 http_response_code(503);
