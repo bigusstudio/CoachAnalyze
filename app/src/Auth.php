@@ -91,7 +91,12 @@ final class Auth
 
         $limiter->clear($email);
         Session::login((int) $user['id']);
-        Db::run('UPDATE users SET last_login_at = NOW() WHERE id = :id', ['id' => $user['id']]);
+        // Czas z aplikacji, nie z NOW() — jedno źródło zegara w całej warstwie PHP
+        // (tak samo w Stats) i zapytania dają się uruchomić poza MySQL-em.
+        Db::run('UPDATE users SET last_login_at = :now WHERE id = :id', [
+            'now' => Stats::now(),
+            'id'  => $user['id'],
+        ]);
         Audit::log(Audit::LOGIN_OK, (int) $user['id'], 'user', (int) $user['id']);
 
         unset($user['pass_hash']);

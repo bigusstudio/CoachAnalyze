@@ -3,6 +3,65 @@
 Format: [wersja silnika] — data — opis.
 Każda zmiana, która modyfikuje wyjście silnika, MUSI mieć tu wpis wraz z powodem.
 
+## [0.7.0] — 2026-08-11
+### Metryki i render — `build` działa end-to-end
+Etap 2 domknięty. `build` kończył się dotąd kodem 4 mimo policzonych danych; teraz zwraca 0
+i zapisuje raport HTML.
+
+**`metrics.py`** — pakiet metryk z `canonical_events[]`. Wejście warstwy AI (D5) i porównań
+sezonowych. Trzy zasady, których nie łamać:
+- Liczy z pojęć kanonicznych, **nigdy z `source_tag`**. Nazwa tagu należy do klubu i zmienia
+  się między przejściami tagowania — liczenie po niej wraca do problemu, dla którego istnieje
+  model kanoniczny.
+- Procent przy zerowym mianowniku to `None`, nie `0.0`. „0% wygranych pojedynków" i „nie było
+  pojedynków" to dwa różne zdania.
+- Podział `us`/`them`/`none` oraz na połowy jest rozłączny i zupełny — sprawdzane testem.
+  `none` to 196 z 294 zdarzeń w eksporcie referencyjnym, czyli większość pojedynków, strat
+  i odbiorów. To nie jest odpad.
+
+Świadoma różnica wobec szablonu: strzał bez etykiety wyniku trafia do `outcome_unknown`.
+Szablon domyśla się w tym miejscu `NIECELNY` (`outcomeOf` ma taką gałąź domyślną). Silnik
+regułowy wyniku strzału się nie domyśla.
+
+**`render.py`** — wstrzykiwanie w `/*__DATA__*/` i `/*__PAL__*/`, serializacja jak w oryginalnym
+`build_dashboard.py` (DATA kompaktowo, PAL ze spacjami). Zmiana separatorów zmienia bajty pliku.
+
+**Asercja na LICZBIE wystąpień, nie na obecności.** Powód jest historyczny: przy v13 skrypt
+podmiany trafił w komentarz `/* timeline */` w CSS i zniszczył szablon (README oryginału, pkt 5).
+Sprawdzamy dwa razy — przed podmianą, że każdy wzorzec jest dokładnie raz **razem ze średnikiem**,
+i po niej, że żaden nie został. Samo `'/*__DATA__*/' in html` przepuściłoby szablon bez średnika:
+`str.replace` nie trafiłby w nic, nie zgłosiłby błędu, a przeglądarka dostałaby `const DATA = ;`.
+Raport pusty, wdrożenie zielone. Nie `assert` — `python -O` wycina te instrukcje z bajtkodu.
+
+Do przeglądarki idą wyłącznie `events` i `half_split`. Nagłówki eksportu, `format_fingerprint`
+i nazwa kolumny zawodnika zostają na serwerze — raport wisi pod publicznym adresem (D3).
+
+**Pakiet metryk NIE jest wstrzykiwany w szablon.** Szablon v17 liczy wszystko sam, w JS, po
+nazwach tagów klienta. Wstrzyknięcie zmieniłoby bajty pliku i zerwało porównanie z v23. Zamiast
+tego render porównuje jedno z drugim i przy rozjeździe pisze ostrzeżenie na stderr: profil klubu
+mapujący własną nazwę tagu na pojęcie kanoniczne rozjeżdża raport z archiwum.
+
+Zmiany w `cli.py` (docs/KONTRAKT_CLI.md zaktualizowany w tym samym commicie):
+- `--out-metrics`, opcjonalny.
+- `meta.json` zapisywany **na końcu** i tylko przy powodzeniu. Wcześniej powstawał przed renderem,
+  co przy błędzie renderu zostawiało na dysku `ok: true` bez raportu i wypisywało na stdout drugi
+  obiekt JSON. PHP czyta stamtąd dokładnie jeden.
+- `--out-canon` i `--out-metrics` nadal przed renderem: awaria szablonu nie kasuje wyniku parsowania.
+
+### Wyjście renderu wobec v23 — zgodne co do danych, szablon starszy
+Porównanie wygenerowanego raportu z `livetag_dashboard_v23.html` (raport produkcyjny klienta):
+
+- **`PAL` identyczne bajtowo** (859 bajtów).
+- **`DATA` różni się w dwóch zdarzeniach z 294** i są to dokładnie te zatwierdzone w 0.4.0
+  (`b`: −3,2 → 0,0 oraz −0,4 → 0,0). `half_split` bez zmian. Różnice zapisane w manifeście
+  jako `v23_data_roznice` — każda inna jest błędem.
+- **Szablon w repozytorium to generacja v17, nie v23.** `engine/templates/dashboard_template.html`
+  jest bajtowo tym plikiem, który dostarczono razem z `build_dashboard.py`. v23 to nowsze UI:
+  wielokrotny wybór przedziałów 15-minutowych zamiast pojedynczego fragmentu, belka nawigacyjna
+  z podsumowaniem filtrów, powierzchnia znacznika strzału proporcjonalna do xG, zamienione barwy
+  drużyn, herby wstawione na stałe. Podmiana szablonu to osobna decyzja — nie robię jej przy okazji.
+  Manifest niesie pole `szablon_generacja` i test czerwienieje, gdy szablon rozjedzie się z tym wpisem.
+
 ## [0.4.0] — 2026-08-11
 ### Ujemny `begin` przycinany do zera — ZMIANA WYJŚCIA
 `_build_events` liczy `b` jako `max(0, begin)`. Ujemna wartość to bufor nagrania przed

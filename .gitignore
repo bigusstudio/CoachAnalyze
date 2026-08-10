@@ -37,3 +37,4 @@ Thumbs.db
 # Logi
 *.log
 app/logs/
+engine/tests/golden/*.html

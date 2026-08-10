@@ -77,11 +77,14 @@ switch (true) {
         break;
 
     // Etapy 4b/4c/5 — zapowiedź zamiast 404, żeby nawigacja nie prowadziła w pustkę.
-    case $path === '/mecze' && $method === 'GET':
+    // Kluby i Notatki nie mają jeszcze pozycji w menu, ale adres wpisany z ręki
+    // albo z zakładki ma powiedzieć „wkrótce", a nie „nie ma takiej strony".
+    case in_array($path, ['/mecze', '/kluby', '/notatki'], true) && $method === 'GET':
+        $nazwy = ['/mecze' => 'nav.matches', '/kluby' => 'nav.clubs', '/notatki' => 'nav.notes'];
         View::page('soon', [
-            'title'   => View::t('nav.matches'),
-            'active'  => 'matches',
-            'heading' => View::t('nav.matches'),
+            'title'   => View::t($nazwy[$path]),
+            'active'  => $path === '/mecze' ? 'matches' : '',
+            'heading' => View::t($nazwy[$path]),
         ]);
         break;
 
