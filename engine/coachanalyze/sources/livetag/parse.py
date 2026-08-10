@@ -28,7 +28,9 @@ OPTIONAL_COLUMNS = (
 # Pułapka 4: kolumna zawodnika bywa pusta ALBO nie ma jej wcale, a jej nazwa
 # różni się między wersjami eksportu. Brak dopasowania = brak warstwy
 # indywidualnej, nigdy dane zastępcze.
-PLAYER_COLUMNS = ("player", "player_name", "zawodnik", "athlete")
+# `players` (l. mnoga) to nazwa z realnych eksportów klienta — potwierdzona
+# w mecz1/mecz2. Pozostałe warianty zostawione na wypadek zmiany w LiveTag.
+PLAYER_COLUMNS = ("players", "player", "player_name", "zawodnik", "athlete")
 
 # ZGODNOŚĆ: pandas.read_csv domyślnie zamienia te napisy na NaN. csv.DictReader
 # zwróciłby je jako zwykły tekst, co dałoby inne wyniki niż dotychczasowy skrypt.

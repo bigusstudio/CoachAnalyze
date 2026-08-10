@@ -2,26 +2,21 @@
 
 Dla każdego eksportu referencyjnego silnik musi produkować wyjście identyczne z zatwierdzonym
 wzorcem. Same pliki eksportu to dane taktyczne klienta i nie trafiają do repozytorium
-(CLAUDE.md §7) — leżą w nim wyłącznie WZORCE WYJŚCIA.
+(CLAUDE.md §7) — `.gitignore` wyklucza z `golden/` wszystko poza `manifest.json`.
 
-Porównujemy wprost strukturę, nie skrót SHA-256: gwarancja jest ta sama (równość co do
-wartości), a przy czerwonym teście widać KTÓRE zdarzenie się rozjechało, zamiast dwóch
-różnych ciągów szesnastkowych. CLAUDE.md §2 opisuje wariant ze skrótami — różnica
-jest świadoma i warta odnotowania przy najbliższej aktualizacji dokumentu.
+Dlatego wzorcem w repozytorium jest MANIFEST: skróty SHA-256 oczekiwanych wyjść i liczby
+pokrycia. Pliki `v23_expected_*.json` są wygodą lokalną — gdy są pod ręką, porównujemy
+strukturę i widać, KTÓRE zdarzenie się rozjechało; gdy ich nie ma, zostaje skrót.
+
+Bez plików źródłowych testy złote są POMIJANE, nigdy fałszywie zielone.
+W CI bramką są testy pułapek na danych syntetycznych (test_traps.py).
 
 CZERWONY TEST NIE OZNACZA, ŻE TRZEBA ZAKTUALIZOWAĆ WZORZEC.
 Oznacza, że wyjście silnika się zmieniło. Aktualizacja wzorca wymaga świadomej decyzji
 człowieka i wpisu w CHANGELOG.md — nigdy w tym samym commicie co zmiana logiki.
-
-Bramka działa w dwóch warstwach:
-
-1. `test_golden_output_unchanged` — pełna, wymaga plików CSV/JSON klienta. Do czasu ich
-   dostarczenia jest pomijana, a nie fałszywie zielona.
-2. `test_golden_pokrycie_zgodne_z_manifestem` — działa OD ZARAZ, bo wzorzec wyjścia parsera
-   (294 zdarzenia) leży w repozytorium. Pilnuje modelu kanonicznego i warstwy pokrycia,
-   czyli tego, co powstało po parserze.
 """
 
+import hashlib
 import json
 import pathlib
 
@@ -34,82 +29,127 @@ GOLDEN = pathlib.Path(__file__).parent / "golden"
 MANIFEST = GOLDEN / "manifest.json"
 
 
-def load_cases():
+def _manifest():
     if not MANIFEST.exists():
-        return []
-    return json.loads(MANIFEST.read_text(encoding="utf-8")).get("cases", [])
+        return {}
+    return json.loads(MANIFEST.read_text(encoding="utf-8"))
 
 
-def load_expected_frame(case):
-    """Wzorzec wyjścia parsera jako raw_frame gotowy dla warstwy kanonicznej."""
-    frame = json.loads((GOLDEN / case["expected_data"]).read_text(encoding="utf-8"))
-    # Metadane pliku źródłowego — wzorzec ich nie niesie, bo dotyczą samego CSV.
-    frame.setdefault("format_fingerprint", None)
-    frame.setdefault("player_column", None)
-    frame.setdefault("players", [])
-    return frame
+def load_cases(key="cases"):
+    return _manifest().get(key, [])
 
 
-@pytest.mark.parametrize("case", load_cases(), ids=lambda c: c["id"])
-def test_golden_output_unchanged(case, tmp_path):
+def sha256_struktury(obiekt) -> str:
+    """Skrót struktury wyjścia. Serializacja opisana w manifeście — zmiana unieważnia skróty."""
+    tekst = json.dumps(obiekt, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return "sha256:" + hashlib.sha256(tekst.encode("utf-8")).hexdigest()
+
+
+def wymagaj_csv(case):
     src = GOLDEN / case["csv"]
     if not src.exists():
         pytest.skip(f"Brak pliku referencyjnego {case['csv']} — dane klienta poza repozytorium")
+    return src
 
+
+@pytest.mark.parametrize("case", load_cases(), ids=lambda c: c["id"])
+def test_golden_wyjscie_parsera_bez_zmian(case):
+    src = wymagaj_csv(case)
     produced = parse.prep_events(str(src))
-    expected = json.loads((GOLDEN / case["expected_data"]).read_text(encoding="utf-8"))
-    assert produced == expected, (
-        "Wyjście parsera różni się od wzorca v23. To NIE jest powód do aktualizacji wzorca."
+
+    wzorzec = GOLDEN / case["expected_data"]
+    if wzorzec.exists():
+        assert produced == json.loads(wzorzec.read_text(encoding="utf-8")), (
+            "Wyjście parsera różni się od wzorca v23. To NIE jest powód do aktualizacji wzorca."
+        )
+    assert sha256_struktury(produced) == case["sha256_data"], (
+        "Skrót wyjścia parsera nie zgadza się z manifestem"
     )
 
+
+@pytest.mark.parametrize("case", load_cases(), ids=lambda c: c["id"])
+def test_golden_paleta_bez_zmian(case):
+    wymagaj_csv(case)
     src_json = GOLDEN / case["json"]
-    if src_json.exists():
-        produced_pal = parse.prep_palette(str(src_json))
-        expected_pal = json.loads((GOLDEN / case["expected_pal"]).read_text(encoding="utf-8"))
-        assert produced_pal == expected_pal
+    if not src_json.exists():
+        pytest.skip(f"Brak pliku projektu {case['json']}")
+
+    produced = parse.prep_palette(str(src_json))
+
+    wzorzec = GOLDEN / case["expected_pal"]
+    if wzorzec.exists():
+        assert produced == json.loads(wzorzec.read_text(encoding="utf-8"))
+    assert sha256_struktury(produced) == case["sha256_pal"]
 
 
 @pytest.mark.parametrize("case", load_cases(), ids=lambda c: c["id"])
 def test_golden_pokrycie_zgodne_z_manifestem(case):
-    """Model kanoniczny + pokrycie na wzorcu 294 zdarzeń.
-
-    Nazwy w manifeście są opisowe, w `meta.coverage` — kontraktowe (KONTRAKT_CLI.md).
-    Mapowanie jest jawne, żeby rozjazd nazw nie przeszedł niezauważony.
-    """
-    expected = case.get("coverage")
-    if not expected:
-        pytest.skip("Przypadek bez oczekiwanych liczb pokrycia")
-
-    frame = load_expected_frame(case)
+    """Model kanoniczny i warstwa pokrycia na eksporcie referencyjnym."""
+    src = wymagaj_csv(case)
+    frame = parse.prep_frame(str(src))
     result = canon.build(frame)
-    meta = coverage.build_meta(frame, result)
-    produced = meta["coverage"]
+    # Z paletą, bo liczby w manifeście pochodzą z pełnego wywołania — bez niej
+    # doszłoby ostrzeżenie NO_JSON i porównanie sprawdzałoby co innego.
+    meta = coverage.build_meta(frame, result, has_json=True,
+                               palette=parse.prep_palette(str(GOLDEN / case["json"])))
 
-    klucze = {
-        "events": "events",
-        "shots": "shots",
-        "xg_parsed": "xg_parsed",
-        "xg_sum": "xg_sum",
-        "sbz": "sbz",
-        "sbz_with_vector": "sbz_with_vector",
-        "third": "third",
-        "third_with_pos": "third_pos",
-        "no_team": "no_team",
-        "negative_begin": "negative_begin",
-    }
-    for klucz_manifestu, klucz_meta in klucze.items():
-        if klucz_manifestu in expected:
-            assert produced[klucz_meta] == expected[klucz_manifestu], (
-                "{} rozjechało się z manifestem".format(klucz_manifestu)
-            )
+    assert frame["format_fingerprint"] == case["format_fingerprint"]
+    assert frame["half_split"] == case["half_split"]
 
-    if "half_split" in expected:
-        assert meta["half_split_ms"] == int(round(expected["half_split"] * 1000))
+    for klucz, oczekiwane in case["coverage"].items():
+        assert meta["coverage"][klucz] == oczekiwane, "{} rozjechało się z manifestem".format(klucz)
 
-    assert produced["events"] == len(result["events"]), (
+    assert meta["coverage"]["events"] == len(result["events"]), (
         "Zdarzenie zniknęło w drodze do modelu kanonicznego — suma musi się zgadzać "
         "z liczbą wierszy eksportu, także dla tagów bez mapowania"
     )
+
+    braki = [s["id"] for s in meta["sections_unavailable"]]
+    assert braki == case["sections_unavailable"]
+
+    ostrzezenia = {w["code"]: w["count"] for w in meta["warnings"]}
+    assert ostrzezenia == case["warnings"]
+
+
+# --------------------------------------------------- wykrywanie rozjazdu formatu
+@pytest.mark.parametrize("case", load_cases("format_cases"), ids=lambda c: c["id"])
+def test_rozjazd_formatu_wzgledem_referencyjnego(case):
+    """Eksport z innego przejścia tagowania — silnik ma pokazać różnicę, nie zjeść jej.
+
+    Wniosek z danych: `format_fingerprint` wykrywa zmianę ZESTAWU KOLUMN i tylko ją.
+    Rozjazd treści (brak pozycji III strefy, literówka, inne etykiety) widać dopiero
+    w liczbach pokrycia i w ostrzeżeniach — i to one są tu sprawdzane.
+    """
+    src = wymagaj_csv(case)
+    frame = parse.prep_frame(str(src))
+    result = canon.build(frame)
+    meta = coverage.build_meta(frame, result, has_json=True,
+                              palette=parse.prep_palette(str(GOLDEN / case["json"])))
+
+    referencyjny = next(c for c in load_cases() if c["id"] == case["wzgledem"])
+
+    assert frame["format_fingerprint"] == case["format_fingerprint"]
+    assert (frame["format_fingerprint"] != referencyjny["format_fingerprint"]) is case["fingerprint_rozny"]
+
+    tagi = {e["tag"] for e in frame["events"]}
+    tagi_ref = set(canon.DEFAULT_TAG_RULES) | set(meta["unmapped_tags"])
+    assert (tagi != tagi_ref) is case["tagi_rozne"]
+
+    for klucz, oczekiwane in case["coverage"].items():
+        assert meta["coverage"][klucz] == oczekiwane, "{} rozjechało się z manifestem".format(klucz)
+
+    assert [s["id"] for s in meta["sections_unavailable"]] == case["sections_unavailable"]
+    assert {w["code"]: w["count"] for w in meta["warnings"]} == case["warnings"]
+
+
+@pytest.mark.parametrize("case", load_cases("format_cases"), ids=lambda c: c["id"])
+def test_rozjazd_ma_udokumentowany_powod(case):
+    """Każda różnica w manifeście niesie skutek — inaczej nikt nie wie, czy jest groźna."""
+    for nazwa, roznica in case["roznice"].items():
+        assert "referencyjny" in roznica and "ten_plik" in roznica, nazwa
+        assert roznica["referencyjny"] != roznica["ten_plik"], (
+            "{}: wpisano różnicę, której nie ma".format(nazwa)
+        )
 
 
 def test_manifest_exists():

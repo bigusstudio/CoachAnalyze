@@ -1,20 +1,64 @@
 {
-  "_opis": "Zestaw złoty. Pliki źródłowe CSV/JSON NIE trafiają do repozytorium — to dane taktyczne klienta. Tutaj leżą WZORCE WYJŚCIA, do których parser musi się dopasować co do bajtu.",
+  "_opis": "Zestaw złoty. Pliki źródłowe CSV/JSON NIE trafiają do repozytorium — to dane taktyczne klienta (CLAUDE.md §7). Tutaj leżą wyłącznie SKRÓTY oczekiwanych wyjść i liczby pokrycia. Bez plików źródłowych testy złote są pomijane, a nie fałszywie zielone.",
   "_zrodlo_wzorcow": "Wyodrębnione z livetag_dashboard_v23.html (dane inline). To realne wyjście produkcyjne, którego klient używa dzisiaj.",
+  "_serializacja_skrotow": "sha256 z json.dumps(obiekt, ensure_ascii=False, sort_keys=True, separators=(',',':')) w UTF-8. Zmiana tej serializacji unieważnia wszystkie skróty.",
+
   "cases": [
     {
       "id": "hutnik-pogon-v23",
-      "opis": "Mecz referencyjny, 294 zdarzenia, half_split 2733.6",
-      "csv": "hutnik-pogon.csv",
-      "json": "hutnik-pogon.json",
+      "opis": "Mecz referencyjny, 294 zdarzenia, half_split 2733.6. Wyjście musi zgadzać się co do pola.",
+      "csv": "mecz2.csv",
+      "json": "mecz1.json",
+      "_uwaga_parowanie": "NIETYPOWE I POTWIERDZONE EMPIRYCZNIE: dane odpowiadają mecz2.csv, ale paleta v23 odpowiada mecz1.json, nie mecz2.json. Produkcyjny v23 powstał z nowszego CSV i starszego pliku projektu. Nie zmieniać na mecz2.json bez decyzji człowieka — palety różnią się etykietami GOL/NASZA POŁOWA (mecz2) kontra MASZA POŁOWA/ODBIÓR (mecz1).",
       "expected_data": "v23_expected_DATA.json",
       "expected_pal": "v23_expected_PAL.json",
+      "sha256_data": "sha256:75083d3eb1718b8816bfd8e39bb991e8f4bc21fd53badbaf975acd4966194822",
+      "sha256_pal": "sha256:3fd5e995347936c5508386d70f680c125be3ebad22fe90b0a0695580523e6d62",
+      "format_fingerprint": "sha256:75ce78bc472be58778055e5abe8a2025e56ea8319a7332fc76e427d06f7a93f5",
+      "half_split": 2733.6,
       "coverage": {
-        "events": 294, "shots": 29, "xg_parsed": 29, "xg_sum": 4.40,
-        "sbz": 34, "sbz_with_vector": 31, "third": 35, "third_with_pos": 33,
-        "half_split": 2733.6, "no_team": 196, "negative_begin": 2
+        "events": 294, "shots": 29, "duels": 62,
+        "sbz": 34, "sbz_with_vector": 31,
+        "third": 35, "third_pos": 33,
+        "xg_parsed": 29, "xg_missing": 0, "xg_sum": 4.4,
+        "no_team": 196, "negative_begin": 2, "players_filled": 0
       },
-      "_brakuje": "Pliki csv/json do dostarczenia przez klienta. Do tego czasu test jest pomijany, a nie fałszywie zielony."
+      "sections_unavailable": [],
+      "_uwaga_typo": "TYPO_MASZA pochodzi z palety mecz1.json (parowanie v23), nie ze zdarzeń mecz2.csv — w zdarzeniach literówka jest już poprawiona.",
+      "warnings": { "TYPO_MASZA": 1, "NEGATIVE_BEGIN": 2, "EMPTY_PLAYER_COLUMN": 1, "UNMAPPED_TAGS": 1 }
     }
-  ]
+  ],
+
+  "format_cases": [
+    {
+      "id": "mecz1-wczesniejsze-tagowanie",
+      "opis": "Ten sam mecz, wcześniejsze przejście tagowania. Sprawdza, czy silnik wykrywa rozjazd TREŚCI przy identycznym zestawie kolumn.",
+      "csv": "mecz1.csv",
+      "json": "mecz1.json",
+      "wzgledem": "hutnik-pogon-v23",
+      "format_fingerprint": "sha256:75ce78bc472be58778055e5abe8a2025e56ea8319a7332fc76e427d06f7a93f5",
+      "_kluczowy_wniosek": "format_fingerprint jest IDENTYCZNY z referencyjnym, bo zestaw kolumn się nie zmienił. Odcisk nie wykrywa tego rozjazdu i nie taka jest jego rola — wykrywają go liczby pokrycia i ostrzeżenia.",
+      "fingerprint_rozny": false,
+      "tagi_rozne": false,
+      "roznice": {
+        "third_pos": { "referencyjny": 33, "ten_plik": 0, "skutek": "sekcja tl_iii wyłączona (pułapka 3)" },
+        "MASZA POŁOWA": { "referencyjny": 0, "ten_plik": 45, "skutek": "ostrzeżenie TYPO_MASZA (pułapka 9)" },
+        "GOL": { "referencyjny": 4, "ten_plik": 0, "skutek": "gole nieoznaczone w tym przejściu" },
+        "CELNY": { "referencyjny": 15, "ten_plik": 8, "skutek": "mniej etykiet wyniku strzału" },
+        "ODBIÓR (etykieta)": { "referencyjny": 0, "ten_plik": 4, "skutek": "etykieta wycofana w nowszym przejściu" },
+        "etykiety_lacznie": { "referencyjny": 449, "ten_plik": 415 }
+      },
+      "coverage": {
+        "events": 294, "shots": 29, "duels": 62,
+        "sbz": 34, "sbz_with_vector": 31,
+        "third": 35, "third_pos": 0,
+        "xg_parsed": 29, "xg_missing": 0, "xg_sum": 4.4,
+        "no_team": 196, "negative_begin": 2, "players_filled": 0
+      },
+      "sections_unavailable": ["tl_iii"],
+      "warnings": { "TYPO_MASZA": 46, "NEGATIVE_BEGIN": 2, "EMPTY_PLAYER_COLUMN": 1, "UNMAPPED_TAGS": 1 }
+    }
+  ],
+
+  "_mecz3": "mecz3.csv i mecz3.json są BAJTOWO IDENTYCZNE z mecz2 (sha256 csv 315367f7…, json fb91407b…). Nie dodano ich jako osobnego przypadku, bo powielony plik daje pozorne pokrycie testowe. Do zastąpienia, gdy pojawi się faktycznie trzeci eksport."
 }

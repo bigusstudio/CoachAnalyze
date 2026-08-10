@@ -31,8 +31,27 @@ Decyzje warte odnotowania:
 - Przycinanie ujemnego `begin` do zera dzieje się w `canon`, nie w parserze — parser musi
   zwracać wartość surową, bo na tym stoi zgodność z v23.
 
-Niezrobione: `render.py` (brak `dashboard_template.html`) i `metrics.py`. `build` kończy się
-kodem 4 z jawnym komunikatem o braku szablonu.
+Niezrobione: `render.py` i `metrics.py`.
+
+### Eksporty referencyjne — identyfikacja i zestaw złoty
+Po dostarczeniu trzech plików:
+
+- `mecz2` == `mecz3` **bajtowo** (ten sam plik dwa razy). Zostają dwa różne eksporty.
+- Wzorzec v23 to `mecz2.csv`, ale paleta v23 pochodzi z `mecz1.json` — produkcyjny raport
+  powstał z nowszego CSV i starszego pliku projektu. Parowanie zapisane w manifeście
+  wraz z uzasadnieniem; nie „poprawiane" pod test.
+- `mecz1` to wcześniejsze przejście tagowania tego samego meczu: bez pozycji III strefy
+  (0/35), z literówką `MASZA POŁOWA` (45×), bez etykiety `GOL`. Dodany jako przypadek
+  wykrywania rozjazdu formatu.
+- **`format_fingerprint` tego rozjazdu nie wykrywa** — zestaw kolumn jest identyczny.
+  Wykrywają go liczby pokrycia i ostrzeżenia. Opisane w docs/FORMAT_LIVETAG.md.
+
+Poprawka w parserze: kolumna zawodnika nazywa się `players` (liczba mnoga) i nie była
+rozpoznawana. Skutek — ostrzeżenie `EMPTY_PLAYER_COLUMN` zamiast `NO_PLAYER_COLUMN`.
+
+Test złoty przestał zależeć od plików `v23_expected_*.json`, których `.gitignore` nie
+wpuszcza do repozytorium: wzorcem jest manifest ze skrótami SHA-256, a pliki są wygodą
+lokalną. Bez danych klienta testy są pomijane, nigdy fałszywie zielone.
 
 ## [0.2.0] — 2026-08-11
 ### Port parsera z pandas na bibliotekę standardową
