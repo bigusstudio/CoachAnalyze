@@ -43,7 +43,7 @@ mkdir -p "$WEB"
 rsync -a --delete \
   --exclude='.env' --exclude='storage/' --exclude='.git/' \
   "$BASE/repo/app/" "$WEB/app/"
-rsync -a --delete "$BASE/repo/app/public/" "$WEB/"
+rsync -a --delete --exclude='app/' --exclude='.env' --exclude='storage/' "$BASE/repo/app/public/" "$WEB/"
 # public/ zostaje na poziomie katalogu domeny, kod aplikacji w podkatalogu app/
 
 echo "==> Dowiązania do zasobów współdzielonych"
