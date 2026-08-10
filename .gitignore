@@ -1,0 +1,39 @@
+# Sekrety i konfiguracja środowiska
+.env
+.env.*
+!.env.example
+
+# Dane klienta — NIGDY do repozytorium
+storage/uploads/
+storage/reports/
+storage/crests/
+storage/exports/
+*.csv
+*.ltp3
+engine/tests/golden/*.csv
+engine/tests/golden/*.json
+!engine/tests/golden/manifest.json
+
+# Python
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+
+# PHP / narzędzia
+vendor/
+node_modules/
+composer.lock
+
+# System i edytory
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Logi
+*.log
+app/logs/

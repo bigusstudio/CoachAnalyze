@@ -1,0 +1,5 @@
+{
+  "_opis": "Zestaw złoty. Pliki CSV/JSON NIE trafiają do repozytorium — to dane taktyczne klienta. Manifest przechowuje wyłącznie skróty oczekiwanych wyjść. Pliki źródłowe leżą lokalnie i na serwerze w storage/golden/.",
+  "_uzupelnic": "Po otrzymaniu eksportów referencyjnych: minimum 3 mecze, najlepiej z różnych wersji LiveTag.",
+  "cases": []
+}

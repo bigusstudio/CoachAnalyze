@@ -1,0 +1,9 @@
+# Worker — cron zamiast demona, bo hosting współdzielony nie gwarantuje długich procesów.
+# Blokada w Redis zapobiega nakładaniu się uruchomień.
+* * * * * /usr/bin/php /home/platne/serwer400227/CoachAnalyze/current/app/bin/worker.php >> /home/platne/serwer400227/CoachAnalyze/shared/logs/worker.log 2>&1
+
+# Kopia bazy — codziennie o 3:15
+15 3 * * * /home/platne/serwer400227/CoachAnalyze/current/deploy/backup_db.sh daily
+
+# Kontrola zawieszonych zadań — alert, gdy zadanie stoi dłużej niż 5 minut
+*/5 * * * * /usr/bin/php /home/platne/serwer400227/CoachAnalyze/current/app/bin/watchdog.php

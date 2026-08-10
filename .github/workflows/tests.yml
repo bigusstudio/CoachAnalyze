@@ -1,0 +1,47 @@
+name: Testy silnika
+
+on:
+  push:
+    branches: [main, dev, 'feat/**']
+  pull_request:
+    branches: [main, dev]
+
+jobs:
+  engine:
+    name: Silnik Python — test złoty i pułapki
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Instalacja zależności
+        working-directory: engine
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Testy
+        working-directory: engine
+        run: python -m pytest -v
+
+      - name: Kontrakt CLI odpowiada dokumentacji
+        working-directory: engine
+        run: |
+          python -m coachanalyze --version
+          python -m coachanalyze build --help > /dev/null
+          python -m coachanalyze inspect --help > /dev/null
+
+  php:
+    name: Warstwa PHP — składnia
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+      - name: Lint
+        run: find app -name "*.php" -print0 | xargs -0 -n1 php -l
