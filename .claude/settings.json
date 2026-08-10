@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "deny": [
+      "Bash(ssh:*)",
+      "Bash(*deploy.sh*)",
+      "Bash(mysql:*)",
+      "Bash(mysqldump:*)",
+      "Bash(git push:*)"
+    ]
+  }
+}

@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Analiza meczu — Hutnik Kraków vs Pogoń-Sokół Lubaczów</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0F1614; --panel:#161F1C; --panel2:#1B2622; --line:#26332E;
+  --ink:#E9EFEA; --ink2:#9DAFA6; --ink3:#647A70;
+  --hut:#5CA8E0; --hut-dim:rgba(92,168,224,.16);
+  --pog:#E6A23C; --pog-dim:rgba(230,162,60,.16);
+  --pitch:#131E19; --pitchline:#2A4237;
+  --ok:#4EC98A; --bad:#E0655C; --neut:#7C8F86;
+  --ctx-poz:#4EC98A; --ctx-pre:#E0655C; --ctx-kon:#E8C558; --ctx-sfg:#4FC3E8;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);font-family:'IBM Plex Sans',system-ui,sans-serif;font-size:14px;line-height:1.5}
+.wrap{max-width:1100px;margin:0 auto;padding:28px 20px 60px}
+.disp{font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;letter-spacing:.04em}
+.mono{font-family:'IBM Plex Mono',monospace}
+
+/* header */
+header{display:flex;flex-wrap:wrap;align-items:baseline;gap:10px 24px;border-bottom:1px solid var(--line);padding-bottom:18px;margin-bottom:26px}
+header .kicker{font-size:12px;color:var(--ink3);letter-spacing:.14em;text-transform:uppercase;width:100%}
+h1{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:40px;line-height:1.05;text-transform:uppercase;letter-spacing:.01em}
+h1 .vs{color:var(--ink3);font-weight:500;font-size:.6em;margin:0 8px;vertical-align:middle}
+h1 .h{color:var(--hut)} h1 .p{color:var(--pog)}
+.crest{display:inline-flex;align-items:center;justify-content:center;width:46px;height:46px;border-radius:50%;background:#FFFFFF;vertical-align:middle;margin-right:10px;flex:none}
+.crest img{width:78%;height:78%;object-fit:contain;display:block}
+.crest.hutc{border:1.5px solid var(--hut)}
+.crest.pogc{border:1.5px solid var(--pog)}
+h1 .crest{margin-bottom:5px}
+.crest.sm{width:30px;height:30px;margin-right:8px}
+.teams .t2 .crest.sm{margin-right:0;margin-left:8px}
+header .meta{color:var(--ink2);font-size:13px;margin-left:auto}
+header .meta b{color:var(--ink)}
+
+section{margin-bottom:34px}
+h2{font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:20px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink2);margin-bottom:4px}
+.sub{color:var(--ink3);font-size:12.5px;margin-bottom:14px}
+
+/* head-to-head */
+.h2h{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 22px}
+.h2h .teams{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;font-family:'Barlow Condensed',sans-serif;font-size:17px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:14px}
+.h2h .teams .t1{color:var(--hut)} .h2h .teams .t2{color:var(--pog);text-align:right}
+.h2h .teams .mid{color:var(--ink3);font-size:12px;align-self:center;letter-spacing:.12em}
+.stat{display:grid;grid-template-columns:64px 1fr 150px 1fr 64px;align-items:center;gap:12px;padding:7px 0;border-top:1px dashed var(--line)}
+.stat .v{font-family:'IBM Plex Mono',monospace;font-size:16px;font-weight:500}
+.stat .v.r{text-align:right}
+.stat .lbl{text-align:center;color:var(--ink2);font-size:12px;letter-spacing:.03em}
+.bar{height:8px;border-radius:4px;background:var(--panel2);position:relative;overflow:hidden}
+.bar i{position:absolute;top:0;bottom:0;border-radius:4px}
+.bar.l i{right:0;background:var(--hut)} .bar.r i{left:0;background:var(--pog)}
+/* fragmentator (wzór: bilans.png) */
+.frag{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+.frag>div{display:grid;gap:6px}
+.frag .fr1{grid-template-columns:1fr}
+.frag .fr2{grid-template-columns:1fr 1fr}
+.frag .fr3{grid-template-columns:repeat(6,1fr)}
+.fbtn{font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;letter-spacing:.07em;font-size:14px;font-weight:600;background:var(--panel2);border:1px solid var(--line);color:var(--ink2);padding:9px 4px;border-radius:6px;cursor:pointer;text-align:center;transition:.12s}
+.fbtn:hover{color:var(--ink)}
+.fbtn.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.fbtn:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.stat.neutral{grid-template-columns:64px 1fr 150px 1fr 64px}
+.stat.neutral .bar i{background:var(--neut)}
+.panel-note{font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--ink3);margin:14px 0 4px}
+.maprow{display:grid;grid-template-columns:3fr 2fr;gap:14px;margin-bottom:14px}
+.maprow h3{font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--ink2);margin-bottom:8px}
+@media(max-width:820px){.maprow{grid-template-columns:1fr}}
+
+/* pitch */
+.pitchbox{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px}
+.controls{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.chip{border:1px solid var(--line);background:var(--panel2);color:var(--ink2);font-size:12.5px;padding:5px 12px;border-radius:20px;cursor:pointer;transition:.15s;font-family:inherit}
+.chip:hover{color:var(--ink)}
+.chip.on{background:var(--ink);color:var(--bg);border-color:var(--ink);font-weight:600}
+.chip.on.hut{background:var(--hut);border-color:var(--hut)}
+.chip.on.pog{background:var(--pog);border-color:var(--pog)}
+.chip.on.cpoz{background:var(--ctx-poz);border-color:var(--ctx-poz);color:#0B100E}
+.chip.on.cpre{background:var(--ctx-pre);border-color:var(--ctx-pre);color:#0B100E}
+.chip.on.ckon{background:var(--ctx-kon);border-color:var(--ctx-kon);color:#0B100E}
+.chip.on.csfg{background:var(--ctx-sfg);border-color:var(--ctx-sfg);color:#0B100E}
+.chip:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.legend{display:flex;flex-wrap:wrap;gap:16px;color:var(--ink2);font-size:11.5px;margin-top:12px;align-items:center}
+.legend span{display:inline-flex;align-items:center;gap:7px}
+.dot{width:10px;height:10px;border-radius:50%;display:inline-block}
+.pt{cursor:pointer;transition:filter .12s}
+.pt:hover{filter:brightness(1.3)}
+svg text{font-family:'IBM Plex Mono',monospace}
+#tip{position:fixed;pointer-events:none;background:#0B100E;border:1px solid var(--line);border-radius:8px;padding:8px 11px;font-size:12px;color:var(--ink);opacity:0;transition:opacity .1s;z-index:10;max-width:240px;box-shadow:0 6px 20px rgba(0,0,0,.5)}
+#tip .t{color:var(--ink3);font-size:11px}
+
+/* timeline */
+.tlbox{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;overflow-x:auto}
+
+/* breakdown grid */
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px}
+.card h3{font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px}
+.card .n{color:var(--ink3);font-size:12px;margin-bottom:10px}
+.row{display:flex;align-items:center;gap:8px;font-size:12.5px;padding:3px 0}
+.row .k{width:110px;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .b{flex:1;height:7px;background:var(--panel2);border-radius:4px;overflow:hidden}
+.row .b i{display:block;height:100%;border-radius:4px;background:var(--ink3)}
+.row .b i.ok{background:var(--ok)} .row .b i.bad{background:var(--bad)}
+.row .b i.hut{background:var(--hut)} .row .b i.pog{background:var(--pog)}
+.row .v{width:26px;text-align:right;font-family:'IBM Plex Mono',monospace;font-size:12px}
+footer{color:var(--ink3);font-size:11.5px;border-top:1px solid var(--line);padding-top:14px}
+@media(max-width:640px){
+  h1{font-size:28px}
+  .stat{grid-template-columns:50px 1fr 110px 1fr 50px;gap:8px}
+  .stat .v{font-size:14px}
+}
+@media (prefers-reduced-motion: reduce){ *{transition:none!important} }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div class="kicker">LiveTag.Pro · analiza meczowa</div>
+  <h1><span class="crest hutc"><img src="data:image/png;base64,__LOGO_HUT__" alt="Herb Hutnik Kraków"></span><span class="h">Hutnik Kraków</span><span class="vs">vs</span><span class="crest pogc"><img src="data:image/png;base64,__LOGO_POG__" alt="Herb Pogoń-Sokół Lubaczów"></span><span class="p">Pogoń-Sokół Lubaczów</span></h1>
+  <div class="meta"><b id="m-events">—</b> akcji · <b id="m-shots">—</b> strzałów · czas kodowania <b id="m-dur">—</b></div>
+</header>
+
+<section>
+  <h2>Bilans drużyn — porównanie fragmentów</h2>
+  <div class="sub">Dwa niezależne panele: wybierz fragment meczu w każdym z nich, żeby porównać np. 1. połowę z 2. albo końcówki połów. Przedziały minutowe liczone w obrębie połowy (czas wideo). Metryki bez podziału na drużyny (szare) — zdarzenia tagowane bez pola „team”.</div>
+  <div id="bilans-panels"></div>
+</section>
+
+<section>
+  <h2>Mapy współczynników</h2>
+  <div class="sub">Trzy współczynniki: strzały (wynik), strzały (xG) i zdobycie SBZ — mapa po lewej, przebieg w czasie po prawej. Fragmentatory u góry sterują wszystkimi wierszami; szerokość wykresów stała, oś czasu dopasowuje się do fragmentu. Filtr wyniku (celne/niecelne/zablokowane) dotyczy wiersza 1; wiersz 2 ma własny fragmentator typu akcji. Hutnik atakuje bramkę po lewej, Pogoń-Sokół po prawej.</div>
+  <div class="pitchbox" style="margin-bottom:14px">
+    <div class="frag" role="group" aria-label="Fragment meczu — mapy">
+      <div class="fr1"><button class="fbtn on" data-mf="full">CAŁY MECZ</button></div>
+      <div class="fr2"><button class="fbtn" data-mf="h1">I POŁOWA</button><button class="fbtn" data-mf="h2">II POŁOWA</button></div>
+      <div class="fr3"><button class="fbtn" data-mf="q1">1–15'</button><button class="fbtn" data-mf="q2">16–30'</button><button class="fbtn" data-mf="q3">31–45'</button><button class="fbtn" data-mf="q4">46–60'</button><button class="fbtn" data-mf="q5">61–75'</button><button class="fbtn" data-mf="q6">76–90'</button></div>
+    </div>
+    <div class="controls" role="group" aria-label="Filtry drużyn i wyniku">
+      <button class="chip hut on" data-mteam="HUTNIK KRAKÓW">Hutnik</button>
+      <button class="chip pog on" data-mteam="POGOŃ-SOKÓŁ LUBACZÓW">Pogoń-Sokół</button>
+      <span style="width:14px"></span>
+      <button class="chip on" data-mout="CELNY">Celne</button>
+      <button class="chip on" data-mout="NIECELNY">Niecelne</button>
+      <button class="chip on" data-mout="ZABLOKOWANY">Zablokowane</button>
+    </div>
+  </div>
+  <div id="metric-rows"></div>
+</section>
+
+<section>
+  <h2>Oś czasu — zdobycie SBZ</h2>
+  <div class="sub">Dwa tory drużyn, tylko wejścia w SBZ. Kolor = typ akcji (jak na mapach), kształt = wynik strzału po wejściu, mała kropka = bez strzału. Zakres i filtry — te same fragmentatory co przy mapach.</div>
+  <div class="tlbox"><svg id="tl" width="100%" role="img" aria-label="Oś czasu wejść w SBZ per drużyna"></svg></div>
+</section>
+
+<section>
+  <h2>Oś czasu — zdobycie III strefy</h2>
+  <div class="sub">Dwa tory drużyn, tylko wejścia w III strefę: <span style="color:var(--ok)">udane ●</span>, <span style="color:var(--bad)">nieudane ○</span>, <span style="color:var(--neut)">brak podania ◆</span>. Te same fragmentatory co przy mapach.</div>
+  <div class="tlbox"><svg id="tl3" width="100%" role="img" aria-label="Oś czasu wejść w III strefę per drużyna"></svg></div>
+</section>
+
+<section>
+  <h2>Oś czasu — bilans meczu</h2>
+  <div class="sub">Wszystkie współczynniki bilansu na jednej osi. Tory drużynowe (strzały, xG, SBZ, III strefa) w kolorach drużyn; tory bez przypisania — zielony ● / czerwony ○ tam, gdzie etykiety dają wynik, szare kreski dla pozostałych. Te same fragmentatory co przy mapach.</div>
+  <div class="tlbox"><svg id="tlm" width="100%" role="img" aria-label="Zbiorcza oś czasu współczynników bilansu"></svg></div>
+</section>
+
+<section>
+  <h2>Pojedynki, straty, odbiory — ilościowo i %</h2>
+  <div class="sub">Zdarzenia bez przypisania drużyny, w zakresie wybranego fragmentu. Straty w podziale na strony boiska i reakcję; pierwszy kontakt z rozwinięciem wygranych (drugi kontakt / strata).</div>
+  <div class="grid" id="duels-grid"></div>
+</section>
+
+<section>
+  <h2>Zdarzenia bez przypisania drużyny</h2>
+  <div class="sub">196 akcji (straty, odbiory, pojedynki, pierwsze kontakty) otagowano bez pola „team” — rozkład wg etykiet.</div>
+  <div class="grid" id="cards"></div>
+</section>
+
+<footer>Źródło: LiveTag.Pro v1.12.11 · eksport CSV (294 wiersze) · dashboard: bigus.studio</footer>
+</div>
+<div id="tip"></div>
+
+<script>
+const DATA = /*__DATA__*/;
+const PAL = /*__PAL__*/;
+const tagCol=t=>PAL.tags[t]||'#9DAFA6';
+const labCol=l=>PAL.labels[l]||'#9DAFA6';
+const E = DATA.events, HS = DATA.half_split;
+const HUT='HUTNIK KRAKÓW', POG='POGOŃ-SOKÓŁ LUBACZÓW';
+const has=(e,l)=>e.labels.includes(l);
+const fmt=(n,d=0)=>n.toLocaleString('pl-PL',{minimumFractionDigits:d,maximumFractionDigits:d});
+const mmss=s=>{const m=Math.max(0,Math.floor(s/60));return m+"'";};
+
+/* header meta */
+const shots=E.filter(e=>e.tag==='STRZAŁ');
+document.getElementById('m-events').textContent=E.length;
+document.getElementById('m-shots').textContent=shots.length;
+document.getElementById('m-dur').textContent=Math.round(Math.max(...E.map(e=>e.e))/60)+' min';
+
+/* bilans — dwa panele z fragmentatorami (wzór: bilans.png) */
+const M=60;
+const FRAGS=[
+  {id:'full', lbl:'CAŁY MECZ',  f:e=>true},
+  {id:'h1',   lbl:'I POŁOWA',   f:e=>e.b<HS},
+  {id:'h2',   lbl:'II POŁOWA',  f:e=>e.b>=HS},
+  {id:'q1',   lbl:"1–15'",      f:e=>e.b<15*M},
+  {id:'q2',   lbl:"16–30'",     f:e=>e.b>=15*M&&e.b<30*M},
+  {id:'q3',   lbl:"31–45'",     f:e=>e.b>=30*M&&e.b<HS},
+  {id:'q4',   lbl:"46–60'",     f:e=>e.b>=HS&&e.b<HS+15*M},
+  {id:'q5',   lbl:"61–75'",     f:e=>e.b>=HS+15*M&&e.b<HS+30*M},
+  {id:'q6',   lbl:"76–90'",     f:e=>e.b>=HS+30*M},
+];
+const FR=id=>FRAGS.find(f=>f.id===id);
+const cntT=(fr,tag,team,lab)=>E.filter(e=>e.tag===tag&&e.team===team&&fr.f(e)&&(!lab||has(e,lab))).length;
+const cntN=(fr,tag,lab)=>E.filter(e=>e.tag===tag&&fr.f(e)&&(!lab||has(e,lab))).length;
+function panelHTML(i){
+  return `<div class="h2h" style="margin-bottom:16px">
+    <div class="frag" role="group" aria-label="Fragment meczu — panel ${i+1}">
+      <div class="fr1"><button class="fbtn" data-p="${i}" data-f="full">CAŁY MECZ</button></div>
+      <div class="fr2"><button class="fbtn" data-p="${i}" data-f="h1">I POŁOWA</button><button class="fbtn" data-p="${i}" data-f="h2">II POŁOWA</button></div>
+      <div class="fr3">${['q1','q2','q3','q4','q5','q6'].map(q=>`<button class="fbtn" data-p="${i}" data-f="${q}">${FR(q).lbl}</button>`).join('')}</div>
+    </div>
+    <div class="teams"><div class="t1" style="display:flex;align-items:center"><span class="crest hutc sm"><img src="data:image/png;base64,__LOGO_HUT__" alt=""></span>Hutnik Kraków</div><div class="mid">vs</div><div class="t2" style="display:flex;align-items:center;justify-content:flex-end">Pogoń-Sokół Lubaczów<span class="crest pogc sm"><img src="data:image/png;base64,__LOGO_POG__" alt=""></span></div></div>
+    <div class="pbody" id="pbody-${i}"></div>
+  </div>`;
+}
+function renderPanel(i, fid){
+  const fr=FR(fid);
+  const xgS=t=>shots.filter(e=>e.team===t&&fr.f(e)).reduce((a,e)=>a+(e.xg||0),0);
+  const rows=[
+    ['STRZAŁY', cntT(fr,'STRZAŁ',HUT), cntT(fr,'STRZAŁ',POG), 0],
+    ['xG', xgS(HUT), xgS(POG), 2],
+    ['ZDOBYCIE SBZ', cntT(fr,'ZDOBYCIE SBZ',HUT), cntT(fr,'ZDOBYCIE SBZ',POG), 0],
+    ['ZDOBYCIE III STREFY', cntT(fr,'III STREFA',HUT), cntT(fr,'III STREFA',POG), 0],
+  ];
+  const neut=[
+    ['WYGRANY I KONTAKT', cntN(fr,'PIERWSZY KONTAKT','WYGRANY')],
+    ['1x1 W OFENSYWIE', cntN(fr,'1x1 OFF')],
+    ['1x1 W DEFENSYWIE', cntN(fr,'1x1 DEF.')],
+    ['ODBIÓR', cntN(fr,'ODBIÓR')],
+    ['STRATA', cntN(fr,'STRATA')],
+  ];
+  const nmx=Math.max(...neut.map(r=>r[1]),1);
+  document.getElementById('pbody-'+i).innerHTML=
+    rows.map(([l,a,b,d])=>{
+      const mx=Math.max(a,b,0.001);
+      return `<div class="stat">
+        <div class="v">${fmt(a,d)}</div>
+        <div class="bar l"><i style="width:${a/mx*100}%"></i></div>
+        <div class="lbl">${l}</div>
+        <div class="bar r"><i style="width:${b/mx*100}%"></i></div>
+        <div class="v r">${fmt(b,d)}</div>
+      </div>`;
+    }).join('')
+    +`<div class="panel-note">Bez przypisania drużyny</div>`
+    +neut.map(([l,n])=>`<div class="stat neutral">
+        <div class="v" style="color:var(--ink3)">—</div>
+        <div class="bar l"><i style="width:${n/nmx*100}%"></i></div>
+        <div class="lbl">${l}</div>
+        <div class="bar r"><i style="width:${n/nmx*100}%"></i></div>
+        <div class="v r">${n}</div>
+      </div>`).join('');
+  document.querySelectorAll(`.fbtn[data-p="${i}"]`).forEach(b=>b.classList.toggle('on', b.dataset.f===fid));
+}
+(function(){
+  const wrap=document.getElementById('bilans-panels');
+  wrap.innerHTML=panelHTML(0)+panelHTML(1);
+  wrap.querySelectorAll('.fbtn').forEach(b=>b.addEventListener('click',()=>renderPanel(+b.dataset.p, b.dataset.f)));
+  renderPanel(0,'full'); renderPanel(1,'h1');
+})();
+
+/* pitch */
+const S=10; // 1m = 10px
+const svg=document.getElementById('pitch');
+function pitchBase(){
+  const L=(x,y,w,h)=>`<rect x="${x*S}" y="${y*S}" width="${w*S}" height="${h*S}" fill="none" stroke="var(--pitchline)" stroke-width="2"/>`;
+  let s=`<rect width="1050" height="680" rx="10" fill="var(--pitch)"/>`;
+  for(let i=0;i<10;i+=2) s+=`<rect x="${i*105}" y="0" width="105" height="680" fill="#FFFFFF" fill-opacity="0.018"/>`;
+  s+=L(0,0,105,68);
+  s+=`<line x1="525" y1="0" x2="525" y2="680" stroke="var(--pitchline)" stroke-width="2"/>`;
+  s+=`<circle cx="525" cy="340" r="${9.15*S}" fill="none" stroke="var(--pitchline)" stroke-width="2"/>`;
+  s+=`<circle cx="525" cy="340" r="3.5" fill="var(--pitchline)"/>`;
+  s+=L(0,13.84,16.5,40.32)+L(105-16.5,13.84,16.5,40.32);
+  s+=L(0,24.84,5.5,18.32)+L(105-5.5,24.84,5.5,18.32);
+  s+=`<circle cx="${11*S}" cy="340" r="3.5" fill="var(--pitchline)"/><circle cx="${(105-11)*S}" cy="340" r="3.5" fill="var(--pitchline)"/>`;
+  s+=`<path d="M165,266.9 A91.5,91.5 0 0 1 165,413.1" fill="none" stroke="var(--pitchline)" stroke-width="2"/>`;
+  s+=`<path d="M885,266.9 A91.5,91.5 0 0 0 885,413.1" fill="none" stroke="var(--pitchline)" stroke-width="2"/>`;
+  s+=`<path d="M0,10 A10,10 0 0 0 10,0 M1040,0 A10,10 0 0 0 1050,10 M1050,670 A10,10 0 0 0 1040,680 M10,680 A10,10 0 0 0 0,670" fill="none" stroke="var(--pitchline)" stroke-width="2"/>`;
+  return s;
+}
+/* system znaczników bigus.studio: wynik = kształt, drużyna = kolor, powierzchnia ∝ xG */
+const rXG=xg=>6+Math.sqrt(Math.max(xg||0,0.01))*17;
+function glyph(kind,cx,cy,r,color,attrs=''){
+  if(kind==='filled') return `<circle ${attrs} cx="${cx}" cy="${cy}" r="${r}" fill="${color}" fill-opacity=".95" stroke="#0B100E" stroke-width="1.5"/>`;
+  if(kind==='ring')   return `<circle ${attrs} cx="${cx}" cy="${cy}" r="${r-1.5}" fill="${color}" fill-opacity=".07" stroke="${color}" stroke-width="3"/>`;
+  if(kind==='diamond')return `<rect ${attrs} x="${cx-r*0.85}" y="${cy-r*0.85}" width="${r*1.7}" height="${r*1.7}" transform="rotate(45 ${cx} ${cy})" fill="${color}" fill-opacity=".28" stroke="${color}" stroke-width="2.5" stroke-linejoin="round"/>`;
+}
+function legendGlyph(kind,color){
+  return `<svg width="16" height="16" viewBox="0 0 32 32" style="overflow:visible">${glyph(kind,16,16,11,color)}</svg>`;
+}
+const tip=document.getElementById('tip');
+function showTip(ev,html){tip.innerHTML=html;tip.style.opacity=1;tip.style.left=(ev.clientX+14)+'px';tip.style.top=(ev.clientY+10)+'px';}
+function hideTip(){tip.style.opacity=0;}
+
+/* ===== mapy współczynników: 3 × (mapa + wykres w czasie) ===== */
+const TEND=Math.max(...E.map(e=>e.e));
+const MC={frag:'full', teams:new Set([HUT,POG]), outs:new Set(['CELNY','NIECELNY','ZABLOKOWANY']), ctx:new Set(['POZYCYJNIE','PRESSING','KONTRATAK','SFG']), zctx:new Set(['POZYCYJNIE','PRESSING','KONTRATAK','SFG','INNE']), ist:new Set(['UDANA','NIEUDANA','BRAK PODANIA'])};
+const CTXCOL={POZYCYJNIE:'var(--ctx-poz)',PRESSING:'var(--ctx-pre)',KONTRATAK:'var(--ctx-kon)',SFG:'var(--ctx-sfg)',INNE:'var(--neut)'};
+const ctxOf=e=>['POZYCYJNIE','PRESSING','KONTRATAK','SFG'].find(c=>has(e,c))||null;
+const zctxOf=e=>ctxOf(e)||'INNE';
+const shotsSorted=[...shots].sort((a,b)=>a.b-b.b);
+const sbzShotOf=z=>has(z,'STRZAŁ')?(shotsSorted.find(s=>s.team===z.team&&s.b>=z.b-3)||null):null;
+const istOf=e=>has(e,'UDANA')?'UDANA':has(e,'NIEUDANA')?'NIEUDANA':'BRAK PODANIA';
+const ISTCOL={'UDANA':'var(--ok)','NIEUDANA':'var(--bad)','BRAK PODANIA':'var(--neut)'};
+function mcIII(){
+  const [t0,t1]=fragT(MC.frag);
+  return E.filter(e=>e.tag==='III STREFA'&&e.b>=t0-4&&e.b<t1&&MC.teams.has(e.team)&&MC.ist.has(istOf(e)));
+}
+function fragT(id){
+  const q={full:[0,TEND],h1:[0,HS],h2:[HS,TEND],q1:[0,900],q2:[900,1800],q3:[1800,HS],
+           q4:[HS,HS+900],q5:[HS+900,HS+1800],q6:[HS+1800,TEND]};
+  return q[id];
+}
+const outcomeOf=e=>has(e,'CELNY')?'CELNY':has(e,'ZABLOKOWANY')?'ZABLOKOWANY':'NIECELNY';
+const kindOf=o=>o==='CELNY'?'filled':o==='ZABLOKOWANY'?'diamond':'ring';
+const col=t=>t===HUT?'var(--hut)':'var(--pog)';
+const tName=t=>t===HUT?'Hutnik Kraków':'Pogoń-Sokół';
+
+function mcShots(){
+  const [t0,t1]=fragT(MC.frag);
+  return shots.filter(e=>e.x!=null&&e.b>=t0-4&&e.b<t1&&MC.teams.has(e.team)&&MC.outs.has(outcomeOf(e)));
+}
+function mcShotsCtx(){
+  const [t0,t1]=fragT(MC.frag);
+  return shots.filter(e=>e.x!=null&&e.b>=t0-4&&e.b<t1&&MC.teams.has(e.team)&&ctxOf(e)&&MC.ctx.has(ctxOf(e)));
+}
+function mcSBZ(){
+  const [t0,t1]=fragT(MC.frag);
+  return E.filter(e=>e.tag==='ZDOBYCIE SBZ'&&e.x!=null&&e.b>=t0-4&&e.b<t1&&MC.teams.has(e.team)&&MC.zctx.has(zctxOf(e)));
+}
+function shotTip(e){
+  return `class="pt" data-tip="<b>STRZAŁ · ${outcomeOf(e).toLowerCase()}</b><div class='t'>${tName(e.team)} · ${mmss(e.b)} · xG ${e.xg!=null?fmt(e.xg,2):'—'}<br>${e.labels.join(', ')}</div>"`;
+}
+/* rama wykresu czasowego — stała szerokość, domena = fragment */
+const CW=430,CH=250,CPL=42,CPT=12,CPB=26;
+function chartFrame(t0,t1,ymax,ystep,yfmt){
+  const X=t=>CPL+(t-t0)/(t1-t0)*CW, Y=v=>CPT+CH-(v/ymax)*CH;
+  let s='';
+  for(let g=0;g<=ymax+1e-9;g+=ystep){
+    s+=`<line x1="${CPL}" y1="${Y(g)}" x2="${CPL+CW}" y2="${Y(g)}" stroke="var(--line)" stroke-width="1"/>
+        <text x="${CPL-6}" y="${Y(g)+4}" fill="var(--ink3)" font-size="10" text-anchor="end">${yfmt(g)}</text>`;
+  }
+  const span=(t1-t0)/60, step=span>50?15:span>20?10:5;
+  for(let m=Math.ceil(t0/60/step)*step;m<=t1/60+1e-9;m+=step){
+    s+=`<text x="${X(m*60)}" y="${CPT+CH+17}" fill="var(--ink3)" font-size="10" text-anchor="middle">${m}'</text>`;
+  }
+  if(HS>t0&&HS<t1) s+=`<line x1="${X(HS)}" y1="${CPT}" x2="${X(HS)}" y2="${CPT+CH}" stroke="var(--ink3)" stroke-width="1" stroke-dasharray="4 4"/>`;
+  return {s,X,Y};
+}
+function pitchSVG(id){return `<svg id="${id}" viewBox="0 0 1050 680" width="100%"></svg>`;}
+function chartSVG(id){return `<svg id="${id}" viewBox="0 0 ${CPL+CW+16} ${CPT+CH+CPB}" width="100%" style="max-width:560px"></svg>`;}
+
+document.getElementById('metric-rows').innerHTML=`
+  <div class="maprow">
+    <div class="pitchbox"><h3>Strzały — wynik</h3>${pitchSVG('mp1')}<div class="legend" id="lg1"></div></div>
+    <div class="pitchbox"><h3>Strzały w czasie (y = xG)</h3>${chartSVG('mc1')}</div>
+  </div>
+  <div class="maprow">
+    <div class="pitchbox"><h3>Strzały — po jakiej akcji</h3>
+      <div class="controls" role="group" aria-label="Filtr typu akcji">
+        <button class="chip cpoz on" data-mctx="POZYCYJNIE">Pozycyjnie</button>
+        <button class="chip cpre on" data-mctx="PRESSING">Pressing</button>
+        <button class="chip ckon on" data-mctx="KONTRATAK">Kontratak</button>
+        <button class="chip csfg on" data-mctx="SFG">SFG</button>
+      </div>
+      ${pitchSVG('mp2')}<div class="legend" id="lg2"></div></div>
+    <div class="pitchbox"><h3>Skumulowane xG we fragmencie</h3>${chartSVG('mc2')}</div>
+  </div>
+  <div class="maprow">
+    <div class="pitchbox"><h3>Zdobycie SBZ</h3>
+      <div class="controls" role="group" aria-label="Filtr typu akcji SBZ">
+        <button class="chip cpoz on" data-zctx="POZYCYJNIE">Pozycyjnie</button>
+        <button class="chip cpre on" data-zctx="PRESSING">Pressing</button>
+        <button class="chip ckon on" data-zctx="KONTRATAK">Kontratak</button>
+        <button class="chip csfg on" data-zctx="SFG">SFG</button>
+        <button class="chip on" data-zctx="INNE">Inne</button>
+      </div>
+      ${pitchSVG('mp3')}<div class="legend" id="lg3"></div></div>
+    <div class="pitchbox"><h3>Skumulowane wejścia w SBZ</h3>${chartSVG('mc3')}</div>
+  </div>
+  <div class="maprow">
+    <div class="pitchbox"><h3>Zdobycie III strefy</h3>
+      <div class="controls" role="group" aria-label="Filtr skuteczności III strefy">
+        <button class="chip on" data-ictx="UDANA">Udane</button>
+        <button class="chip on" data-ictx="NIEUDANA">Nieudane</button>
+        <button class="chip on" data-ictx="BRAK PODANIA">Brak podania</button>
+      </div>
+      ${pitchSVG('mp4')}<div class="legend" id="lg4"></div></div>
+    <div class="pitchbox"><h3>Skumulowane wejścia w III strefę</h3>${chartSVG('mc4')}</div>
+  </div>
+  <div class="grid" id="sources"></div>
+  <div class="grid" id="sbz-eff"></div>
+  <div class="legend" id="lg-eff" style="margin-top:2px"></div>
+  <div class="grid" id="iii-eff" style="margin-top:14px"></div>
+  <div id="pressing-block" style="margin-top:14px"></div>`;
+
+function renderMetricMaps(){
+  const [t0,t1]=fragT(MC.frag);
+  const S1=mcShots(), Z=mcSBZ();
+  /* mapa 1: wynik — stały rozmiar */
+  let s=pitchBase();
+  S1.forEach(e=>{ s+=glyph(kindOf(outcomeOf(e)), e.x*S, e.y*S, 10, col(e.team), shotTip(e)); });
+  document.getElementById('mp1').innerHTML=s;
+  /* mapa 2: kolor = typ akcji, kształt = wynik (jak mapa 1) */
+  const S2=mcShotsCtx();
+  s=pitchBase();
+  S2.forEach(e=>{
+    const ctip=`class="pt" data-tip="<b>STRZAŁ · ${outcomeOf(e).toLowerCase()} · ${ctxOf(e)}</b><div class='t'>${tName(e.team)} · ${mmss(e.b)} · xG ${e.xg!=null?fmt(e.xg,2):'—'}</div>"`;
+    s+=glyph(kindOf(outcomeOf(e)), e.x*S, e.y*S, 10, CTXCOL[ctxOf(e)], ctip);
+  });
+  document.getElementById('mp2').innerHTML=s;
+  /* mapa 3: SBZ — kolor = typ akcji, start = glif wyniku strzału, bez strzału = linia przerywana */
+  s=`<defs>${[['pozycyjnie','poz'],['pressing','pre'],['kontratak','kon'],['sfg','sfg'],['inne','neut']].map(([id,v])=>`<marker id="ah-${id}" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--${v==='neut'?'neut':'ctx-'+v})"/></marker>`).join('')}</defs>`+pitchBase();
+  Z.forEach(e=>{
+    const shot=sbzShotOf(e), c=CTXCOL[zctxOf(e)];
+    const dash=shot?'':' stroke-dasharray="5 5"';
+    const mid=zctxOf(e)==='INNE'?'inne':zctxOf(e).toLowerCase();
+    if(e.tx!=null) s+=`<line x1="${e.x*S}" y1="${e.y*S}" x2="${e.tx*S}" y2="${e.ty*S}" stroke="${c}" stroke-width="2.4" stroke-opacity=".9" stroke-linecap="round" marker-end="url(#ah-${mid})"${dash}/>`;
+    const ztip=`class="pt" data-tip="<b>ZDOBYCIE SBZ · ${zctxOf(e)}${shot?' → strzał '+outcomeOf(shot).toLowerCase():''}</b><div class='t'>${tName(e.team)} · ${mmss(e.b)}${shot&&shot.xg!=null?' · xG '+fmt(shot.xg,2):''}</div>"`;
+    if(shot) s+=glyph(kindOf(outcomeOf(shot)), e.x*S, e.y*S, 9, c, ztip);
+    else s+=`<circle ${ztip} cx="${e.x*S}" cy="${e.y*S}" r="4" fill="${c}" fill-opacity=".85" stroke="#0B100E" stroke-width="1"/>`;
+  });
+  document.getElementById('mp3').innerHTML=s;
+  /* legendy */
+  document.getElementById('lg1').innerHTML=
+    `<span>${legendGlyph('filled','var(--ink2)')} celny</span>
+     <span>${legendGlyph('ring','var(--ink2)')} niecelny</span>
+     <span>${legendGlyph('diamond','var(--ink2)')} zablokowany</span>
+     <span style="border-left:1px solid var(--line);padding-left:14px"><span class="dot" style="background:var(--hut)"></span>Hutnik</span>
+     <span><span class="dot" style="background:var(--pog)"></span>Pogoń-Sokół</span>`;
+  document.getElementById('lg2').innerHTML=
+    `<span><span class="dot" style="background:var(--ctx-poz)"></span>Pozycyjnie</span>
+     <span><span class="dot" style="background:var(--ctx-pre)"></span>Pressing</span>
+     <span><span class="dot" style="background:var(--ctx-kon)"></span>Kontratak</span>
+     <span><span class="dot" style="background:var(--ctx-sfg)"></span>SFG</span>
+     <span style="border-left:1px solid var(--line);padding-left:14px">kształt = wynik strzału (jak wyżej)</span>`;
+  document.getElementById('lg3').innerHTML=
+    `<span>${legendGlyph('filled','var(--ink2)')} → strzał celny</span>
+     <span>${legendGlyph('ring','var(--ink2)')} → niecelny</span>
+     <span>${legendGlyph('diamond','var(--ink2)')} → zablokowany</span>
+     <span>┄ przerywana = bez strzału</span>
+     <span style="border-left:1px solid var(--line);padding-left:14px"><span class="dot" style="background:var(--ctx-poz)"></span>Pozycyjnie</span>
+     <span><span class="dot" style="background:var(--ctx-pre)"></span>Pressing</span>
+     <span><span class="dot" style="background:var(--ctx-kon)"></span>Kontratak</span>
+     <span><span class="dot" style="background:var(--ctx-sfg)"></span>SFG</span>
+     <span><span class="dot" style="background:var(--neut)"></span>Inne</span>`;
+  /* wykres 1: scatter czas × xG, glify jak na mapie */
+  let f=chartFrame(t0,t1,1.0,0.25,g=>g.toFixed(2)); let c1=f.s;
+  S1.filter(e=>e.xg!=null).forEach(e=>{
+    c1+=glyph(kindOf(outcomeOf(e)), f.X(Math.max(e.b,t0)), f.Y(e.xg), 7, col(e.team), shotTip(e));
+  });
+  document.getElementById('mc1').innerHTML=c1;
+  /* wykres 2: skumulowane xG we fragmencie — glify w kolorach typu akcji, linie drużyn wygaszone */
+  const teamsArr=[...MC.teams];
+  const maxCum=Math.max(0.5,...teamsArr.map(t=>S2.filter(e=>e.team===t).reduce((a,e)=>a+(e.xg||0),0)));
+  f=chartFrame(t0,t1,Math.ceil(maxCum*2)/2,0.5,g=>g.toFixed(1)); let c2=f.s;
+  teamsArr.forEach(t=>{
+    let cum=0, py=f.Y(0), path=`M${CPL},${py}`, dots='';
+    S2.filter(e=>e.team===t&&e.xg!=null).sort((a,b)=>a.b-b.b).forEach(e=>{
+      const x=f.X(Math.max(e.b,t0)); cum+=e.xg; const y=f.Y(cum);
+      path+=`L${x},${py}L${x},${y}`;
+      const ctip=`class="pt" data-tip="<b>STRZAŁ · ${outcomeOf(e).toLowerCase()} · ${ctxOf(e)}</b><div class='t'>${tName(e.team)} · ${mmss(e.b)} · xG ${fmt(e.xg,2)}<br>suma xG: ${fmt(cum,2)}</div>"`;
+      dots+=glyph(kindOf(outcomeOf(e)), x, y, 5.5, CTXCOL[ctxOf(e)], ctip);
+      py=y;
+    });
+    path+=`L${CPL+CW},${py}`;
+    c2+=`<path d="${path}" fill="none" stroke="${col(t)}" stroke-width="2" stroke-opacity=".55" stroke-linejoin="round"/>`+dots;
+  });
+  document.getElementById('mc2').innerHTML=c2;
+  /* wykres 3: skumulowane wejścia SBZ */
+  const maxZ=Math.max(4,...teamsArr.map(t=>Z.filter(e=>e.team===t).length));
+  f=chartFrame(t0,t1,maxZ,Math.max(1,Math.ceil(maxZ/5)),g=>g); let c3=f.s;
+  teamsArr.forEach(t=>{
+    let n=0, py=f.Y(0), path=`M${CPL},${py}`, dots='';
+    Z.filter(e=>e.team===t).sort((a,b)=>a.b-b.b).forEach(e=>{
+      const x=f.X(Math.max(e.b,t0)); n++; const y=f.Y(n);
+      path+=`L${x},${py}L${x},${y}`;
+      const shot=sbzShotOf(e), cz=CTXCOL[zctxOf(e)];
+      const ztip=`class="pt" data-tip="<b>ZDOBYCIE SBZ · ${zctxOf(e)}${shot?' → strzał '+outcomeOf(shot).toLowerCase():''}</b><div class='t'>${tName(e.team)} · ${mmss(e.b)} · suma: ${n}</div>"`;
+      dots+= shot ? glyph(kindOf(outcomeOf(shot)), x, y, 5.5, cz, ztip)
+                  : `<circle ${ztip} cx="${x}" cy="${y}" r="3.5" fill="${cz}" fill-opacity=".85" stroke="#0B100E" stroke-width="1"/>`;
+      py=y;
+    });
+    path+=`L${CPL+CW},${py}`;
+    c3+=`<path d="${path}" fill="none" stroke="${col(t)}" stroke-width="2" stroke-opacity=".55" stroke-linejoin="round"/>`+dots;
+  });
+  document.getElementById('mc3').innerHTML=c3;
+  /* źródła zagrożenia — słupki w kolorach typu akcji, reagują na fragment i drużyny */
+  const CTX5=['POZYCYJNIE','PRESSING','KONTRATAK','SFG','ODBIÓR'];
+  const fragShots=shots.filter(e=>{const [a,b]=fragT(MC.frag);return e.b>=a-4&&e.b<b;});
+  document.getElementById('sources').innerHTML=[[HUT,'var(--hut)','Hutnik Kraków'],[POG,'var(--pog)','Pogoń-Sokół Lubaczów']]
+    .filter(([t])=>MC.teams.has(t)).map(([team,c,name])=>{
+    const ts=fragShots.filter(e=>e.team===team);
+    const rows=CTX5.map(ctx=>{
+      const g=ts.filter(e=>has(e,ctx));
+      return [ctx, g.length, g.reduce((a,e)=>a+(e.xg||0),0)];
+    }).filter(r=>r[1]>0).sort((a,b)=>b[2]-a[2]);
+    const mx=Math.max(...rows.map(r=>r[2]),0.01);
+    return `<div class="card"><h3 style="color:${c}">${name} — źródła zagrożenia</h3><div class="n">${ts.length} strzałów · xG ${fmt(ts.reduce((a,e)=>a+(e.xg||0),0),2)}</div>`+
+      (rows.length?rows.map(([l,n,xg])=>`<div class="row"><div class="k">${l}</div><div class="b"><i style="width:${xg/mx*100}%;background:${CTXCOL[l]||'var(--neut)'}"></i></div><div class="v" style="width:64px">${n} · ${fmt(xg,2)}</div></div>`).join(''):`<div class="n">brak strzałów we fragmencie</div>`)+`</div>`;
+  }).join('');
+  /* mapa 4: III strefa — kolor = drużyna, pełna linia+grot = udana, przerywana = nieudana */
+  const I3=mcIII();
+  s=`<defs><marker id="ah3-hut" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--hut)"/></marker>
+     <marker id="ah3-pog" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--pog)"/></marker></defs>`+pitchBase();
+  I3.filter(e=>e.x!=null).forEach(e=>{
+    const c=col(e.team), st=istOf(e), ok=st==='UDANA';
+    const itip=`class="pt" data-tip="<b>III STREFA · ${st.toLowerCase()}</b><div class='t'>${tName(e.team)} · ${mmss(e.b)}${e.labels.length?'<br>'+e.labels.join(', '):''}</div>"`;
+    if(e.tx!=null) s+=`<line x1="${e.x*S}" y1="${e.y*S}" x2="${e.tx*S}" y2="${e.ty*S}" stroke="${c}" stroke-width="${ok?2.6:2}" stroke-opacity="${ok?0.95:0.6}" stroke-linecap="round"${ok?` marker-end="url(#ah3-${e.team===HUT?'hut':'pog'})"`:' stroke-dasharray="5 5"'}/>`;
+    s+=`<circle ${itip} cx="${e.x*S}" cy="${e.y*S}" r="4.5" fill="${ISTCOL[st]}" stroke="#0B100E" stroke-width="1"/>`;
+  });
+  document.getElementById('mp4').innerHTML=s;
+  document.getElementById('lg4').innerHTML=
+    `<span>→ pełna linia + grot = udana</span><span>┄ przerywana = nieudana</span>
+     <span style="border-left:1px solid var(--line);padding-left:14px">kropka startu: <span class="dot" style="background:var(--ok)"></span>udana</span>
+     <span><span class="dot" style="background:var(--bad)"></span>nieudana</span>
+     <span><span class="dot" style="background:var(--neut)"></span>brak podania</span>
+     <span style="border-left:1px solid var(--line);padding-left:14px">linia: <span class="dot" style="background:var(--hut)"></span>Hutnik</span>
+     <span><span class="dot" style="background:var(--pog)"></span>Pogoń-Sokół</span>`;
+  /* wykres 4: skumulowane wejścia w III strefę */
+  const maxI=Math.max(4,...teamsArr.map(t=>I3.filter(e=>e.team===t).length));
+  f=chartFrame(t0,t1,maxI,Math.max(1,Math.ceil(maxI/5)),g=>g); let c4=f.s;
+  teamsArr.forEach(t=>{
+    let n=0, py=f.Y(0), path=`M${CPL},${py}`, dots='';
+    I3.filter(e=>e.team===t).sort((a,b)=>a.b-b.b).forEach(e=>{
+      const x=f.X(Math.max(e.b,t0)); n++; const y=f.Y(n);
+      path+=`L${x},${py}L${x},${y}`;
+      const st=istOf(e);
+      dots+=`<circle class="pt" cx="${x}" cy="${y}" r="4" fill="${ISTCOL[st]}" stroke="#0B100E" stroke-width="1" data-tip="<b>III STREFA · ${st.toLowerCase()}</b><div class='t'>${tName(e.team)} · ${mmss(e.b)} · suma: ${n}</div>"/>`;
+      py=y;
+    });
+    path+=`L${CPL+CW},${py}`;
+    c4+=`<path d="${path}" fill="none" stroke="${col(t)}" stroke-width="2" stroke-opacity=".55" stroke-linejoin="round"/>`+dots;
+  });
+  document.getElementById('mc4').innerHTML=c4;
+  /* skuteczność wejść w SBZ — wynik ilościowo i %, podział strzału */
+  const zframe=E.filter(e=>{const [a,b]=fragT(MC.frag);return e.tag==='ZDOBYCIE SBZ'&&e.b>=a-4&&e.b<b;});
+  const ZCTX=['POZYCYJNIE','PRESSING','KONTRATAK','SFG','INNE'];
+  const SEG=[['celny','var(--ok)',1],['niecelny','var(--ok)',.45],['zablokowany','#8FAE9D',.75],['brak strzału','var(--bad)',.85]];
+  document.getElementById('sbz-eff').innerHTML=[[HUT,'var(--hut)','Hutnik Kraków'],[POG,'var(--pog)','Pogoń-Sokół Lubaczów']]
+    .filter(([t])=>MC.teams.has(t)).map(([team,c,name])=>{
+    const zt=zframe.filter(e=>e.team===team);
+    const ztS=zt.filter(e=>sbzShotOf(e));
+    const hdr=`${zt.length} wejść · ${ztS.length} → strzał${zt.length?' ('+Math.round(ztS.length/zt.length*100)+'%)':''}`;
+    const rows=ZCTX.map(ctx=>{
+      const g=zt.filter(e=>zctxOf(e)===ctx);
+      if(!g.length) return '';
+      const shotsOf=g.map(sbzShotOf).filter(Boolean);
+      const cnt={celny:shotsOf.filter(s=>outcomeOf(s)==='CELNY').length,
+                 niecelny:shotsOf.filter(s=>outcomeOf(s)==='NIECELNY').length,
+                 zablokowany:shotsOf.filter(s=>outcomeOf(s)==='ZABLOKOWANY').length};
+      cnt['brak strzału']=g.length-shotsOf.length;
+      const segs=SEG.filter(([k])=>cnt[k]>0).map(([k,cc,op])=>
+        `<i title="${k}: ${cnt[k]}" style="display:block;height:100%;float:left;width:${cnt[k]/g.length*100}%;background:${cc};opacity:${op}"></i>`).join('');
+      const pct=Math.round(shotsOf.length/g.length*100);
+      return `<div class="row"><div class="k" style="color:${CTXCOL[ctx]}">${ctx}</div><div class="b" style="height:12px">${segs}</div><div class="v" style="width:86px">${shotsOf.length}/${g.length} · ${pct}%</div></div>`;
+    }).join('');
+    return `<div class="card"><h3 style="color:${c}">${name} — skuteczność SBZ</h3><div class="n">${hdr}</div>${rows||'<div class="n">brak wejść we fragmencie</div>'}</div>`;
+  }).join('');
+  document.getElementById('lg-eff').innerHTML=
+    `<span><span class="dot" style="background:var(--ok)"></span>celny</span>
+     <span><span class="dot" style="background:var(--ok);opacity:.45"></span>niecelny</span>
+     <span><span class="dot" style="background:#8FAE9D;opacity:.75"></span>zablokowany</span>
+     <span><span class="dot" style="background:var(--bad);opacity:.85"></span>brak strzału</span>
+     <span style="color:var(--ink3)">wartości: wejścia ze strzałem / wszystkie · % skuteczności</span>`;
+  /* skuteczność III strefy — ilościowo i %, z uwzględnieniem braku podania */
+  const iframe3=E.filter(e=>{const [a,b]=fragT(MC.frag);return e.tag==='III STREFA'&&e.b>=a-4&&e.b<b;});
+  document.getElementById('iii-eff').innerHTML=[[HUT,'var(--hut)','Hutnik Kraków'],[POG,'var(--pog)','Pogoń-Sokół Lubaczów']]
+    .filter(([t])=>MC.teams.has(t)).map(([team,c,name])=>{
+    const g=iframe3.filter(e=>e.team===team);
+    const cnt={'UDANA':0,'NIEUDANA':0,'BRAK PODANIA':0};
+    g.forEach(e=>cnt[istOf(e)]++);
+    const pc=k=>g.length?Math.round(cnt[k]/g.length*100):0;
+    const segs=Object.keys(cnt).filter(k=>cnt[k]>0).map(k=>
+      `<i title="${k.toLowerCase()}: ${cnt[k]}" style="display:block;height:100%;float:left;width:${cnt[k]/g.length*100}%;background:${ISTCOL[k]};opacity:.9"></i>`).join('');
+    const rows=Object.keys(cnt).filter(k=>cnt[k]>0).map(k=>
+      `<div class="row"><div class="k" style="color:${ISTCOL[k]}">${k}</div><div class="b"><i style="width:${cnt[k]/Math.max(...Object.values(cnt),1)*100}%;background:${ISTCOL[k]}"></i></div><div class="v" style="width:86px">${cnt[k]} · ${pc(k)}%</div></div>`).join('');
+    return `<div class="card"><h3 style="color:${c}">${name} — skuteczność III strefy</h3><div class="n">${g.length} wejść · udane ${pc('UDANA')}%</div>`+
+      (g.length?`<div class="b" style="height:12px;margin:4px 0 10px">${segs}</div>${rows}`:'<div class="n">brak wejść we fragmencie</div>')+`</div>`;
+  }).join('');
+  /* wysoki pressing (SKUTECZNY / NISKUTECZNY) — donut, rozbicia, mini-oś */
+  const [pa,pb]=fragT(MC.frag);
+  const PS=E.filter(e=>e.tag==='SKUTECZNY'&&e.b>=pa-4&&e.b<pb);
+  const PN=E.filter(e=>e.tag==='NISKUTECZNY'&&e.b>=pa-4&&e.b<pb);
+  const ptot=PS.length+PN.length;
+  const pPct=n=>ptot?Math.round(n/ptot*1000)/10:0;
+  const R=46, CIRC=2*Math.PI*R, fS=ptot?PS.length/ptot:0;
+  const donut=`<svg viewBox="0 0 130 130" width="130" height="130" style="flex:none">
+    <circle cx="65" cy="65" r="${R}" fill="none" stroke="var(--bad)" stroke-width="20"/>
+    <circle cx="65" cy="65" r="${R}" fill="none" stroke="var(--ok)" stroke-width="20"
+      stroke-dasharray="${CIRC*fS} ${CIRC}" transform="rotate(-90 65 65)"/>
+    <text x="65" y="61" text-anchor="middle" fill="var(--ink)" font-size="20" font-weight="600">${ptot}</text>
+    <text x="65" y="78" text-anchor="middle" fill="var(--ink3)" font-size="10">akcji</text>
+  </svg>`;
+  const PCATS=['ZDOBYCIE SBZ','STRZAŁ Z SBZ','POSIADANIE','INNE','STRATA'];
+  const pRows=(evs,cc)=>{
+    const cnt=PCATS.map(k=>[k,evs.filter(e=>has(e,k)).length]).filter(r=>r[1]>0);
+    const mx=Math.max(...cnt.map(r=>r[1]),1);
+    return cnt.map(([k,n])=>`<div class="row"><div class="k">${k}</div><div class="b"><i style="width:${n/mx*100}%;background:${cc}"></i></div><div class="v">${n}</div></div>`).join('')||'<div class="n">—</div>';
+  };
+  /* mini-oś zdarzeń pressingowych */
+  const PW=940,PH=34,PPL=8;
+  let ptl='';
+  [[PS,'ok','filled'],[PN,'bad','ring']].forEach(([evs,cc,kind])=>{
+    evs.forEach(e=>{
+      const x=PPL+(Math.max(e.b,pa)-pa)/(pb-pa)*PW;
+      ptl+=glyph(kind, x, 17, 6, `var(--${cc})`, `class="pt" data-tip="<b>${kind==='filled'?'SKUTECZNY':'NISKUTECZNY'}</b><div class='t'>${mmss(e.b)}${e.labels.length?' · '+e.labels.join(', '):''}</div>"`);
+    });
+  });
+  if(HS>pa&&HS<pb){const hx=PPL+(HS-pa)/(pb-pa)*PW; ptl+=`<line x1="${hx}" y1="4" x2="${hx}" y2="30" stroke="var(--ink3)" stroke-width="1" stroke-dasharray="4 4"/>`;}
+  document.getElementById('pressing-block').innerHTML=`<div class="card">
+    <h3>Wysoki pressing — skuteczność wyprowadzenia</h3>
+    <div class="n">bez podziału na drużyny (zdarzenia tagowane bez pola „team”)</div>
+    <div style="display:flex;flex-wrap:wrap;gap:22px;align-items:center;margin:8px 0 4px">
+      ${donut}
+      <div style="min-width:210px;flex:1">
+        <div class="row"><div class="k" style="width:130px;color:var(--ok)">SKUTECZNY</div><div class="v" style="width:auto">${PS.length} (${pPct(PS.length)}%)</div></div>
+        ${pRows(PS,'var(--ok)')}
+      </div>
+      <div style="min-width:210px;flex:1">
+        <div class="row"><div class="k" style="width:130px;color:var(--bad)">NISKUTECZNY</div><div class="v" style="width:auto">${PN.length} (${pPct(PN.length)}%)</div></div>
+        ${pRows(PN,'var(--bad)')}
+      </div>
+    </div>
+    <svg viewBox="0 0 ${PW+16} ${PH}" width="100%" style="margin-top:6px">
+      <line x1="${PPL}" y1="17" x2="${PPL+PW}" y2="17" stroke="var(--line)" stroke-width="1"/>${ptl}
+    </svg>
+    <div class="legend"><span>${legendGlyph('filled','var(--ok)')} skuteczny</span><span>${legendGlyph('ring','var(--bad)')} nieskuteczny</span><span style="color:var(--ink3)">oś w zakresie wybranego fragmentu</span></div>
+  </div>`;
+  /* tooltipy */
+  document.querySelectorAll('#metric-rows .pt').forEach(p=>{
+    p.addEventListener('mousemove',ev=>showTip(ev,p.dataset.tip));
+    p.addEventListener('mouseleave',hideTip);
+  });
+  if(typeof renderSBZTimeline==='function') renderSBZTimeline();
+  if(typeof renderIIITimeline==='function') renderIIITimeline();
+  if(typeof renderMasterTimeline==='function') renderMasterTimeline();
+  if(typeof renderDuels==='function') renderDuels();
+}
+document.querySelectorAll('[data-mf]').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('[data-mf]').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on'); MC.frag=b.dataset.mf; renderMetricMaps();
+}));
+document.querySelectorAll('[data-mteam]').forEach(b=>b.addEventListener('click',()=>{
+  const t=b.dataset.mteam;
+  if(MC.teams.has(t)&&MC.teams.size>1){MC.teams.delete(t);b.classList.remove('on');}
+  else{MC.teams.add(t);b.classList.add('on');}
+  renderMetricMaps();
+}));
+document.querySelectorAll('[data-mout]').forEach(b=>b.addEventListener('click',()=>{
+  const o=b.dataset.mout;
+  if(MC.outs.has(o)&&MC.outs.size>1){MC.outs.delete(o);b.classList.remove('on');}
+  else{MC.outs.add(o);b.classList.add('on');}
+  renderMetricMaps();
+}));
+document.querySelectorAll('[data-ictx]').forEach(b=>b.addEventListener('click',()=>{
+  const o=b.dataset.ictx;
+  if(MC.ist.has(o)&&MC.ist.size>1){MC.ist.delete(o);b.classList.remove('on');}
+  else{MC.ist.add(o);b.classList.add('on');}
+  renderMetricMaps();
+}));
+document.querySelectorAll('[data-zctx]').forEach(b=>b.addEventListener('click',()=>{
+  const o=b.dataset.zctx;
+  if(MC.zctx.has(o)&&MC.zctx.size>1){MC.zctx.delete(o);b.classList.remove('on');}
+  else{MC.zctx.add(o);b.classList.add('on');}
+  renderMetricMaps();
+}));
+document.querySelectorAll('[data-mctx]').forEach(b=>b.addEventListener('click',()=>{
+  const o=b.dataset.mctx;
+  if(MC.ctx.has(o)&&MC.ctx.size>1){MC.ctx.delete(o);b.classList.remove('on');}
+  else{MC.ctx.add(o);b.classList.add('on');}
+  renderMetricMaps();
+}));
+renderMetricMaps();
+
+/* oś czasu — SBZ per drużyna, sterowana fragmentatorami map */
+function renderSBZTimeline(){
+  const tl=document.getElementById('tl');
+  const [t0,t1]=fragT(MC.frag);
+  const W=1000,LH=46,PAD=150;
+  const lanes=[[HUT,'Hutnik Kraków'],[POG,'Pogoń-Sokół Lubaczów']].filter(([t])=>MC.teams.has(t));
+  const H=lanes.length*LH+34;
+  tl.setAttribute('viewBox',`0 0 ${W+PAD} ${H}`);
+  tl.style.minWidth='760px'; tl.style.height=H+'px';
+  const X=t=>PAD+(t-t0)/(t1-t0)*W;
+  let s='';
+  lanes.forEach(([team,name],i)=>{
+    const y=i*LH+26;
+    if(i%2===0) s+=`<rect x="0" y="${y-LH/2}" width="${PAD+W}" height="${LH}" fill="#FFFFFF" fill-opacity="0.022"/>`;
+    s+=`<text x="0" y="${y+4}" fill="${col(team)}" font-size="12" font-weight="600">${team===HUT?'HUTNIK':'POGOŃ-SOKÓŁ'}</text>`;
+    s+=`<line x1="${PAD}" y1="${y}" x2="${PAD+W}" y2="${y}" stroke="var(--line)" stroke-width="1"/>`;
+    E.filter(e=>e.tag==='ZDOBYCIE SBZ'&&e.team===team&&e.b>=t0-4&&e.b<t1&&MC.zctx.has(zctxOf(e))).forEach(e=>{
+      const x=X(Math.max(e.b,t0));
+      const shot=sbzShotOf(e), c=CTXCOL[zctxOf(e)];
+      const ztip=`class="pt" data-tip="<b>ZDOBYCIE SBZ · ${zctxOf(e)}${shot?' → strzał '+outcomeOf(shot).toLowerCase():''}</b><div class='t'>${name} · ${mmss(e.b)}${shot&&shot.xg!=null?' · xG '+fmt(shot.xg,2):''}</div>"`;
+      s+= shot ? glyph(kindOf(outcomeOf(shot)), x, y, 8, c, ztip)
+               : `<circle ${ztip} cx="${x}" cy="${y}" r="4" fill="${c}" fill-opacity=".85" stroke="#0B100E" stroke-width="1"/>`;
+    });
+  });
+  if(HS>t0&&HS<t1){
+    const hx=X(HS);
+    s+=`<line x1="${hx}" y1="6" x2="${hx}" y2="${lanes.length*LH+12}" stroke="var(--ink3)" stroke-width="1" stroke-dasharray="4 4"/>
+        <text x="${hx+5}" y="14" fill="var(--ink3)" font-size="10">przerwa</text>`;
+  }
+  const span=(t1-t0)/60, step=span>50?15:span>20?10:5;
+  for(let m=Math.ceil(t0/60/step)*step;m<=t1/60+1e-9;m+=step){
+    s+=`<text x="${X(m*60)}" y="${lanes.length*LH+28}" fill="var(--ink3)" font-size="10" text-anchor="middle">${m}'</text>`;
+  }
+  tl.innerHTML=s;
+  tl.querySelectorAll('.pt').forEach(p=>{p.addEventListener('mousemove',ev=>showTip(ev,p.dataset.tip));p.addEventListener('mouseleave',hideTip);});
+}
+function renderIIITimeline(){
+  const tl=document.getElementById('tl3');
+  const [t0,t1]=fragT(MC.frag);
+  const W=1000,LH=46,PAD=150;
+  const lanes=[HUT,POG].filter(t=>MC.teams.has(t));
+  const H=lanes.length*LH+34;
+  tl.setAttribute('viewBox',`0 0 ${W+PAD} ${H}`);
+  tl.style.minWidth='760px'; tl.style.height=H+'px';
+  const X=t=>PAD+(t-t0)/(t1-t0)*W;
+  let s='';
+  lanes.forEach((team,i)=>{
+    const y=i*LH+26;
+    if(i%2===0) s+=`<rect x="0" y="${y-LH/2}" width="${PAD+W}" height="${LH}" fill="#FFFFFF" fill-opacity="0.022"/>`;
+    s+=`<text x="0" y="${y+4}" fill="${col(team)}" font-size="12" font-weight="600">${team===HUT?'HUTNIK':'POGOŃ-SOKÓŁ'}</text>`;
+    s+=`<line x1="${PAD}" y1="${y}" x2="${PAD+W}" y2="${y}" stroke="var(--line)" stroke-width="1"/>`;
+    E.filter(e=>e.tag==='III STREFA'&&e.team===team&&e.b>=t0-4&&e.b<t1&&MC.ist.has(istOf(e))).forEach(e=>{
+      const x=X(Math.max(e.b,t0)), st=istOf(e), c=ISTCOL[st];
+      const itip=`class="pt" data-tip="<b>III STREFA · ${st.toLowerCase()}</b><div class='t'>${tName(e.team)} · ${mmss(e.b)}</div>"`;
+      s+= st==='UDANA' ? glyph('filled', x, y, 7, c, itip)
+        : st==='NIEUDANA' ? glyph('ring', x, y, 7, c, itip)
+        : glyph('diamond', x, y, 7, c, itip);
+    });
+  });
+  if(HS>t0&&HS<t1){
+    const hx=X(HS);
+    s+=`<line x1="${hx}" y1="6" x2="${hx}" y2="${lanes.length*LH+12}" stroke="var(--ink3)" stroke-width="1" stroke-dasharray="4 4"/>
+        <text x="${hx+5}" y="14" fill="var(--ink3)" font-size="10">przerwa</text>`;
+  }
+  const span=(t1-t0)/60, step=span>50?15:span>20?10:5;
+  for(let m=Math.ceil(t0/60/step)*step;m<=t1/60+1e-9;m+=step){
+    s+=`<text x="${X(m*60)}" y="${lanes.length*LH+28}" fill="var(--ink3)" font-size="10" text-anchor="middle">${m}'</text>`;
+  }
+  tl.innerHTML=s;
+  tl.querySelectorAll('.pt').forEach(p=>{p.addEventListener('mousemove',ev=>showTip(ev,p.dataset.tip));p.addEventListener('mouseleave',hideTip);});
+}
+function renderMasterTimeline(){
+  const tl=document.getElementById('tlm');
+  const [t0,t1]=fragT(MC.frag);
+  const W=1000,LH=32,PAD=170;
+  const inT=e=>e.b>=t0-4&&e.b<t1;
+  const X=t=>PAD+(Math.max(t,t0)-t0)/(t1-t0)*W;
+  const okbad=(e,wl,pl)=>has(e,wl)?glyphMark('filled','var(--ok)',e):has(e,pl)?glyphMark('ring','var(--bad)',e):tick('var(--neut)',e);
+  let y=0;
+  function glyphMark(kind,c,e){return glyph(kind,X(e.b),y,5.5,c,tipOf(e));}
+  function tick(c,e){const x=X(e.b);return `<line ${tipOf(e)} x1="${x}" y1="${y-6}" x2="${x}" y2="${y+6}" stroke="${c}" stroke-width="3" stroke-linecap="round"/>`;}
+  function tipOf(e){return `class="pt" data-tip="<b>${e.tag}</b><div class='t'>${e.team?tName(e.team)+' · ':''}${mmss(e.b)}${e.xg!=null?' · xG '+fmt(e.xg,2):''}${e.labels.length?'<br>'+e.labels.join(', '):''}</div>"`;}
+  const LANES=[
+    ['STRZAŁY', ()=>shots.filter(e=>inT(e)&&MC.teams.has(e.team)).map(e=>glyph(kindOf(outcomeOf(e)),X(e.b),y,6,col(e.team),tipOf(e))).join('')],
+    ['XG', ()=>shots.filter(e=>inT(e)&&MC.teams.has(e.team)&&e.xg!=null).map(e=>`<circle ${tipOf(e)} cx="${X(e.b)}" cy="${y}" r="${2.5+Math.sqrt(e.xg)*11}" fill="${col(e.team)}" fill-opacity=".75" stroke="#0B100E" stroke-width="1"/>`).join('')],
+    ['WYSOKI PRESSING', ()=>E.filter(e=>(e.tag==='SKUTECZNY'||e.tag==='NISKUTECZNY')&&inT(e)).map(e=>e.tag==='SKUTECZNY'?glyphMark('filled','var(--ok)',e):glyphMark('ring','var(--bad)',e)).join('')],
+    ['ZDOBYCIE SBZ', ()=>E.filter(e=>e.tag==='ZDOBYCIE SBZ'&&inT(e)&&MC.teams.has(e.team)).map(e=>`<circle ${tipOf(e)} cx="${X(e.b)}" cy="${y}" r="4.5" fill="${col(e.team)}" stroke="#0B100E" stroke-width="1"/>`).join('')],
+    ['ZDOBYCIE III STREFY', ()=>E.filter(e=>e.tag==='III STREFA'&&inT(e)&&MC.teams.has(e.team)).map(e=>glyph(has(e,'UDANA')?'filled':'ring',X(e.b),y,5,col(e.team),tipOf(e))).join('')],
+    ['WYGRANY I KONTAKT', ()=>E.filter(e=>e.tag==='PIERWSZY KONTAKT'&&has(e,'WYGRANY')&&inT(e)).map(e=>glyphMark('filled','var(--neut)',e)).join('')],
+    ['1x1 W OFENSYWIE', ()=>E.filter(e=>e.tag==='1x1 OFF'&&inT(e)).map(e=>okbad(e,'WYGRANY','PRZEGRANY')).join('')],
+    ['1x1 W DEFENSYWIE', ()=>E.filter(e=>e.tag==='1x1 DEF.'&&inT(e)).map(e=>okbad(e,'WYGRANY','PRZEGRANY')).join('')],
+    ['ODBIÓR', ()=>E.filter(e=>e.tag==='ODBIÓR'&&inT(e)).map(e=>tick('var(--neut)',e)).join('')],
+    ['STRATA', ()=>E.filter(e=>e.tag==='STRATA'&&inT(e)).map(e=>okbad(e,'REAKCJA','BRAK REAKCJI')).join('')],
+  ];
+  const H=LANES.length*LH+34;
+  tl.setAttribute('viewBox',`0 0 ${W+PAD} ${H}`);
+  tl.style.minWidth='860px'; tl.style.height=H+'px';
+  let s='';
+  LANES.forEach(([name,draw],i)=>{
+    y=i*LH+18;
+    if(i%2===0) s+=`<rect x="0" y="${y-LH/2}" width="${PAD+W}" height="${LH}" fill="#FFFFFF" fill-opacity="0.022"/>`;
+    s+=`<text x="0" y="${y+4}" fill="var(--ink2)" font-size="11">${name}</text>`;
+    s+=`<line x1="${PAD}" y1="${y}" x2="${PAD+W}" y2="${y}" stroke="var(--line)" stroke-width="1"/>`;
+    s+=draw();
+  });
+  if(HS>t0&&HS<t1){
+    s+=`<line x1="${X(HS)}" y1="4" x2="${X(HS)}" y2="${LANES.length*LH+10}" stroke="var(--ink3)" stroke-width="1" stroke-dasharray="4 4"/>
+        <text x="${X(HS)+5}" y="12" fill="var(--ink3)" font-size="10">przerwa</text>`;
+  }
+  const span=(t1-t0)/60, step=span>50?15:span>20?10:5;
+  for(let m=Math.ceil(t0/60/step)*step;m<=t1/60+1e-9;m+=step){
+    s+=`<text x="${X(m*60)}" y="${LANES.length*LH+26}" fill="var(--ink3)" font-size="10" text-anchor="middle">${m}'</text>`;
+  }
+  tl.innerHTML=s;
+  tl.querySelectorAll('.pt').forEach(p=>{p.addEventListener('mousemove',ev=>showTip(ev,p.dataset.tip));p.addEventListener('mouseleave',hideTip);});
+}
+function renderDuels(){
+  const [t0,t1]=fragT(MC.frag);
+  const inT=e=>e.b>=t0-4&&e.b<t1;
+  const G=tag=>E.filter(e=>e.tag===tag&&inT(e));
+  const pct=(n,tot)=>tot?Math.round(n/tot*100):0;
+  const stack=(pairs,tot)=>`<div class="b" style="height:12px;margin:4px 0 8px">${pairs.filter(([,n])=>n>0).map(([c,n,ti])=>`<i title="${ti}: ${n}" style="display:block;height:100%;float:left;width:${n/tot*100}%;background:${c};opacity:.9"></i>`).join('')}</div>`;
+  const wrow=(lbl,n,tot,c)=>`<div class="row"><div class="k" style="color:${c}">${lbl}</div><div class="b"><i style="width:${tot?n/tot*100:0}%;background:${c}"></i></div><div class="v" style="width:76px">${n} · ${pct(n,tot)}%</div></div>`;
+  const cards=[];
+  [['1x1 W OFENSYWIE','1x1 OFF'],['1x1 W DEFENSYWIE','1x1 DEF.']].forEach(([title,tag])=>{
+    const g=G(tag), w=g.filter(e=>has(e,'WYGRANY')).length, p=g.filter(e=>has(e,'PRZEGRANY')).length;
+    cards.push(`<div class="card"><h3>${title}</h3><div class="n">${g.length} pojedynków · wygrane ${pct(w,g.length)}%</div>`+
+      (g.length?stack([['var(--ok)',w,'wygrane'],['var(--bad)',p,'przegrane']],g.length)+wrow('WYGRANE',w,g.length,'var(--ok)')+wrow('PRZEGRANE',p,g.length,'var(--bad)'):'<div class="n">brak we fragmencie</div>')+`</div>`);
+  });
+  { const g=G('STRATA');
+    const half=(hl,nice)=>{
+      const gh=g.filter(e=>has(e,hl)), r=gh.filter(e=>has(e,'REAKCJA')).length, b=gh.filter(e=>has(e,'BRAK REAKCJI')).length;
+      return `<div class="panel-note" style="margin:8px 0 2px">${nice} · ${gh.length}</div>`+
+        (gh.length?stack([['var(--ok)',r,'reakcja'],['var(--bad)',b,'brak reakcji']],gh.length)+wrow('REAKCJA',r,gh.length,'var(--ok)')+wrow('BRAK REAKCJI',b,gh.length,'var(--bad)'):'');
+    };
+    const rAll=g.filter(e=>has(e,'REAKCJA')).length;
+    cards.push(`<div class="card"><h3>STRATY — reakcja wg stron boiska</h3><div class="n">${g.length} strat · reakcja ${pct(rAll,g.length)}%</div>${half('ICH POŁOWA','Ich połowa')}${half('NASZA POŁOWA','Nasza połowa')}</div>`);
+  }
+  { const g=G('PIERWSZY KONTAKT');
+    const w=g.filter(e=>has(e,'WYGRANY')), p=g.filter(e=>has(e,'PRZEGRANY')).length;
+    const dk=w.filter(e=>has(e,'DRUGI KONTAKT')).length, st=w.filter(e=>has(e,'STRATA')).length;
+    cards.push(`<div class="card"><h3>PIERWSZY KONTAKT</h3><div class="n">${g.length} kontaktów · wygrane ${pct(w.length,g.length)}%</div>`+
+      (g.length?stack([['var(--ok)',w.length,'wygrane'],['var(--bad)',p,'przegrane']],g.length)+wrow('WYGRANY',w.length,g.length,'var(--ok)')+wrow('PRZEGRANY',p,g.length,'var(--bad)')+
+      `<div class="panel-note" style="margin:8px 0 2px">Po wygranym · ${w.length}</div>`+wrow('DRUGI KONTAKT',dk,w.length,'var(--ok)')+wrow('STRATA',st,w.length,'var(--bad)'):'<div class="n">brak we fragmencie</div>')+`</div>`);
+  }
+  { const g=G('ODBIÓR'), ich=g.filter(e=>has(e,'ICH POŁOWA')).length, nas=g.filter(e=>has(e,'NASZA POŁOWA')).length;
+    cards.push(`<div class="card"><h3>ODBIORY — strony boiska</h3><div class="n">${g.length} odbiorów · na ich połowie ${pct(ich,g.length)}%</div>`+
+      (g.length?stack([['var(--hut)',ich,'ich połowa'],['var(--neut)',nas,'nasza połowa']],g.length)+wrow('ICH POŁOWA',ich,g.length,'var(--hut)')+wrow('NASZA POŁOWA',nas,g.length,'var(--neut)'):'<div class="n">brak we fragmencie</div>')+`</div>`);
+  }
+  document.getElementById('duels-grid').innerHTML=cards.join('');
+  document.querySelectorAll('#tlm .pt, #duels-grid .pt').forEach(p=>{p.addEventListener('mousemove',ev=>showTip(ev,p.dataset.tip));p.addEventListener('mouseleave',hideTip);});
+}
+renderSBZTimeline();
+renderIIITimeline();
+renderMasterTimeline();
+renderDuels();
+
+/* no-team cards */
+function count(evts,labels){return labels.map(l=>[l,evts.filter(e=>has(e,l)).length]);}
+const cards=[
+  {title:'Straty', tag:'STRATA', rows:[['REAKCJA','ok'],['BRAK REAKCJI','bad'],['ICH POŁOWA',''],['NASZA POŁOWA','']]},
+  {title:'Odbiory', tag:'ODBIÓR', rows:[['ICH POŁOWA','ok'],['NASZA POŁOWA','']]},
+  {title:'Pojedynki 1x1 OFF', tag:'1x1 OFF', rows:[['WYGRANY','ok'],['PRZEGRANY','bad']]},
+  {title:'Pojedynki 1x1 DEF.', tag:'1x1 DEF.', rows:[['WYGRANY','ok'],['PRZEGRANY','bad']]},
+  {title:'Pierwszy kontakt', tag:'PIERWSZY KONTAKT', rows:[['WYGRANY','ok'],['PRZEGRANY','bad'],['STRATA','bad'],['POSIADANIE','ok']]},
+  {title:'Wyprowadzenie: skuteczne / nie', tags:['SKUTECZNY','NISKUTECZNY'], rows:null},
+];
+const SEM={'REAKCJA':'var(--ok)','WYGRANY':'var(--ok)','UDANA':'var(--ok)','POSIADANIE':'var(--ok)','ICH POŁOWA':'var(--hut)','NASZA POŁOWA':'var(--neut)','BRAK REAKCJI':'var(--bad)','PRZEGRANY':'var(--bad)','STRATA':'var(--bad)','NIEUDANA':'var(--bad)'};
+document.getElementById('cards').innerHTML=cards.map(c=>{
+  if(c.rows===null){
+    const a=E.filter(e=>e.tag==='SKUTECZNY').length, b=E.filter(e=>e.tag==='NISKUTECZNY').length, mx=Math.max(a,b);
+    return `<div class="card"><h3>${c.title}</h3><div class="n">${a+b} akcji</div>
+      <div class="row"><div class="k">SKUTECZNY</div><div class="b"><i style="width:${a/mx*100}%;background:var(--ok)"></i></div><div class="v">${a}</div></div>
+      <div class="row"><div class="k">NIESKUTECZNY</div><div class="b"><i style="width:${b/mx*100}%;background:var(--bad)"></i></div><div class="v">${b}</div></div></div>`;
+  }
+  const evts=E.filter(e=>e.tag===c.tag);
+  const cs=c.rows.map(([l])=>[l,evts.filter(e=>has(e,l)).length]).filter(r=>r[1]>0);
+  const mx=Math.max(...cs.map(r=>r[1]),1);
+  return `<div class="card"><h3>${c.title}</h3><div class="n">${evts.length} akcji</div>`+
+    cs.map(([l,n])=>`<div class="row"><div class="k">${l}</div><div class="b"><i style="width:${n/mx*100}%;background:${SEM[l]||'var(--neut)'}"></i></div><div class="v">${n}</div></div>`).join('')+`</div>`;
+}).join('');
+</script>
+</body>
+</html>

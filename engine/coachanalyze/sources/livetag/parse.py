@@ -10,6 +10,7 @@ są oznaczone komentarzem ZGODNOŚĆ.
 """
 
 import csv
+import hashlib
 import json
 import math
 import re
@@ -23,6 +24,11 @@ OPTIONAL_COLUMNS = (
     "pos_x_meters", "pos_y_meters",
     "pos_target_x_meters", "pos_target_y_meters",
 )
+
+# Pułapka 4: kolumna zawodnika bywa pusta ALBO nie ma jej wcale, a jej nazwa
+# różni się między wersjami eksportu. Brak dopasowania = brak warstwy
+# indywidualnej, nigdy dane zastępcze.
+PLAYER_COLUMNS = ("player", "player_name", "zawodnik", "athlete")
 
 # ZGODNOŚĆ: pandas.read_csv domyślnie zamienia te napisy na NaN. csv.DictReader
 # zwróciłby je jako zwykły tekst, co dałoby inne wyniki niż dotychczasowy skrypt.
@@ -118,7 +124,15 @@ def _round2(value):
 def prep_events(csv_path):
     """CSV -> {'events': [...], 'half_split': float}, zgodnie z wyjściem v23."""
     rows, _ = read_rows(csv_path)
+    return _build_events(rows)
 
+
+def _build_events(rows):
+    """Właściwa konwersja wierszy. Wydzielona, żeby `prep_frame` czytał plik raz.
+
+    ZGODNOŚĆ: wyjście musi zostać identyczne z v23_expected_DATA.json — ta funkcja
+    jest wyłącznie przeniesieniem ciała `prep_events`, bez zmiany logiki.
+    """
     begins = [b for b in (to_float(r.get("begin")) for r in rows) if b is not None]
     half_split = detect_half_split(begins)
 
@@ -148,6 +162,48 @@ def prep_events(csv_path):
         })
 
     return {"events": events, "half_split": round(half_split, 1)}
+
+
+def format_fingerprint(headers):
+    """Skrót ZESTAWU kolumn — sygnalizuje zmianę formatu eksportu (KONTRAKT_CLI.md).
+
+    Kolumny sortujemy, bo sama zmiana ich kolejności niczego nie psuje:
+    czytamy przez DictReader, po nazwach. Rozjazd odcisku ma znaczyć
+    „inny zestaw kolumn", a nie „inna kolejność".
+    """
+    joined = "\n".join(sorted(headers))
+    return "sha256:" + hashlib.sha256(joined.encode("utf-8")).hexdigest()
+
+
+def read_players(rows, headers):
+    """(nazwa kolumny zawodnika, wartości) — obie None/puste, gdy kolumny brak.
+
+    Pułapka 4: pusta kolumna zawodnika blokuje warstwę indywidualną. Zwracamy
+    fakt jej braku wprost, żeby raport pokrycia mógł to pokazać zamiast udawać.
+    """
+    column = next((c for c in PLAYER_COLUMNS if c in headers), None)
+    if column is None:
+        return None, []
+    return column, [None if is_na(r.get(column)) else str(r.get(column)).strip() for r in rows]
+
+
+def prep_frame(csv_path):
+    """prep_events + metadane wejścia, których wymaga warstwa pokrycia.
+
+    Klucze `events` i `half_split` są identyczne co do wartości z `prep_events`
+    — to ta sama funkcja na tych samych wierszach. Reszta to opis samego pliku:
+    nagłówki, odcisk formatu i kolumna zawodnika.
+
+    Lista `players` jest wyrównana indeksowo z `events` (ten sam porządek wierszy).
+    """
+    rows, headers = read_rows(csv_path)
+    frame = _build_events(rows)
+    player_column, players = read_players(rows, headers)
+    frame["headers"] = headers
+    frame["format_fingerprint"] = format_fingerprint(headers)
+    frame["player_column"] = player_column
+    frame["players"] = players
+    return frame
 
 
 def to_hex(color_str, floor=0.22):

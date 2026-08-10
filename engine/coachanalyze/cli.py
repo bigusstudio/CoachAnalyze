@@ -7,8 +7,9 @@ import argparse
 import json
 import sys
 
-from . import __version__
-from .errors import EngineError
+from . import __version__, canon, coverage
+from .errors import EngineError, MissingColumns
+from .sources.livetag import parse
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -32,19 +33,56 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
+def write_meta(path, payload):
+    """meta.json trafia na dysk i na stdout. Stdout jest zarezerwowany na JSON."""
+    if path:
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(payload, fh, ensure_ascii=False, indent=2)
+    print(json.dumps(payload, ensure_ascii=False))
+
+
+def load_config(path):
+    if not path:
+        return {}
+    with open(path, encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def cmd_inspect(args) -> int:
+    """Sam raport pokrycia, bez renderu — ekran „co jest w tym pliku" (KONTRAKT_CLI.md).
+
+    `inspect` nie dostaje konfiguracji, więc nie zna nazw ani barw klubów.
+    Wykryte w danych nazwy drużyn wracają w `coverage.teams`, żeby PHP mogło
+    zaproponować dopasowanie przy pierwszym imporcie.
+    """
+    frame = parse.prep_frame(args.csv)
+    palette = parse.prep_palette(args.json_path) if args.json_path else None
+    canon_result = canon.build(frame)
+    meta = coverage.build_meta(
+        frame,
+        canon_result,
+        has_json=bool(args.json_path),
+        palette=palette,
+    )
+    write_meta(getattr(args, "out_meta", None), meta)
+    return 0
+
+
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
     try:
         if args.command == "build":
-            raise NotImplementedError("build — do implementacji w Etapie 2 (refaktor silnika)")
+            # render.py czeka na dashboard_template.html — bez szablonu `build`
+            # nie ma czego wyprodukować. Parsowanie, model kanoniczny i pokrycie
+            # są gotowe i dostępne przez `inspect`.
+            raise NotImplementedError("build — brak szablonu raportu (render.py, Etap 2)")
         if args.command == "inspect":
-            raise NotImplementedError("inspect — do implementacji w Etapie 2")
+            return cmd_inspect(args)
     except EngineError as exc:
         payload = {"ok": False, "code": exc.code, "msg": str(exc), "engine_version": __version__}
-        if getattr(args, "out_meta", None):
-            with open(args.out_meta, "w", encoding="utf-8") as fh:
-                json.dump(payload, fh, ensure_ascii=False, indent=2)
-        print(json.dumps(payload, ensure_ascii=False))
+        if isinstance(exc, MissingColumns):
+            payload["missing_columns"] = exc.columns
+        write_meta(getattr(args, "out_meta", None), payload)
         return exc.exit_code
     except Exception:  # noqa: BLE001 — traceback do logu, nigdy do przeglądarki
         import traceback
