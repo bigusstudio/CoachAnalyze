@@ -7,7 +7,7 @@ import argparse
 import json
 import sys
 
-from . import __version__, canon, coverage
+from . import __version__, canon, coverage, metrics, render
 from .errors import EngineError, MissingColumns
 from .sources.livetag import parse
 
@@ -24,6 +24,7 @@ def build_parser() -> argparse.ArgumentParser:
     b.add_argument("--out-html", required=True)
     b.add_argument("--out-meta", required=True)
     b.add_argument("--out-canon")
+    b.add_argument("--out-metrics")
 
     i = sub.add_parser("inspect", help="Sam raport pokrycia, bez renderu")
     i.add_argument("--csv", required=True)
@@ -74,8 +75,41 @@ def write_canon(path, canon_result, config, expected_count):
     return payload
 
 
+def write_json(path, payload, indent=1):
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(payload, fh, ensure_ascii=False, indent=indent)
+    return payload
+
+
+def log_render(report):
+    """Raport renderu na stderr. Stdout jest zarezerwowany na `meta.json`.
+
+    Dwie rzeczy, których nie widać po samym kodzie wyjścia:
+    - `unresolved_placeholders` — szablon v17 ma wstawione na sztywno herby klubu
+      referencyjnego jako `__LOGO_HUT__` / `__LOGO_POG__`. Raport wysłany z nimi
+      pokazuje puste obrazki.
+    - `tag_mismatch` — szablon liczy po nazwie tagu, archiwum po pojęciu kanonicznym.
+      Rozjazd znaczy, że coach i porównanie sezonowe zobaczą inne liczby.
+    """
+    if report["unresolved_placeholders"]:
+        print(
+            "UWAGA: szablon zawiera nierozwiązane znaczniki: "
+            + ", ".join(report["unresolved_placeholders"]),
+            file=sys.stderr,
+        )
+    for mismatch in report["tag_mismatch"]:
+        print(
+            "UWAGA: rozjazd raport/archiwum dla '{}' — szablon liczy {} po tagu '{}', "
+            "model kanoniczny {}".format(
+                mismatch["concept"], mismatch["template_count"],
+                mismatch["template_tag"], mismatch["metrics_count"],
+            ),
+            file=sys.stderr,
+        )
+
+
 def cmd_build(args) -> int:
-    """Pełne przetworzenie. Render jeszcze nie istnieje — patrz komentarz niżej."""
+    """Pełne przetworzenie: parsowanie, model kanoniczny, metryki, render HTML."""
     config = load_config(args.config)
     frame = parse.prep_frame(args.csv)
     palette = parse.prep_palette(args.json_path) if args.json_path else None
@@ -89,16 +123,24 @@ def cmd_build(args) -> int:
         frame, canon_result, config=config,
         has_json=bool(args.json_path), palette=palette,
     )
+    metrics_pack = metrics.build(canon_result, meta=meta)
 
     # Kolejność celowa: artefakty danych powstają PRZED renderem. Brak szablonu
     # nie może kasować wyniku parsowania i modelu kanonicznego.
     if args.out_canon:
         write_canon(args.out_canon, canon_result, config, len(frame["events"]))
-    write_meta(args.out_meta, meta)
+    if args.out_metrics:
+        write_json(args.out_metrics, metrics_pack)
 
-    # render.py czeka na implementację (szablon `engine/templates/dashboard_template.html`
-    # już jest). Do tego czasu `build` kończy się kodem 4, mimo że dane są policzone.
-    raise NotImplementedError("render — moduł render.py nie jest jeszcze zaimplementowany")
+    html, report = render.render(frame, palette=palette, metrics=metrics_pack)
+    render.write(args.out_html, html)
+    log_render(report)
+
+    # `meta.json` na SAM KONIEC i tylko przy powodzeniu. Zapisane przed renderem
+    # zostawiałoby na dysku `ok: true` bez raportu, a `main` dopisałby drugi obiekt
+    # JSON na stdout — PHP czyta stamtąd dokładnie jeden.
+    write_meta(args.out_meta, meta)
+    return 0
 
 
 def cmd_inspect(args) -> int:

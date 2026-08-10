@@ -17,13 +17,67 @@ $PYTHON_BIN -m coachanalyze build \
   --config     /tmp/job_881_config.json \
   --out-html   /storage/reports/881.html \
   --out-meta   /tmp/job_881_meta.json \
-  --out-canon  /tmp/job_881_canon.json
+  --out-canon  /tmp/job_881_canon.json \
+  --out-metrics /tmp/job_881_metrics.json
 ```
 
 `--json` jest opcjonalny. Bez niego oś czasu traci paletę LiveTag i używa barw klubu jako zapasowych —
 fakt odnotowany w `meta.warnings`.
 
 `--out-canon` opcjonalny; używany, gdy zdarzenia kanoniczne mają trafić do bazy.
+
+`--out-metrics` opcjonalny; pakiet metryk policzony przez silnik regułowy. Wejście warstwy AI (D5)
+i modułu porównań sezonowych. **PHP go nie interpretuje** — przekazuje dalej albo pomija.
+
+### Kolejność zapisu artefaktów
+
+`--out-canon` i `--out-metrics` powstają **przed** renderem HTML: awaria szablonu nie może kasować
+wyniku parsowania. `meta.json` powstaje **jako ostatni** i tylko przy powodzeniu — zapisany
+wcześniej zostawiałby na dysku `ok: true` bez raportu.
+
+### Wyjście `--out-metrics`
+
+```json
+{
+  "engine_version": "0.7.0",
+  "profile_version": 4,
+  "totals": { "events": 294, "mapped": 287, "unmapped": 7,
+              "unmapped_tags": ["AKCJA DEFENSYWNA"],
+              "half_split_ms": 2733600, "duration_ms": 6458000 },
+  "sides":  { "us": { "...": "komplet metryk" }, "them": { }, "none": { } },
+  "halves": { "1": { "us": { }, "them": { }, "none": { } }, "2": { } }
+}
+```
+
+Blok metryk jest ten sam dla każdej strony i każdej połowy: `shots`, `entry_sbz`, `entry_third`,
+`duels`, `losses`, `recoveries`, `press`. Trzy własności, na których stoi pakiet:
+
+- **Podział `us` / `them` / `none` jest rozłączny i zupełny.** `none` to zdarzenia bez przypisanej
+  drużyny (pułapka 5) — w eksportach referencyjnych 196 z 294, czyli większość pojedynków,
+  strat i odbiorów. To nie jest odpad.
+- **Wskaźnik procentowy przy zerowym mianowniku to `null`, nigdy `0`.** „0% wygranych pojedynków"
+  i „nie było pojedynków" to dwa różne zdania i raport nie ma prawa ich mylić.
+- **Metryki liczą się z pojęć kanonicznych**, nigdy z `source_tag`. Zdarzenie z tagiem bez
+  mapowania jest policzone w `totals.unmapped`, ale nie wchodzi do żadnej metryki.
+
+Strzał bez etykiety wyniku trafia do `shots.outcome_unknown`, a nie do `off_target` — silnik nie
+domyśla się wyniku. Szablon raportu robi w tym miejscu inaczej (patrz niżej).
+
+### Render HTML
+
+Silnik wstrzykuje dane w szablon `engine/templates/dashboard_template.html`, w dwa placeholdery:
+`/*__DATA__*/` (zdarzenia i `half_split`, serializacja kompaktowa) oraz `/*__PAL__*/` (paleta
+z pliku projektu). Obecność każdego z nich jest sprawdzana **co do liczby wystąpień** — wzorzec
+występujący zero razy albo dwa razy przerywa render z kodem `4`.
+
+Do przeglądarki trafiają wyłącznie `events` i `half_split`. Nagłówki eksportu, `format_fingerprint`
+i nazwa kolumny zawodnika zostają po stronie serwera — raport jest dostępny pod publicznym
+adresem `/r/{club_key}/{token}`.
+
+**Szablon liczy metryki samodzielnie, w JS, po nazwach tagów klienta.** Pakiet z `--out-metrics`
+nie jest do niego wstrzykiwany. Silnik porównuje jedno z drugim i przy rozjeździe wypisuje
+ostrzeżenie **na stderr** (nie do `meta.json`): profil klubu mapujący własną nazwę tagu na
+pojęcie kanoniczne rozjeżdża raport z archiwum, a to musi być widoczne.
 
 ### Wyjście `--out-canon`
 
@@ -32,7 +86,7 @@ Plik gotowy do wstawienia w `events_canonical` (app/migrations/002 + 003):
 ```json
 {
   "match_id": 881,
-  "engine_version": "0.6.0",
+  "engine_version": "0.7.0",
   "count": 294,
   "events": [
     {
@@ -102,7 +156,7 @@ zwraca w `meta.coverage.teams`, żeby PHP mógł zaproponować dopasowanie przy 
 ```json
 {
   "ok": true,
-  "engine_version": "0.6.0",
+  "engine_version": "0.7.0",
   "format_fingerprint": "sha256:9f3c…",
   "half_split_ms": 2730000,
   "duration_ms": 5820000,
@@ -196,7 +250,7 @@ Przy `4` i `5` `meta.json` może nie powstać — PHP musi to przewidzieć.
 
 ```json
 { "ok": false, "code": "MISSING_COLUMNS", "msg": "Brak wymaganych kolumn: end",
-  "engine_version": "0.6.0", "missing_columns": ["end"] }
+  "engine_version": "0.7.0", "missing_columns": ["end"] }
 ```
 
 `missing_columns` występuje wyłącznie przy kodzie `3`.

@@ -19,10 +19,11 @@ człowieka i wpisu w CHANGELOG.md — nigdy w tym samym commicie co zmiana logik
 import hashlib
 import json
 import pathlib
+import re
 
 import pytest
 
-from coachanalyze import canon, coverage
+from coachanalyze import canon, coverage, render
 from coachanalyze.sources.livetag import parse
 
 GOLDEN = pathlib.Path(__file__).parent / "golden"
@@ -123,6 +124,88 @@ def test_golden_pokrycie_zgodne_z_manifestem(case):
 
     ostrzezenia = {w["code"]: w["count"] for w in meta["warnings"]}
     assert ostrzezenia == case["warnings"]
+
+
+# --------------------------------------------------- render wobec raportu produkcyjnego
+def wymagaj_v23(case):
+    """Pełny raport v23 leży poza repozytorium — niesie dane meczowe inline (§7)."""
+    src = GOLDEN / case.get("v23_html", "")
+    if not case.get("v23_html") or not src.exists():
+        pytest.skip("Brak livetag_dashboard_v23.html — raport produkcyjny poza repozytorium")
+    return src
+
+
+def wytnij(html, nazwa):
+    """Surowy zapis `const DATA = …;` / `const PAL = …;` — bez ponownej serializacji.
+
+    Porównujemy NAPISY, nie sparsowane obiekty: separatory JSON są częścią wyjścia
+    i różnica w nich zmieniłaby bajty raportu, nie zmieniając struktury.
+    """
+    dopasowanie = re.search(r"const {} = (.*?);\n".format(nazwa), html, re.S)
+    assert dopasowanie, "brak wstrzykniętego bloku {} w HTML".format(nazwa)
+    return dopasowanie.group(1)
+
+
+@pytest.mark.parametrize("case", load_cases(), ids=lambda c: c["id"])
+def test_golden_render_wstrzykuje_to_samo_co_v23(case):
+    """Raport z silnika ma nieść te same dane, co plik, którego klient używa dzisiaj.
+
+    Porównujemy zawartość wstrzykniętą, nie cały plik — szablon w repozytorium
+    to inna generacja UI niż v23 (patrz `szablon_generacja` w manifeście).
+    """
+    src = wymagaj_csv(case)
+    v23 = wymagaj_v23(case).read_text(encoding="utf-8")
+
+    frame = parse.prep_frame(str(src))
+    paleta = parse.prep_palette(str(GOLDEN / case["json"]))
+    html, raport = render.render(frame, palette=paleta)
+
+    assert wytnij(html, "PAL") == wytnij(v23, "PAL"), (
+        "Paleta rozjechała się z raportem produkcyjnym"
+    )
+
+    nasze = json.loads(wytnij(html, "DATA"))
+    ich = json.loads(wytnij(v23, "DATA"))
+
+    assert nasze["half_split"] == ich["half_split"]
+    assert len(nasze["events"]) == len(ich["events"]) == case["coverage"]["events"]
+
+    roznice = [
+        {"index": i, "pole": k, "v23": ich["events"][i][k], "teraz": nasze["events"][i][k]}
+        for i in range(len(nasze["events"]))
+        for k in nasze["events"][i]
+        if nasze["events"][i][k] != ich["events"][i][k]
+    ]
+    assert roznice == case["v23_data_roznice"], (
+        "Wyjście renderu rozjechało się z raportem produkcyjnym poza zmianami "
+        "zatwierdzonymi w CHANGELOG.md. To NIE jest powód do aktualizacji wzorca."
+    )
+    assert raport["events"] == case["coverage"]["events"]
+
+
+@pytest.mark.parametrize("case", load_cases(), ids=lambda c: c["id"])
+def test_generacja_szablonu_zgodna_z_manifestem(case):
+    """Bramka na podmianę szablonu: manifest ma wiedzieć, na której generacji stoimy.
+
+    v23 wprowadził wielokrotny wybór przedziałów (`inSet`) i belkę nawigacyjną
+    (`#topbar`) — szablon v17 nie ma ani jednego, ani drugiego. Po podmianie
+    szablonu na v23 trzeba zmienić `szablon_generacja` w manifeście, inaczej test
+    czerwienieje. Cel: żeby nikt nie zmienił wyglądu raportu przez przypadek.
+    """
+    v23 = wymagaj_v23(case).read_text(encoding="utf-8")
+    szablon = render.load_template()
+
+    cechy_v23 = ("inSet(", 'id="topbar"')
+    assert all(cecha in v23 for cecha in cechy_v23), "plik v23 nie wygląda na v23"
+
+    generacja = case["szablon_generacja"]
+    ma_cechy = all(cecha in szablon for cecha in cechy_v23)
+
+    assert ma_cechy is (generacja == "v23"), (
+        "Szablon w repozytorium nie odpowiada generacji '{}' zapisanej w manifeście".format(
+            generacja
+        )
+    )
 
 
 # --------------------------------------------------- wykrywanie rozjazdu formatu

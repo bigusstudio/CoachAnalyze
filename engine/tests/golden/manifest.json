@@ -12,6 +12,15 @@
       "_uwaga_parowanie": "NIETYPOWE I POTWIERDZONE EMPIRYCZNIE: dane odpowiadają mecz2.csv, ale paleta v23 odpowiada mecz1.json, nie mecz2.json. Produkcyjny v23 powstał z nowszego CSV i starszego pliku projektu. Nie zmieniać na mecz2.json bez decyzji człowieka — palety różnią się etykietami GOL/NASZA POŁOWA (mecz2) kontra MASZA POŁOWA/ODBIÓR (mecz1).",
       "expected_data": "v23_expected_DATA.json",
       "expected_pal": "v23_expected_PAL.json",
+      "v23_html": "livetag_dashboard_v23.html",
+      "_v23_html": "Produkcyjny raport klienta w całości. Poza repozytorium (.gitignore) — niesie dane meczowe inline. Służy porównaniu wyjścia renderu z tym, co klient ma dzisiaj na ekranie.",
+      "v23_data_roznice": [
+        { "index": 0, "pole": "b", "v23": -3.2, "teraz": 0.0 },
+        { "index": 1, "pole": "b", "v23": -0.4, "teraz": 0.0 }
+      ],
+      "_v23_data_roznice": "Jedyne dopuszczone różnice wobec v23 — przycięcie ujemnego `begin` (CHANGELOG 0.4.0). Każda inna różnica w DATA jest błędem, nie powodem do aktualizacji wzorca.",
+      "szablon_generacja": "v17",
+      "_szablon_generacja": "engine/templates/dashboard_template.html stoi na szablonie v17 (tym, który dostarczono z build_dashboard.py), a v23 to nowsza generacja UI. DANE wstrzykiwane w oba są identyczne, różni się sam szablon. Po podmianie szablonu na v23 zmienić tę wartość na 'v23' — test to wymusza.",
       "_zmiana_wzorca": "0.4.0 — ujemny `begin` przycinany do zera w parserze. Zmieniły się DWA zdarzenia (b: -3.2 -> 0.0 oraz -0.4 -> 0.0), nic poza tym; half_split bez zmian (2733.6). Poprzedni skrót: sha256:75083d3e…",
       "sha256_data": "sha256:57fe103a20486036e33611753dded17248ea51740c4a3b8619a3dc2a19e06381",
       "sha256_pal": "sha256:3fd5e995347936c5508386d70f680c125be3ebad22fe90b0a0695580523e6d62",
