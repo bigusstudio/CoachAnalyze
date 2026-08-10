@@ -150,7 +150,9 @@ def _build_events(rows):
             "tag": r.get("tag_name"),
             # ZGODNOŚĆ: round() Pythona jest bankierskie — nie zastępować
             # konstrukcją int(x*10+0.5)/10, bo da inne wartości.
-            "b": round(begin, 1) if begin is not None else None,
+            # Pułapka 10: ujemny `begin` to bufor przed tagiem — przycinamy do zera.
+            # ZMIANA WYJŚCIA względem v23, zatwierdzona (CHANGELOG 0.4.0).
+            "b": round(max(0.0, begin), 1) if begin is not None else None,
             "e": round(end, 1) if end is not None else None,
             "team": None if is_na(team) else team,
             "labels": [] if is_na(labels_raw) else split_labels(labels_raw),
@@ -159,7 +161,9 @@ def _build_events(rows):
             "y": _round2(r.get("pos_y_meters")),
             "tx": _round2(r.get("pos_target_x_meters")),
             "ty": _round2(r.get("pos_target_y_meters")),
-            # ZGODNOŚĆ: porównanie na surowym `begin`, nie na zaokrąglonym `b`.
+            # ZGODNOŚĆ: porównanie na SUROWYM `begin`, nie na przyciętym `b`.
+            # Bufor taga nie może przesuwać przypisania połowy ani wykrywania przerwy —
+            # `half_split` też liczy się z surowych wartości (wyżej).
             "half": 1 if (begin is not None and begin < half_split) else 2,
         })
 
@@ -201,6 +205,11 @@ def prep_frame(csv_path):
     rows, headers = read_rows(csv_path)
     frame = _build_events(rows)
     player_column, players = read_players(rows, headers)
+    # Licznik MUSI powstać tutaj, na surowych wierszach: `_build_events` przycina
+    # ujemny `begin` do zera, więc po tej operacji nie da się już policzyć,
+    # ilu tagów to dotyczyło. Bez tego ostrzeżenie NEGATIVE_BEGIN cicho znika.
+    begins = [to_float(r.get("begin")) for r in rows]
+    frame["negative_begin"] = sum(1 for b in begins if b is not None and b < 0)
     frame["headers"] = headers
     frame["format_fingerprint"] = format_fingerprint(headers)
     frame["player_column"] = player_column

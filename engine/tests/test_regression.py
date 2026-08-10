@@ -68,6 +68,20 @@ def test_golden_wyjscie_parsera_bez_zmian(case):
 
 
 @pytest.mark.parametrize("case", load_cases(), ids=lambda c: c["id"])
+def test_golden_zaden_begin_nie_jest_ujemny(case):
+    """0.4.0: bufor taga przycięty do zera — ale przerwa nadal z wartości surowych."""
+    src = wymagaj_csv(case)
+    frame = parse.prep_events(str(src))
+
+    ujemne = [e for e in frame["events"] if e["b"] is not None and e["b"] < 0]
+    assert not ujemne, "przycinanie ujemnego `begin` przestało działać"
+    assert frame["half_split"] == case["half_split"], (
+        "przycinanie przesunęło wykrywanie przerwy — `half_split` musi zostać "
+        "policzony z surowych wartości"
+    )
+
+
+@pytest.mark.parametrize("case", load_cases(), ids=lambda c: c["id"])
 def test_golden_paleta_bez_zmian(case):
     wymagaj_csv(case)
     src_json = GOLDEN / case["json"]

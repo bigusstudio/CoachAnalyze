@@ -3,6 +3,24 @@
 Format: [wersja silnika] — data — opis.
 Każda zmiana, która modyfikuje wyjście silnika, MUSI mieć tu wpis wraz z powodem.
 
+## [0.4.0] — 2026-08-11
+### Ujemny `begin` przycinany do zera — ZMIANA WYJŚCIA
+`_build_events` liczy `b` jako `max(0, begin)`. Ujemna wartość to bufor nagrania przed
+tagiem (pułapka 10), a nie czas zdarzenia.
+
+**Przypisanie połowy i wykrywanie `half_split` nadal na SUROWYM `begin`.** Bufor taga nie
+może przesunąć wykrycia przerwy — przycięcie przed wyliczeniem luk zbiłoby ich rozkład.
+
+Skutek na meczu referencyjnym: **dwa zdarzenia z 294** (`b`: −3,2 → 0,0 oraz −0,4 → 0,0).
+Nic poza tym; `half_split` bez zmian (2733,6).
+
+Licznik `negative_begin` przeniesiony do `prep_frame` i liczony na surowych wierszach —
+po przycięciu nie dałoby się już ustalić, ilu tagów dotyczyło, i ostrzeżenie
+`NEGATIVE_BEGIN` cicho by znikło.
+
+**Wzorzec złoty aktualizowany w NASTĘPNYM commicie**, zgodnie z CLAUDE.md §2.
+Ten commit ma czerwony test złoty — to jest oczekiwane i celowe.
+
 ## [0.3.0] — 2026-08-11
 ### Model kanoniczny, raport pokrycia, komenda `inspect`
 Etap 2 — druga część. Parser był gotowy, brakowało warstwy, na której cokolwiek się liczy.

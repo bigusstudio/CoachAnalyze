@@ -152,7 +152,16 @@ def build(frame, mapping_profile=None, teams=None):
     events = []
     unmapped_tags, unmapped_labels, teams_detected, unknown_teams = {}, {}, {}, {}
     typo_hits = 0
-    negative_begin = 0
+
+    # Parser przycina ujemny `begin` do zera i podaje licznik osobno. Ramka zbudowana
+    # ze wzorca (testy) licznika nie ma — wtedy liczymy z wartości, co po przycięciu
+    # daje zero i jest prawdą o tej ramce.
+    negative_begin = frame.get("negative_begin")
+    if negative_begin is None:
+        negative_begin = sum(
+            1 for raw in frame.get("events") or []
+            if raw.get("b") is not None and raw["b"] < 0
+        )
 
     for raw in frame.get("events") or []:
         tag, tag_fixed = normalize_name(raw.get("tag"))
@@ -193,14 +202,11 @@ def build(frame, mapping_profile=None, teams=None):
                     unknown_teams[raw_team] = unknown_teams.get(raw_team, 0) + 1
 
         begin = raw.get("b")
-        if begin is not None and begin < 0:
-            negative_begin += 1  # pułapka 10: bufor taga przed zdarzeniem
-
         xg = raw.get("xg")
 
         events.append({
-            # Pułapka 10: `begin` bywa ujemny — przycinamy do zera dopiero tutaj.
-            # Parser zostawia wartość surową, żeby zachować zgodność z v23.
+            # `max(0, ...)` zostaje jako zabezpieczenie: parser już przycina (pułapka 10),
+            # ale model kanoniczny bywa budowany też z ramek spoza parsera.
             "t_ms": int(round(max(0.0, begin) * 1000)) if begin is not None else None,
             "half": raw.get("half"),
             "team_side": team_side,

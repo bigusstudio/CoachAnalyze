@@ -79,12 +79,35 @@ def test_ujemny_begin_przyciety_do_zera(write_csv, row):
     path = write_csv([row("STRZAŁ", begin=-3.2)])
     frame, result, meta = _meta(path)
 
-    assert frame["events"][0]["b"] == -3.2, (
-        "parser zostawia wartość surową — na tym stoi zgodność z wyjściem v23"
+    assert frame["events"][0]["b"] == 0.0, "parser przycina bufor taga do zera"
+    assert result["events"][0]["t_ms"] == 0
+    assert meta["coverage"]["negative_begin"] == 1, (
+        "licznik musi przeżyć przycięcie — inaczej ostrzeżenie cicho znika"
     )
-    assert result["events"][0]["t_ms"] == 0, "model kanoniczny przycina do zera"
-    assert meta["coverage"]["negative_begin"] == 1
     assert [w for w in meta["warnings"] if w["code"] == "NEGATIVE_BEGIN"]
+
+
+def test_przyciecie_nie_przesuwa_wykrywania_przerwy(write_csv, row):
+    """Bufor taga nie może ruszyć `half_split` ani przypisania połowy.
+
+    Gdyby wykrywanie przerwy liczyło się z przyciętych wartości, ujemny tag
+    na starcie zbiłby rozkład luk i przesunął podział na połowy.
+    """
+    begins = (-3.2, 500, 900, 1300, 2000, 2400, 2800, 3000)
+    path = write_csv([row("STRATA", begin=t, end=t + 5) for t in begins])
+    frame, result, _ = _meta(path)
+
+    assert frame["half_split"] == 1650.0, "podział liczony z surowych wartości"
+    assert frame["events"][0]["b"] == 0.0
+    assert [e["half"] for e in result["events"]] == [1, 1, 1, 1, 2, 2, 2, 2]
+
+
+def test_zadne_b_nie_jest_ujemne(write_csv, row):
+    path = write_csv([row("STRATA", begin=t) for t in (-3.2, -0.4, 0.0, 12.5)])
+    frame, _, meta = _meta(path)
+
+    assert all(e["b"] >= 0 for e in frame["events"])
+    assert meta["coverage"]["negative_begin"] == 2
 
 
 # ---------------------------------------------------------------- pułapka 9
