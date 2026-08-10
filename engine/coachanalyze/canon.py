@@ -10,6 +10,8 @@ liście. W tym module nie ma i nie może się pojawić `in`, `startswith` ani `f
 na treści etykiety — to jedyne realne źródło cichych błędów w liczbach.
 """
 
+import json
+
 # Pojęcia bazowe z docs/MODEL_KANONICZNY.md. Nowa etykieta w eksporcie to
 # KWALIFIKATOR, nie nowe pojęcie — rozrost tej listy oznaczałby, że model
 # zaczyna kopiować format LiveTag zamiast go tłumaczyć.
@@ -133,6 +135,43 @@ def resolve_profile(mapping_profile=None):
     return {"tags": tags, "labels": labels}
 
 
+def to_records(events, match_id=None):
+    """canonical_events[] -> rekordy w kształcie tabeli `events_canonical`.
+
+    Kolumny wg app/migrations/002_events_canonical.sql. Silnik nie chodzi do bazy
+    (D4) — produkuje plik, który PHP wstawia.
+
+    Liczba rekordów zawsze równa się liczbie zdarzeń, także dla `concept: null`.
+    Zdarzenie bez rozpoznanego pojęcia jest faktem o meczu i ma trafić do archiwum;
+    gubienie go tutaj skrzywiłoby porównania sezonowe (moduł M4).
+
+    `t_ms` bywa `null`, gdy `begin` nie dał się odczytać. NIE podstawiamy zera —
+    zero to konkretna 0. minuta i nie da się jej odróżnić od braku danych (CLAUDE.md §8).
+    Wiersze z `t_ms: null` nie wejdą do kolumny NOT NULL i musi je obsłużyć PHP.
+    """
+    records = []
+    for event in events:
+        records.append({
+            "match_id": match_id,
+            "t_ms": event["t_ms"],
+            "half": event["half"],
+            "team_side": event["team_side"],
+            "concept": event["concept"],
+            # Kolumna jest typu JSON — podajemy gotowy napis, żeby PHP wstawiało
+            # wartość bez ponownego kodowania.
+            "qualifiers_json": json.dumps(event["qualifiers"], ensure_ascii=False),
+            "x": event["x"],
+            "y": event["y"],
+            "x_end": event["x_end"],
+            "y_end": event["y_end"],
+            "xg": event["xg"],
+            "xg_source": event["xg_source"],
+            "player_id": event["player_id"],
+            "source_tag": event["source_tag"],
+        })
+    return records
+
+
 def build(frame, mapping_profile=None, teams=None):
     """raw_frame -> {'events': canonical_events[], 'report': {...}}.
 
@@ -151,6 +190,7 @@ def build(frame, mapping_profile=None, teams=None):
 
     events = []
     unmapped_tags, unmapped_labels, teams_detected, unknown_teams = {}, {}, {}, {}
+    xg_outside = {}
     typo_hits = 0
 
     # Parser przycina ujemny `begin` do zera i podaje licznik osobno. Ramka zbudowana
@@ -202,7 +242,15 @@ def build(frame, mapping_profile=None, teams=None):
                     unknown_teams[raw_team] = unknown_teams.get(raw_team, 0) + 1
 
         begin = raw.get("b")
+
+        # xG czytamy WYŁĄCZNIE ze zdarzeń mapujących się na `shot`. Parser wyciąga
+        # z komentarza pierwszą liczbę, jaką znajdzie — przy innym tagu komentarz
+        # „3 zawodników w polu karnym" dałby xG = 3.0 i zawyżył sumę bez śladu.
+        # Wartość nie przepada po cichu: tag trafia do ostrzeżenia XG_POZA_STRZALEM.
         xg = raw.get("xg")
+        if xg is not None and (rule or {}).get("concept") != "shot":
+            xg_outside[tag] = xg_outside.get(tag, 0) + 1
+            xg = None
 
         events.append({
             # `max(0, ...)` zostaje jako zabezpieczenie: parser już przycina (pułapka 10),
@@ -235,6 +283,7 @@ def build(frame, mapping_profile=None, teams=None):
             "unmapped_labels": sorted(unmapped_labels),
             "teams_detected": sorted(teams_detected),
             "unknown_teams": sorted(unknown_teams),
+            "xg_outside_shot": {"count": sum(xg_outside.values()), "tags": sorted(xg_outside)},
             "typo_hits": typo_hits,
             "negative_begin": negative_begin,
             "profile_version": (mapping_profile or {}).get("version"),

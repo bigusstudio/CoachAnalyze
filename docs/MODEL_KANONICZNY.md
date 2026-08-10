@@ -43,6 +43,17 @@ w eksportach nie ma przypisanej drużyny i trafia do osobnej sekcji raportu.
 `xg_source`: `analyst` (wpisane ręcznie w komentarzu), `model` (policzone ze współrzędnych, moduł M3),
 `null` (brak). Wartość szacowana musi być oznaczona w raporcie jako szacowana.
 
+**xG czytamy wyłącznie ze zdarzeń o pojęciu `shot`.** Parser wyciąga z komentarza pierwszą
+liczbę, jaką napotka, bo na jego poziomie nie wiadomo, czym jest zdarzenie. Komentarz
+„3 zawodników w polu karnym" przy `ZDOBYCIE SBZ` dałby xG = 3.0 i zawyżył sumę meczu bez
+żadnego śladu. Odrzucona wartość nie znika po cichu — tag trafia do ostrzeżenia
+`XG_POZA_STRZALEM` w raporcie pokrycia.
+
+`concept` bywa `null`: tag, dla którego profil nie ma reguły. Takie zdarzenie **zostaje**
+w modelu, z `confidence: 0.0` i zachowanym `source_tag`. Liczba zdarzeń kanonicznych
+zawsze równa się liczbie wierszy eksportu — inaczej „294 zdarzenia" w raporcie pokrycia
+i zawartość archiwum przestają znaczyć to samo.
+
 ## Pojęcia bazowe
 
 `shot` · `entry_sbz` · `entry_third` · `duel` · `loss` · `recovery` · `press` · `transition`
@@ -72,6 +83,19 @@ fragment tekstu łapie `CELNY` wewnątrz `NIECELNY` i psuje liczby po cichu — 
 
 Profil jest wersjonowany i przypisany do klubu. Tagi nierozpoznane trafiają do `unmapped`
 i są widoczne w raporcie pokrycia — nigdy nie znikają milcząco.
+
+## Zapis do archiwum
+
+`canon.to_records()` tłumaczy zdarzenia kanoniczne na kształt tabeli `events_canonical`
+(app/migrations/002, po zdjęciu `NOT NULL` z `concept` w 003). Silnik nie chodzi do bazy —
+produkuje plik przez `build --out-canon`, a wstawia go PHP. Szczegóły: docs/KONTRAKT_CLI.md.
+
+Dwie różnice wobec kształtu w JSON-ie:
+
+| Model kanoniczny | `events_canonical` |
+|---|---|
+| `qualifiers` — tablica | `qualifiers_json` — napis JSON, gotowy do wstawienia w kolumnę `JSON` |
+| — | `match_id` — silnik dostaje go w konfiguracji, sam go nie zna |
 
 ## Nazewnictwo
 

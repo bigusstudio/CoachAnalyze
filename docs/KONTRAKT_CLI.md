@@ -25,6 +25,40 @@ fakt odnotowany w `meta.warnings`.
 
 `--out-canon` opcjonalny; używany, gdy zdarzenia kanoniczne mają trafić do bazy.
 
+### Wyjście `--out-canon`
+
+Plik gotowy do wstawienia w `events_canonical` (app/migrations/002 + 003):
+
+```json
+{
+  "match_id": 881,
+  "engine_version": "0.6.0",
+  "count": 294,
+  "events": [
+    {
+      "match_id": 881, "t_ms": 0, "half": 1, "team_side": "them",
+      "concept": "entry_sbz", "qualifiers_json": "[\"positional\",\"without_shot\"]",
+      "x": 97.01, "y": 59.34, "x_end": 95.68, "y_end": 48.31,
+      "xg": null, "xg_source": null, "player_id": null, "source_tag": "ZDOBYCIE SBZ"
+    }
+  ]
+}
+```
+
+Trzy własności, na których stoi archiwum:
+
+- **`count` zawsze równa się liczbie wierszy CSV.** Silnik sprawdza to przed zapisem
+  i przerywa, gdy się nie zgadza. Cicha utrata zdarzenia ujawniłaby się dopiero
+  przy porównaniu sezonowym, miesiące później.
+- **`concept` bywa `null`** — tag bez mapowania na pojęcie kanoniczne. Zdarzenie jest
+  faktem o meczu i trafia do archiwum; migracja 003 zdejmuje z kolumny `NOT NULL`.
+- **`qualifiers_json` to gotowy napis JSON**, nie tablica — kolumna jest typu `JSON`,
+  więc PHP wstawia wartość bez ponownego kodowania.
+
+`t_ms` bywa `null`, gdy `begin` nie dał się odczytać. Zera nie podstawiamy: zero to
+konkretna 0. minuta i nie da się jej odróżnić od braku danych. Takich wierszy nie przyjmie
+kolumna `NOT NULL` — PHP musi je odrzucić i zgłosić, a nie „naprawić".
+
 Pozostałe komendy:
 
 ```bash
@@ -68,7 +102,7 @@ zwraca w `meta.coverage.teams`, żeby PHP mógł zaproponować dopasowanie przy 
 ```json
 {
   "ok": true,
-  "engine_version": "0.3.0",
+  "engine_version": "0.6.0",
   "format_fingerprint": "sha256:9f3c…",
   "half_split_ms": 2730000,
   "duration_ms": 5820000,
@@ -131,8 +165,11 @@ nie znika po cichu, tylko trafia do raportu pokrycia.
 | `EMPTY_PLAYER_COLUMN` | Kolumna zawodnika istnieje, ale jest pusta |
 | `UNKNOWN_TEAM` | Nazwa drużyny w danych nie pasuje do żadnej z konfiguracji |
 | `UNMAPPED_TAGS` | Tagi bez mapowania na pojęcie kanoniczne — zdarzenia zachowane, poza metrykami |
+| `XG_POZA_STRZALEM` | Liczba w komentarzu przy tagu, który nie jest strzałem — pominięta przy xG |
 
 Każde ostrzeżenie ma zawsze trzy pola: `code`, `msg` (po polsku), `count`.
+Część niesie dodatkowe pola diagnostyczne — `XG_POZA_STRZALEM` dokłada `tags`
+z listą tagów, których to dotyczyło. PHP ma czytać po nazwach, nie po zestawie kluczy.
 
 **`sections_unavailable` zawsze niesie powód po polsku.** Trafia bezpośrednio do interfejsu —
 analityk ma zobaczyć, czego brakuje i dlaczego, a nie pustą sekcję.
@@ -159,7 +196,7 @@ Przy `4` i `5` `meta.json` może nie powstać — PHP musi to przewidzieć.
 
 ```json
 { "ok": false, "code": "MISSING_COLUMNS", "msg": "Brak wymaganych kolumn: end",
-  "engine_version": "0.3.0", "missing_columns": ["end"] }
+  "engine_version": "0.6.0", "missing_columns": ["end"] }
 ```
 
 `missing_columns` występuje wyłącznie przy kodzie `3`.

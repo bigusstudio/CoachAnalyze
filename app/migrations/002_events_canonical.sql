@@ -8,7 +8,10 @@ CREATE TABLE events_canonical (
   t_ms            INT UNSIGNED NOT NULL,
   half            TINYINT UNSIGNED NOT NULL,
   team_side       ENUM('us','them','none') NOT NULL,
-  concept         VARCHAR(32) NOT NULL,
+  -- NULL = tag bez mapowania na pojęcie kanoniczne. Zdarzenie zachowane świadomie:
+  -- liczba rekordów zawsze równa się liczbie wierszy eksportu, inaczej porównania
+  -- sezonowe (M4) liczą na niepełnym archiwum. Patrz docs/MODEL_KANONICZNY.md.
+  concept         VARCHAR(32) NULL,
   qualifiers_json JSON NULL,
   x               DECIMAL(6,2) NULL,
   y               DECIMAL(6,2) NULL,

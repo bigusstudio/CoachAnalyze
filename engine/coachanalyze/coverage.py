@@ -164,6 +164,18 @@ def build_warnings(frame, canon_result, has_json=False, palette=None):
             "count": 1,
         })
 
+    poza_strzalem = report.get("xg_outside_shot") or {"count": 0, "tags": []}
+    if poza_strzalem["count"]:
+        warnings.append({
+            "code": "XG_POZA_STRZALEM",
+            "msg": (
+                "Liczba w komentarzu przy tagu, który nie jest strzałem — pominięta "
+                "przy xG: " + ", ".join(poza_strzalem["tags"])
+            ),
+            "count": poza_strzalem["count"],
+            "tags": poza_strzalem["tags"],
+        })
+
     if report["unknown_teams"]:
         warnings.append({
             "code": "UNKNOWN_TEAM",

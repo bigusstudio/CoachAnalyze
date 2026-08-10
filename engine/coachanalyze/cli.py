@@ -48,6 +48,59 @@ def load_config(path):
         return json.load(fh)
 
 
+def write_canon(path, canon_result, config, expected_count):
+    """Zdarzenia kanoniczne do wstawienia w `events_canonical`.
+
+    Niezmiennik: liczba rekordów == liczba wierszy eksportu. Sprawdzany, a nie
+    zakładany — cicha utrata zdarzenia przy imporcie do archiwum ujawniłaby się
+    dopiero przy porównaniu sezonowym, miesiące później.
+    """
+    records = canon.to_records(canon_result["events"], match_id=config.get("match_id"))
+    if len(records) != expected_count:
+        raise EngineError(
+            "Liczba zdarzeń kanonicznych ({}) różni się od liczby wierszy eksportu ({})".format(
+                len(records), expected_count
+            )
+        )
+
+    payload = {
+        "match_id": config.get("match_id"),
+        "engine_version": __version__,
+        "count": len(records),
+        "events": records,
+    }
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(payload, fh, ensure_ascii=False, indent=1)
+    return payload
+
+
+def cmd_build(args) -> int:
+    """Pełne przetworzenie. Render jeszcze nie istnieje — patrz komentarz niżej."""
+    config = load_config(args.config)
+    frame = parse.prep_frame(args.csv)
+    palette = parse.prep_palette(args.json_path) if args.json_path else None
+
+    canon_result = canon.build(
+        frame,
+        mapping_profile=config.get("mapping_profile"),
+        teams=config.get("teams"),
+    )
+    meta = coverage.build_meta(
+        frame, canon_result, config=config,
+        has_json=bool(args.json_path), palette=palette,
+    )
+
+    # Kolejność celowa: artefakty danych powstają PRZED renderem. Brak szablonu
+    # nie może kasować wyniku parsowania i modelu kanonicznego.
+    if args.out_canon:
+        write_canon(args.out_canon, canon_result, config, len(frame["events"]))
+    write_meta(args.out_meta, meta)
+
+    # render.py czeka na implementację (szablon `engine/templates/dashboard_template.html`
+    # już jest). Do tego czasu `build` kończy się kodem 4, mimo że dane są policzone.
+    raise NotImplementedError("render — moduł render.py nie jest jeszcze zaimplementowany")
+
+
 def cmd_inspect(args) -> int:
     """Sam raport pokrycia, bez renderu — ekran „co jest w tym pliku" (KONTRAKT_CLI.md).
 
@@ -72,10 +125,7 @@ def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
     try:
         if args.command == "build":
-            # render.py czeka na dashboard_template.html — bez szablonu `build`
-            # nie ma czego wyprodukować. Parsowanie, model kanoniczny i pokrycie
-            # są gotowe i dostępne przez `inspect`.
-            raise NotImplementedError("build — brak szablonu raportu (render.py, Etap 2)")
+            return cmd_build(args)
         if args.command == "inspect":
             return cmd_inspect(args)
     except EngineError as exc:

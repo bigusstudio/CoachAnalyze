@@ -36,6 +36,35 @@ def test_xg_z_polskiego_przecinka(comment, expected):
     assert parse.parse_xg(comment) == expected
 
 
+def test_komentarz_przy_niestrzale_nie_daje_xg(write_csv, row):
+    """„3 zawodników w polu karnym" przy ZDOBYCIE SBZ nie może dać xG = 3.0.
+
+    Parser wyciąga z komentarza pierwszą liczbę, jaką znajdzie — dopiero model
+    kanoniczny wie, czy zdarzenie jest strzałem.
+    """
+    path = write_csv([
+        row("ZDOBYCIE SBZ", comment="3 zawodników w polu karnym", team="A", x="90", y="40"),
+        row("STRZAŁ", comment="X 0,81", team="A", x="88", y="31"),
+    ])
+    frame, result, meta = _meta(path)
+
+    assert frame["events"][0]["xg"] == 3.0, "parser widzi samą liczbę, bez kontekstu"
+    assert result["events"][0]["xg"] is None, "xG poza strzałem odrzucone"
+    assert result["events"][0]["xg_source"] is None
+    assert result["events"][1]["xg"] == 0.81, "strzał zachowuje xG"
+
+    assert meta["coverage"]["xg_sum"] == 0.81, "suma xG nie może połknąć liczby z komentarza"
+    ostrzezenie = next(w for w in meta["warnings"] if w["code"] == "XG_POZA_STRZALEM")
+    assert ostrzezenie["count"] == 1
+    assert ostrzezenie["tags"] == ["ZDOBYCIE SBZ"]
+
+
+def test_brak_ostrzezenia_gdy_xg_tylko_na_strzalach(write_csv, row):
+    path = write_csv([row("STRZAŁ", comment="X 0,50", team="A", x="88", y="31")])
+    _, _, meta = _meta(path)
+    assert not [w for w in meta["warnings"] if w["code"] == "XG_POZA_STRZALEM"]
+
+
 def test_xg_trafia_do_zdarzenia_kanonicznego(write_csv, row):
     path = write_csv([row("STRZAŁ", comment="X 0,81", x="88.4", y="31.2")])
     _, result, meta = _meta(path)

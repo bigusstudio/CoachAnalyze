@@ -95,7 +95,9 @@ def test_ostrzezenia_maja_stala_strukture(write_csv, row):
 
     assert meta["warnings"], "co najmniej NEGATIVE_BEGIN i brak kolumny zawodnika"
     for ostrzezenie in meta["warnings"]:
-        assert set(ostrzezenie) == {"code", "msg", "count"}
+        # Trzy pola są obowiązkowe; część ostrzeżeń dokłada pola diagnostyczne
+        # (np. `tags` przy XG_POZA_STRZALEM) — patrz docs/KONTRAKT_CLI.md.
+        assert {"code", "msg", "count"} <= set(ostrzezenie)
         assert isinstance(ostrzezenie["count"], int)
         assert ostrzezenie["msg"].strip()
 
