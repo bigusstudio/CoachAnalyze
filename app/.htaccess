@@ -1,0 +1,3 @@
+# Kod aplikacji — całkowicie niedostępny przez HTTP.
+# Druga warstwa ochrony, niezależna od reguł w app/public/.htaccess.
+Require all denied

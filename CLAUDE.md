@@ -94,7 +94,11 @@ Szczegóły kontraktu: `docs/KONTRAKT_CLI.md`. Zmiana kontraktu wymaga aktualiza
 
 ## 5. Bezpieczeństwo — reguły nienegocjowalne
 
-- Pliki użytkownika **nigdy** nie trafiają do katalogu serwowanego przez nginx. Zapis poza `public/`, nazwa losowa.
+- Pliki użytkownika **nigdy** nie są serwowane bezpośrednio. Fizycznie leżą w `~/CoachAnalyze/shared/storage`
+  (dowiązanym do katalogu domeny), a dostęp do nich blokują trzy warstwy `.htaccess` — hosting wymusza
+  ten układ przez `open_basedir`, patrz `docs/OGRANICZENIA_HOSTINGU.md`. Nazwa pliku losowa, serwowanie przez PHP.
+- **Nie usuwaj plików `.htaccess`** z `app/`, `app/public/` i `storage/`. To jedyne, co oddziela kod aplikacji
+  od publicznego internetu w tym układzie. `deploy.sh` weryfikuje je po każdym wdrożeniu.
 - Adres publiczny to `/r/{club_key}/{token}`. `club_key` jest stały dla klubu, `token` odwoływalny.
   **Przy złym `club_key` i przy złym `token` zwracamy identyczne 404** — inaczej klucz klubu da się wysondować.
 - Token ≥128 bitów z CSPRNG. Nagłówki: `X-Robots-Tag: noindex`, `Referrer-Policy: no-referrer`.

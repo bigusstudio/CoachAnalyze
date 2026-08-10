@@ -1,0 +1,3 @@
+# Uploady, raporty, herby — serwowane wyłącznie przez PHP z kontrolą uprawnień.
+# Bezpośredni dostęp przez HTTP zablokowany.
+Require all denied

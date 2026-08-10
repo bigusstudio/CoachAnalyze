@@ -1,0 +1,44 @@
+# CoachAnalyze — katalog publiczny.
+# Hosting ma open_basedir ograniczony do katalogu domeny, więc cała aplikacja leży
+# wewnątrz niego. Ochrona idzie przez te reguły, nie przez położenie w drzewie katalogów.
+# Szczegóły: docs/OGRANICZENIA_HOSTINGU.md
+
+Options -Indexes -MultiViews
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+
+  # Blokada katalogów niepublicznych — pierwsza reguła, przed czymkolwiek innym
+  RewriteRule ^(app|storage|engine|deploy|docs|releases)/ - [F,L]
+  RewriteRule (^|/)\.(env|git|htaccess|htpasswd) - [F,L]
+
+  # Wymuszenie HTTPS (po włączeniu certyfikatu)
+  # RewriteCond %{HTTPS} !=on
+  # RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+  # Wszystko inne do front controllera
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule ^ index.php [L]
+</IfModule>
+
+# Pliki konfiguracyjne i dane — twarda blokada niezależna od mod_rewrite
+<FilesMatch "^(\.env.*|composer\.(json|lock)|.*\.(sql|md|py|toml|log|sock))$">
+  Require all denied
+</FilesMatch>
+
+# Raporty publiczne: bez indeksowania przez wyszukiwarki
+<IfModule mod_headers.c>
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set X-Frame-Options "SAMEORIGIN"
+  Header always set Referrer-Policy "no-referrer"
+  <If "%{REQUEST_URI} =~ m#^/r/#">
+    Header always set X-Robots-Tag "noindex, nofollow, noarchive"
+  </If>
+</IfModule>
+
+# Uploady bywają duże
+<IfModule mod_php.c>
+  php_value upload_max_filesize 32M
+  php_value post_max_size 32M
+</IfModule>

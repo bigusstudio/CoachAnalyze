@@ -100,3 +100,65 @@ Użytkownik dostaje stronę statusu odświeżaną co kilka sekund; raport pojawi
 
 Cron zostaje wyłącznie jako siatka bezpieczeństwa: ponowienie zadań zakończonych błędem
 i sprzątanie zawieszonych. W tej roli interwał 15 minut jest w zupełności wystarczający.
+
+
+## `open_basedir` — aplikacja webowa musi mieszkać w katalogu domeny
+
+Zweryfikowane 2026-08-10. PHP-FPM obsługujący stronę ma `open_basedir` ograniczony do:
+
+```
+/home/platne/serwer400227/public_html/app.coachanalyze.pl/
+/home/platne/serwer400227/tmp/
+/usr/local/php84-fpm/lib/php/
+/tmp  /home/tmp  /var/lib/php5
+```
+
+Próba `require` pliku spoza tej listy kończy się `Operation not permitted`.
+Panel lh.pl **nie udostępnia** opcji rozszerzenia tej listy, a lokalny `php.ini`
+w katalogu domeny jest przy FPM ignorowany.
+
+**Kluczowe rozróżnienie:** ograniczenie dotyczy WYŁĄCZNIE PHP-FPM (żądania z przeglądarki).
+
+| Warstwa | `open_basedir` |
+|---|---|
+| PHP-FPM — obsługa żądań | ograniczony do katalogu domeny |
+| PHP CLI — worker, cron, deploy | **brak ograniczeń** (`php -i` → `no value`) |
+| Python — silnik | **brak ograniczeń** |
+
+Dlatego silnik uruchamiany przez `proc_open` działa normalnie, mimo że leży poza katalogiem domeny.
+
+### Wynikający układ katalogów
+
+```
+~/CoachAnalyze/                      poza zasięgiem PHP-FPM
+├── repo/                            źródło (git)
+├── venv/                            silnik Pythona
+└── shared/
+    ├── .env                         sekrety
+    ├── storage/                     uploady, raporty, herby
+    └── backups/
+
+~/public_html/app.coachanalyze.pl/   synchronizowany przy wdrożeniu
+├── index.php  assets/  .htaccess    publiczne
+├── app/                             kod — .htaccess: Require all denied
+├── .env      -> ~/CoachAnalyze/shared/.env
+└── storage/  -> ~/CoachAnalyze/shared/storage
+```
+
+**Symlink całego katalogu domeny nie działa** — hosting za nim podąża (sprawdzone),
+ale `open_basedir` i tak blokuje pliki spoza listy. Dlatego `deploy.sh` **synchronizuje**
+pliki przez `rsync`, zamiast przepinać dowiązanie.
+
+Symlinki pojedynczych zasobów (`.env`, `storage/`) działają, bo ich cel jest odczytywany
+przez CLI i Pythona, nie przez FPM.
+
+### Ochrona plików
+
+Skoro kod leży w drzewie webowym, ochronę zapewniają trzy warstwy `.htaccess`:
+
+1. `app/public/.htaccess` — `RewriteRule ^(app|storage|...)/ - [F,L]` jako pierwsza reguła
+2. `app/.htaccess` — `Require all denied`
+3. `storage/.htaccess` — `Require all denied`
+
+`deploy.sh` po każdym wdrożeniu **sprawdza automatycznie**, czy te ścieżki zwracają 403.
+Wdrożenie, które wystawia kod publicznie, ma być widoczne od razu, a nie odkryte przez kogoś innego.
