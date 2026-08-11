@@ -397,3 +397,54 @@ body {
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }
+
+/* --- biblioteka meczów --- */
+.filtr { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin: 0; }
+.filtr .field { margin-bottom: 0; flex: 1 1 180px; }
+.filtr .btn { width: auto; margin-top: 0; flex: 0 0 auto; }
+
+.strony { display: flex; gap: 16px; align-items: center; margin-top: 14px; font-size: 14px; }
+
+.akcje { display: flex; gap: 12px; }
+.akcje form { margin: 0; }
+
+/* Przycisk wyglądający jak odnośnik — akcja zmieniająca stan MUSI iść POST-em
+   z tokenem, ale w tabeli ma wyglądać jak zwykły odnośnik. */
+.link--btn {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: var(--akcent);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+/* --- linki publiczne --- */
+.adres {
+  font-size: 12px;
+  word-break: break-all;
+  background: var(--tlo-pole);
+  border: 1px solid var(--obramowanie);
+  border-radius: 6px;
+  padding: 2px 6px;
+  display: inline-block;
+}
+
+/* --- notatnik --- */
+.notatki { list-style: none; margin: 0; padding: 0; }
+.notatka { padding: 12px 0; border-bottom: 1px solid var(--obramowanie); }
+.notatka:last-child { border-bottom: 0; }
+.notatka__glowa { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+.notatka__tresc { font-size: 14px; }
+.notatka__tagi { margin-top: 6px; display: flex; gap: 6px; flex-wrap: wrap; }
+.notatka form { margin: 6px 0 0; }
+
+.tag--link { text-decoration: none; }
+.tag--link:hover { border-color: var(--akcent); color: var(--akcent); }
+
+.ref { font-size: 12px; padding: 1px 6px; border: 1px solid var(--obramowanie); border-radius: 4px; }
+.zdarzenie { margin-bottom: 14px; }
+
+.panel--alert { border-color: var(--blad-tekst); }
+.panel--alert .warns__msg .hint { display: block; margin: 2px 0 0; }

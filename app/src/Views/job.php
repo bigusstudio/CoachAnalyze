@@ -75,6 +75,9 @@ $canRetry = Jobs::canRetry((string) $job['status']);
     <a class="btn btn--ghost" href="/raport/<?= (int) $report['id'] ?>">
       <?= View::e(View::t('job.report')) ?>
     </a>
+    <a class="btn btn--ghost" href="/raport/<?= (int) $report['id'] ?>/udostepnij">
+      <?= View::e(View::t('share.create')) ?>
+    </a>
     <span class="hint"><?= View::e(View::t(
         'job.report.meta',
         substr((string) $report['generated_at'], 0, 16),

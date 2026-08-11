@@ -21,6 +21,26 @@ use CoachAnalyze\View;
   <p class="notice" role="status"><?= View::e($notice) ?></p>
 <?php endif; ?>
 
+
+<?php if (!empty($alerts)): ?>
+  <section class="panel panel--alert">
+    <h2 class="h2"><?= View::e(View::t('alert.title')) ?></h2>
+    <ul class="warns">
+      <?php foreach ($alerts as $a): ?>
+        <li class="warns__row">
+          <span class="tag tag--<?= $a['level'] === 'error' ? 'failed' : 'queued' ?>">
+            <?= View::e($a['code']) ?>
+          </span>
+          <span class="warns__msg">
+            <?= View::e($a['msg']) ?>
+            <span class="hint"><?= View::e($a['hint']) ?></span>
+          </span>
+        </li>
+      <?php endforeach; ?>
+    </ul>
+  </section>
+<?php endif; ?>
+
 <section class="cards" aria-label="<?= View::e(View::t('dash.title')) ?>">
   <div class="card">
     <span class="card__value"><?= View::e((string) $counters['matches']) ?></span>

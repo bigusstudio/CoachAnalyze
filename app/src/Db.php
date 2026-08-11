@@ -69,11 +69,31 @@ final class Db
         return self::$pdo;
     }
 
-    /** @param array<string|int,mixed> $params */
+    /**
+     * Wykonanie zapytania z parametrami.
+     *
+     * Typ wiążemy JAWNIE. `PDOStatement::execute($params)` traktuje wszystko jak
+     * napis, więc `LIMIT :limit` trafiałby do MySQL jako `LIMIT '20'` i kończył
+     * się błędem składni. To jedyny powód, dla którego `LIMIT` bywa sklejany
+     * z liczbą — a sklejanie czegokolwiek z zapytaniem jest w tym projekcie błędem.
+     *
+     * @param array<string|int,mixed> $params
+     */
     public static function run(string $sql, array $params = []): \PDOStatement
     {
         $stmt = self::pdo()->prepare($sql);
-        $stmt->execute($params);
+
+        foreach ($params as $key => $value) {
+            $type = match (true) {
+                is_int($value)  => PDO::PARAM_INT,
+                is_bool($value) => PDO::PARAM_BOOL,
+                $value === null => PDO::PARAM_NULL,
+                default         => PDO::PARAM_STR,
+            };
+            $stmt->bindValue(is_int($key) ? $key + 1 : $key, $value, $type);
+        }
+
+        $stmt->execute();
         return $stmt;
     }
 

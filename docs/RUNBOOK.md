@@ -45,3 +45,102 @@ ln -sfn releases/<poprzednie> current
 ```
 
 Migracje bazy nie cofają się automatycznie. Zrzut bazy przed każdą migracją jest obowiązkowy.
+
+---
+
+# Przypadki z wdrożenia 2026-08-11
+
+Wszystkie poniższe wystąpiły naprawdę, przy pierwszym uruchomieniu na lh.pl.
+Objaw jest tym, co widzi operator — przyczyna bywa o dwie warstwy głębiej.
+
+## „Logowanie jest chwilowo niedostępne", choć Redis działa
+
+**Objaw.** Ekran logowania odrzuca poprawne hasło tym komunikatem. `redis-cli ping`
+z konsoli odpowiada `PONG`.
+
+**Przyczyna.** Nie Redis. `Config` nie odczytał `.env`, więc zabrakło `REDIS_SOCKET`,
+a limiter prób zgłosił wyjątek **zanim cokolwiek spróbowało się połączyć**.
+Zabezpieczenie „fail closed" zadziałało na podstawie nieudanego odczytu konfiguracji.
+
+**Dlaczego `.env` się nie odczytał.** `open_basedir` sprawdza ścieżkę **po rozwinięciu
+dowiązania**. `{domena}/.env` był symlinkiem do `~/CoachAnalyze/shared/.env`, czyli
+poza listę — dla PHP-FPM niewidocznym. Z konsoli działał, bo CLI nie ma tego ograniczenia.
+
+**Naprawa.** `deploy.sh` kopiuje `.env` do katalogu domeny (`cp`, nie `ln -s`).
+Kontrola po wdrożeniu przerywa proces, jeśli `.env` jest dowiązaniem.
+
+**Sprawdzenie:**
+```bash
+ls -l ~/public_html/app.coachanalyze.pl/.env     # ma być zwykły plik, bez "->"
+php -r 'var_dump(is_file("/pełna/ścieżka/.env"));'
+```
+
+## Trzy ostrzeżenia PHP nad formularzem logowania
+
+**Objaw.** Nad polami logowania trzy komunikaty `Warning: is_file(): open_basedir restriction`.
+
+**Przyczyna.** `Config` szukał `.env`, idąc w górę drzewa katalogów. Dwa ostatnie
+poziomy leżą poza `open_basedir` — każde sprawdzenie to jedno ostrzeżenie. Powstawały
+**zanim** kod zdążył ustawić `display_errors` na podstawie tej samej konfiguracji.
+
+**Naprawa.** Położenie `.env` z jednej jawnej stałej (`CA_ROOT . '/.env'`).
+`display_errors` wyłączane w **pierwszych liniach** bootstrapu, nie po wczytaniu konfiguracji.
+
+## `is_file()` zwraca false dla działającego zasobu
+
+**Objaw.** Kod broni się przed brakiem pliku, a zasób jest dostępny.
+
+**Przyczyna.** Na lh.pl sprawdzenie istnienia podlega `open_basedir`, a otwarcie
+zasobu już nie. Dla ścieżki spoza listy `is_file()`, `file_exists()` i `is_readable()`
+zwracają `false`, mimo że `stream_socket_client()` albo `file_get_contents()` przechodzą.
+
+**Zasada.** W warstwie wejścia **nie pytamy, czy zasób istnieje — próbujemy go użyć**
+i obsługujemy niepowodzenie. Pilnuje tego `app/tests/test_layout.php`.
+
+## Aplikacja nie ma gdzie zapisać przyczyny błędu
+
+**Objaw.** Coś nie działa, w logu pusto. Diagnostyka zajęła godzinę.
+
+**Przyczyna.** `LOG_PATH` wskazywał katalog spoza `open_basedir`, więc `error_log()`
+nie miał dokąd pisać. Dodatkowo proces roboczy startuje odpięty, ze strumieniami
+do `/dev/null` — bez `LOG_PATH` jego ślad przepada całkowicie.
+
+**Naprawa.** `LOG_PATH` domyślnie w `~/tmp/` (katalog z listy `open_basedir`).
+Bootstrap sprawdza zapisywalność **próbą zapisu** i przy niepowodzeniu schodzi
+do katalogu tymczasowego, odnotowując to. Log w nieoczywistym miejscu jest lepszy niż brak logu.
+
+## `password_hash` z argon2id kończy się błędem
+
+**Objaw.** `A thread value other than 1 is not supported by this implementation`
+przy zakładaniu konta.
+
+**Przyczyna.** `libargon2` na lh.pl zbudowane bez obsługi wątków.
+
+**Naprawa.** `ARGON_THREADS=1` w `.env`, koszt zrekompensowany pamięcią i przebiegami.
+**Konta założone wcześniej trzeba utworzyć na nowo** — parametry są częścią zapisu
+hasha, a stary hash z `p=2` nie da się na tym hostingu zweryfikować.
+
+```bash
+php app/bin/create_user.php operator@example.com "Operator"
+```
+
+## Po wdrożeniu znika katalog `app/`
+
+**Objaw.** Strona zwraca 500, w logu `bootstrap.php` nie istnieje.
+
+**Przyczyna.** Drugi `rsync --delete` synchronizuje `app/public/` do katalogu domeny.
+Bez `--exclude` uznaje `app/`, `.env` i `storage/` za nadmiarowe i **kasuje je**,
+razem z kodem wgranym pierwszym przejściem.
+
+**Naprawa.** Wykluczenia w obu wywołaniach `rsync`. Błąd wystąpił dwa razy
+(naprawiony w `01b1dc7`, cofnięty w `73eecb7`), więc pilnuje go teraz test.
+
+## „Operation not permitted" przy starcie aplikacji
+
+**Objaw.** Biała strona, w logu `require(): open_basedir restriction in effect`.
+
+**Przyczyna.** `app/public/index.php` w repozytorium leży piętro niżej niż w produkcji.
+`dirname(__DIR__)` wskazywał `~/public_html`, czyli poza `open_basedir`.
+
+**Naprawa.** Stała `CA_ROOT` ustalana przez odnalezienie katalogu z `app/src/bootstrap.php`.
+Test pilnuje, że `dirname(__DIR__)` nie wróci do tego pliku.

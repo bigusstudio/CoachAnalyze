@@ -18,7 +18,11 @@ use CoachAnalyze\Crest;
 use CoachAnalyze\Engine;
 use CoachAnalyze\Imports;
 use CoachAnalyze\Jobs;
+use CoachAnalyze\Matches;
+use CoachAnalyze\Notes;
+use CoachAnalyze\Seasons;
 use CoachAnalyze\Session;
+use CoachAnalyze\Share;
 use CoachAnalyze\Stats;
 use CoachAnalyze\Storage;
 use CoachAnalyze\Upload;
@@ -87,6 +91,13 @@ if ($path === '/login') {
     exit;
 }
 
+// Raport publiczny. BEZ SESJI — nie dotykamy tu `Session`, więc przeglądarka
+// czytelnika nie dostaje ciasteczka panelu. Jedyną ochroną jest token w adresie.
+if (preg_match('#^/r/([^/]+)/([^/]+)$#', $path, $m) === 1 && $method === 'GET') {
+    servePublicReport(rawurldecode($m[1]), rawurldecode($m[2]));
+    exit;
+}
+
 // --- od tego miejsca wszystko wymaga zalogowania --------------------------
 $user = Auth::requireLogin();
 
@@ -98,6 +109,7 @@ switch (true) {
             'counters' => Stats::counters(),
             'matches'  => Stats::recentMatches(5),
             'jobs'     => Stats::jobsNeedingAttention(),
+            'alerts'   => \CoachAnalyze\Alerts::all(),
             'notice'   => Session::flash('notice'),
         ]);
         break;
@@ -203,18 +215,134 @@ switch (true) {
         serveCrest((int) $m[1]);
         break;
 
-    // Etapy 4c/6 — zapowiedź zamiast 404, żeby nawigacja nie prowadziła w pustkę.
-    case in_array($path, ['/mecze', '/notatki'], true) && $method === 'GET':
-        $nazwy = ['/mecze' => 'nav.matches', '/notatki' => 'nav.notes'];
-        View::page('soon', [
-            'title'   => View::t($nazwy[$path]),
-            'active'  => $path === '/mecze' ? 'matches' : '',
-            'heading' => View::t($nazwy[$path]),
+    // ------------------------------------------------------- biblioteka meczów
+    case $path === '/mecze' && $method === 'GET':
+        $filtr = [
+            'klub'   => isset($_GET['klub'])  && $_GET['klub'] !== ''  ? (int) $_GET['klub'] : null,
+            'sezon'  => isset($_GET['sezon']) && $_GET['sezon'] !== '' ? (int) $_GET['sezon'] : null,
+            'sort'   => Matches::normalizeSort($_GET['sort'] ?? null),
+            'strona' => max(1, (int) ($_GET['strona'] ?? 1)),
+        ];
+        View::page('matches_list', [
+            'title'   => View::t('matches.title'),
+            'active'  => 'matches',
+            'wynik'   => Matches::search([
+                'club'   => $filtr['klub'],
+                'season' => $filtr['sezon'],
+                'sort'   => $filtr['sort'],
+                'page'   => $filtr['strona'],
+            ]),
+            'clubs'   => Clubs::all(),
+            'seasons' => Seasons::all(),
+            'filtr'   => $filtr,
+            'notice'  => Session::flash('notice'),
         ]);
+        break;
+
+    // ---------------------------------------------------------------- sezony
+    case $path === '/sezony' && $method === 'GET':
+        View::page('seasons_list', [
+            'title'      => View::t('season.list'),
+            'active'     => 'seasons',
+            'seasons'    => Seasons::all(),
+            'propozycja' => Seasons::boundsFor(date('Y-m-d')),
+            'notice'     => Session::flash('notice'),
+            'error'      => Session::flash('error'),
+        ]);
+        break;
+
+    case $path === '/sezony' && $method === 'POST':
+        requireCsrf();
+        saveSeason((int) $user['id']);
+        break;
+
+    case preg_match('#^/sezony/(\d+)/biezacy$#', $path, $m) === 1 && $method === 'POST':
+        requireCsrf();
+        Seasons::markCurrent((int) $m[1], (int) $user['id']);
+        Session::flash('notice', View::t('season.current_set'));
+        redirect('/sezony');
+        break;
+
+    case preg_match('#^/sezony/(\d+)/usun$#', $path, $m) === 1 && $method === 'POST':
+        requireCsrf();
+        $wynik = Seasons::delete((int) $m[1], (int) $user['id']);
+        Session::flash(
+            $wynik['ok'] ? 'notice' : 'error',
+            View::t($wynik['ok'] ? 'season.deleted' : $wynik['error'])
+        );
+        redirect('/sezony');
+        break;
+
+
+    case preg_match('#^/mecze/(\\d+)/notatki$#', $path, $m) === 1 && $method === 'GET':
+        showMatchNotes((int) $m[1]);
+        break;
+
+    // -------------------------------------------------------- notatnik (Etap 6)
+    case $path === '/notatki' && $method === 'GET':
+        $filtr = [
+            'q'      => trim((string) ($_GET['q'] ?? '')),
+            'poziom' => (string) ($_GET['poziom'] ?? ''),
+            'tag'    => trim((string) ($_GET['tag'] ?? '')),
+        ];
+        View::page('notes_list', [
+            'title'   => View::t('note.title'),
+            'active'  => 'notes',
+            'notes'   => Notes::search($filtr['q'], $filtr['poziom'] ?: null, $filtr['tag'] ?: null),
+            'tags'    => Notes::tagCloud(),
+            'filtr'   => $filtr,
+            'matches' => Stats::recentMatches(50),
+            'clubs'   => Clubs::all(),
+            'notice'  => Session::flash('notice'),
+            'error'   => Session::flash('error'),
+        ]);
+        break;
+
+    case $path === '/notatki' && $method === 'POST':
+        requireCsrf();
+        saveNote((int) $user['id']);
+        break;
+
+    case preg_match('#^/notatki/(\d+)/usun$#', $path, $m) === 1 && $method === 'POST':
+        requireCsrf();
+        Notes::delete((int) $m[1], (int) $user['id']);
+        Session::flash('notice', View::t('note.deleted'));
+        redirect('/notatki');
         break;
 
     case preg_match('#^/raport/(\d+)$#', $path, $m) === 1 && $method === 'GET':
         serveReport((int) $m[1]);
+        break;
+
+    // ------------------------------------------------------- publikacja (Etap 7)
+    case preg_match('#^/raport/(\d+)/udostepnij$#', $path, $m) === 1 && $method === 'GET':
+        showShare((int) $m[1]);
+        break;
+
+    case preg_match('#^/raport/(\d+)/udostepnij$#', $path, $m) === 1 && $method === 'POST':
+        requireCsrf();
+        createShare((int) $m[1], (int) $user['id']);
+        break;
+
+    case preg_match('#^/link/(\d+)/odwolaj$#', $path, $m) === 1 && $method === 'POST':
+        requireCsrf();
+        $id = (int) $m[1];
+        $link = \CoachAnalyze\Db::one('SELECT report_id FROM share_links WHERE id = :id', ['id' => $id]);
+        Session::flash(
+            Share::revoke($id, (int) $user['id']) ? 'notice' : 'error',
+            View::t('share.revoked')
+        );
+        redirect($link !== null ? '/raport/' . (int) $link['report_id'] . '/udostepnij' : '/linki');
+        break;
+
+    case $path === '/linki' && $method === 'GET':
+        View::page('share_active', [
+            'title'  => View::t('share.active'),
+            'active' => 'links',
+            'links'  => Share::active(),
+            'appUrl' => \CoachAnalyze\Config::get('APP_URL', ''),
+            'notice' => Session::flash('notice'),
+        ]);
         break;
 
     default:
@@ -446,6 +574,228 @@ function queueBuild(int $importId, int $userId): void
     }
 
     redirect('/zadania/' . $jobId);
+}
+
+
+function showMatchNotes(int $matchId): void
+{
+    $match = Matches::find($matchId);
+    if ($match === null) {
+        http_response_code(404);
+        View::page('soon', ['title' => View::t('common.not_found'), 'heading' => View::t('common.not_found')]);
+        return;
+    }
+
+    $ogolne = [];
+    $poZdarzeniu = [];
+    foreach (Notes::forMatch($matchId) as $n) {
+        if ($n['scope'] === 'event' && !empty($n['event_ref'])) {
+            $poZdarzeniu[(string) $n['event_ref']][] = $n;
+        } else {
+            $ogolne[] = $n;
+        }
+    }
+
+    View::page('match_notes', [
+        'title'       => View::t('note.match_title'),
+        'active'      => 'notes',
+        'match'       => $match,
+        'ogolne'      => $ogolne,
+        'poZdarzeniu' => $poZdarzeniu,
+        'report'      => Imports::latestReport($matchId),
+    ]);
+}
+
+// --------------------------------------------------------------- notatnik
+
+function saveNote(int $userId): void
+{
+    $body = trim((string) ($_POST['body'] ?? ''));
+    if ($body === '') {
+        Session::flash('error', View::t('note.err.body'));
+        redirect('/notatki');
+    }
+
+    $scope = (string) ($_POST['scope'] ?? 'match');
+    $eventRef = trim((string) ($_POST['event_ref'] ?? ''));
+
+    // Notatka „przy zdarzeniu" bez wskazania zdarzenia byłaby notatką do meczu
+    // udającą coś więcej — i nigdy nie pokazałaby się w kontekście raportu.
+    if ($scope === 'event' && ($eventRef === '' || empty($_POST['match_id']))) {
+        Session::flash('error', View::t('note.err.event'));
+        redirect('/notatki');
+    }
+
+    $kategoria = (string) ($_POST['kategoria'] ?? '');
+    $tagi = (string) ($_POST['tags'] ?? '');
+    if (in_array($kategoria, Notes::CATEGORIES, true)) {
+        // Kategoria to po prostu tag z zamkniętej listy — jedno pole wyszukiwania
+        // zamiast dwóch mechanizmów robiących to samo.
+        $tagi = $tagi === '' ? $kategoria : $kategoria . ',' . $tagi;
+    }
+
+    Notes::create($userId, [
+        'scope'     => $scope,
+        'match_id'  => !empty($_POST['match_id']) ? (int) $_POST['match_id'] : null,
+        'club_id'   => !empty($_POST['club_id']) ? (int) $_POST['club_id'] : null,
+        'event_ref' => $eventRef !== '' ? $eventRef : null,
+        'title'     => trim((string) ($_POST['title'] ?? '')),
+        'body'      => $body,
+        'tags'      => $tagi,
+    ]);
+
+    Session::flash('notice', View::t('note.created'));
+    redirect('/notatki');
+}
+
+// ------------------------------------------------------ publikacja (panel)
+
+function showShare(int $reportId): void
+{
+    $report = \CoachAnalyze\Db::one(
+        'SELECT id, match_id, engine_version, generated_at FROM reports WHERE id = :id',
+        ['id' => $reportId]
+    );
+    if ($report === null) {
+        http_response_code(404);
+        View::page('soon', [
+            'title'   => View::t('common.not_found'),
+            'heading' => View::t('common.not_found'),
+            'body'    => View::t('report.missing'),
+        ]);
+        return;
+    }
+
+    View::page('share_list', [
+        'title'  => View::t('share.title'),
+        'active' => 'links',
+        'report' => $report,
+        'links'  => Share::forReport($reportId),
+        'appUrl' => \CoachAnalyze\Config::get('APP_URL', ''),
+        'notice' => Session::flash('notice'),
+        'error'  => Session::flash('error'),
+    ]);
+}
+
+function createShare(int $reportId, int $userId): void
+{
+    $clubId = Share::clubForReport($reportId);
+
+    if ($clubId === null) {
+        // Klucz klubu stoi w adresie. Bez przypisanego klubu nie ma czego wstawić,
+        // a podstawienie przypadkowego dałoby link prowadzący do cudzego klucza.
+        Session::flash('error', View::t('share.err.no_club'));
+        redirect('/raport/' . $reportId . '/udostepnij');
+    }
+
+    $expires = trim((string) ($_POST['expires_at'] ?? ''));
+    if ($expires !== '' && $expires < date('Y-m-d')) {
+        Session::flash('error', View::t('share.err.past'));
+        redirect('/raport/' . $reportId . '/udostepnij');
+    }
+
+    Share::create($reportId, $clubId, $expires !== '' ? $expires . ' 23:59:59' : null, $userId);
+    Session::flash('notice', View::t('share.created'));
+    redirect('/raport/' . $reportId . '/udostepnij');
+}
+
+// ------------------------------------------------------- raport publiczny
+
+/**
+ * Serwowanie raportu spod /r/{club_key}/{token}.
+ *
+ * ODPOWIEDŹ MUSI BYĆ IDENTYCZNA dla złego klucza klubu i złego tokenu —
+ * to samo 404, ta sama treść, porównywalny czas. Każda różnica pozwala
+ * sondować, które klucze klubów istnieją.
+ *
+ * Dlatego:
+ *  - jedno zapytanie z obydwoma warunkami (Share::resolve), a nie dwa po kolei,
+ *  - link odwołany i wygasły dają to samo 404 co nieistniejący,
+ *  - wszystkie nieudane ścieżki schodzą się w jednym miejscu i są wyrównywane
+ *    do wspólnego minimalnego czasu odpowiedzi.
+ */
+function servePublicReport(string $clubKey, string $token): void
+{
+    $start = microtime(true);
+
+    $link = Share::resolve($clubKey, $token);
+
+    if (!Share::isUsable($link)) {
+        publicNotFound($start);
+    }
+
+    $path = (string) $link['html_path'];
+    if (!Storage::isInside($path) || !is_readable($path)) {
+        // Wpis w bazie jest, pliku nie ma. Dla czytelnika to nadal zwykłe 404;
+        // powód idzie do logu, bo to awaria po naszej stronie.
+        error_log('share: brak pliku raportu ' . $path . ' (link ' . $link['id'] . ')');
+        publicNotFound($start);
+    }
+
+    Share::registerView((int) $link['id']);
+
+    header('Content-Type: text/html; charset=utf-8');
+    // Raport ma nie trafić do wyszukiwarek ani do archiwów.
+    header('X-Robots-Tag: noindex, nofollow, noarchive');
+    // Adres NIESIE token — nagłówek Referer przekazałby go każdej stronie,
+    // w którą czytelnik kliknie z raportu.
+    header('Referrer-Policy: no-referrer');
+    header('X-Content-Type-Options: nosniff');
+    header('Cache-Control: private, no-store');
+
+    readfile($path);
+    exit;
+}
+
+/**
+ * Jedyna odpowiedź na każdy nieudany dostęp do raportu publicznego.
+ *
+ * Czas odpowiedzi wyrównujemy do wspólnego progu. Bez tego „zły klucz klubu"
+ * (odpada w zapytaniu) i „zły token" (odpada tak samo) mogłyby różnić się
+ * pomiarem na tyle, żeby dało się je odróżnić przy tysiącu prób.
+ */
+function publicNotFound(float $start): never
+{
+    $minimum = 0.15;   // sekundy
+    $elapsed = microtime(true) - $start;
+    if ($elapsed < $minimum) {
+        usleep((int) (($minimum - $elapsed) * 1_000_000));
+    }
+
+    http_response_code(404);
+    header('Content-Type: text/html; charset=utf-8');
+    header('X-Robots-Tag: noindex, nofollow, noarchive');
+    header('Referrer-Policy: no-referrer');
+    echo View::t('share.not_found');
+    exit;
+}
+
+// ----------------------------------------------------------------- sezony
+
+function saveSeason(int $userId): void
+{
+    $label = trim((string) ($_POST['label'] ?? ''));
+    $from  = trim((string) ($_POST['date_from'] ?? ''));
+    $to    = trim((string) ($_POST['date_to'] ?? ''));
+
+    if ($label === '' || $from === '' || $to === '') {
+        Session::flash('error', View::t('season.err.fields'));
+        redirect('/sezony');
+    }
+
+    if ($from >= $to) {
+        Session::flash('error', View::t('season.err.range'));
+        redirect('/sezony');
+    }
+
+    Seasons::create($userId, [
+        'label'      => $label,
+        'date_from'  => $from,
+        'date_to'    => $to,
+        'is_current' => !empty($_POST['is_current']),
+    ]);
+    Session::flash('notice', View::t('season.created'));
+    redirect('/sezony');
 }
 
 // ------------------------------------------------------------------ kluby

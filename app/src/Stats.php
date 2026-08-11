@@ -67,7 +67,9 @@ final class Stats
      */
     public static function recentMatches(int $limit = 5): array
     {
-        $limit = max(1, min(50, $limit));
+        // LIMIT jako PARAMETR, nie sklejony z liczbą. Zakres i tak przycinamy,
+        // ale zapytanie nie ma prawa powstawać przez konkatenację — dziś jest to
+        // liczba z kodu, jutro ktoś poda tu wartość z żądania.
         return Db::all(
             'SELECT m.id, m.played_at, m.status, m.competition,
                     h.name AS home_name, a.name AS away_name
@@ -75,7 +77,8 @@ final class Stats
                LEFT JOIN clubs h ON h.id = m.club_home_id
                LEFT JOIN clubs a ON a.id = m.club_away_id
               ORDER BY (m.played_at IS NULL), m.played_at DESC, m.id DESC
-              LIMIT ' . $limit
+              LIMIT :limit',
+            ['limit' => max(1, min(50, $limit))]
         );
     }
 
