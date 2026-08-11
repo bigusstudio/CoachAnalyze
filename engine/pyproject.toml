@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "coachanalyze"
-version = "0.8.1"  # trzymać zgodnie z coachanalyze/__init__.py::__version__
+version = "0.9.0"  # trzymać zgodnie z coachanalyze/__init__.py::__version__
 description = "Silnik analityki meczowej CoachAnalyze"
 requires-python = ">=3.11"
 dependencies = []  # ZERO zależności zewnętrznych — hosting z noexec, patrz docs/OGRANICZENIA_HOSTINGU.md
