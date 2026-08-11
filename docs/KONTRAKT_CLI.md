@@ -39,7 +39,7 @@ wcześniej zostawiałby na dysku `ok: true` bez raportu.
 
 ```json
 {
-  "engine_version": "0.7.0",
+  "engine_version": "0.8.0",
   "profile_version": 4,
   "totals": { "events": 294, "mapped": 287, "unmapped": 7,
               "unmapped_tags": ["AKCJA DEFENSYWNA"],
@@ -65,14 +65,37 @@ domyśla się wyniku. Szablon raportu robi w tym miejscu inaczej (patrz niżej).
 
 ### Render HTML
 
-Silnik wstrzykuje dane w szablon `engine/templates/dashboard_template.html`, w dwa placeholdery:
-`/*__DATA__*/` (zdarzenia i `half_split`, serializacja kompaktowa) oraz `/*__PAL__*/` (paleta
-z pliku projektu). Obecność każdego z nich jest sprawdzana **co do liczby wystąpień** — wzorzec
-występujący zero razy albo dwa razy przerywa render z kodem `4`.
+Silnik wstrzykuje dane w szablon `engine/templates/dashboard_template.html`.
+**Szablon nie zna żadnego klubu** — wszystko, co identyfikuje drużyny, przychodzi z `config.teams`.
+
+| Znacznik | Wypełniany |
+|---|---|
+| `/*__DATA__*/` | Zdarzenia i `half_split`, serializacja kompaktowa. Dokładnie jedno wystąpienie |
+| `/*__PAL__*/` | Paleta z pliku projektu LiveTag. Dokładnie jedno wystąpienie |
+| `__TEAM_HOME__` · `__TEAM_AWAY__` | Klucz dopasowania — ta sama wartość co w `DATA[].team` |
+| `__TEAM_*_LABEL__` | Nazwa wyświetlana (`name`) |
+| `__TEAM_*_SHORT__` | Etykieta toru osi czasu (`short`) |
+| `__TEAM_*_COLOR__` · `__TEAM_*_DIM__` | Barwa klubu i jej przygaszona wersja |
+| `__LOGO_HOME__` · `__LOGO_AWAY__` | Pełny adres `data:` herbu — typ MIME idzie za rozszerzeniem pliku |
+
+Obecność znaczników jest sprawdzana **przed podmianą**, a po niej sprawdzamy, że żaden nie został;
+brak dowolnego przerywa render z kodem `4`. `/*__DATA__*/` i `/*__PAL__*/` muszą wystąpić dokładnie
+raz — drugie wystąpienie znaczy uszkodzony szablon. Znaczniki drużyn co najmniej raz, bo z natury
+powtarzają się w wielu miejscach.
 
 Do przeglądarki trafiają wyłącznie `events` i `half_split`. Nagłówki eksportu, `format_fingerprint`
 i nazwa kolumny zawodnika zostają po stronie serwera — raport jest dostępny pod publicznym
 adresem `/r/{club_key}/{token}`.
+
+**Pole `team` w zdarzeniu dostaje nazwę z konfiguracji**, wybraną po `team_side` z modelu
+kanonicznego, a nie surowy napis z eksportu. Szablon porównuje `e.team` z nazwą klubu przez
+równość: klub, który w kolejnym eksporcie zapisze nazwę inaczej, dostałby raport z zerem zdarzeń
+dla własnej drużyny i bez ostrzeżenia. Po tej podmianie dopasowaniem zajmuje się model kanoniczny.
+Przy tej okazji surowy napis z eksportu przestaje wyciekać do raportu pod publicznym adresem.
+
+Nazwa, której model nie rozpoznał (`team_side: none` przy niepustym `team`), **zostaje bez zmian** —
+skasowanie jej przeniosłoby zdarzenie do sekcji „bez przypisania drużyny" i zmieniło liczby.
+Mówi o tym ostrzeżenie `UNKNOWN_TEAM`.
 
 **Szablon liczy metryki samodzielnie, w JS, po nazwach tagów klienta.** Pakiet z `--out-metrics`
 nie jest do niego wstrzykiwany. Silnik porównuje jedno z drugim i przy rozjeździe wypisuje
@@ -86,7 +109,7 @@ Plik gotowy do wstawienia w `events_canonical` (app/migrations/002 + 003):
 ```json
 {
   "match_id": 881,
-  "engine_version": "0.7.0",
+  "engine_version": "0.8.0",
   "count": 294,
   "events": [
     {
@@ -137,7 +160,8 @@ wykryte w danych, a wszystkie zdarzenia mają `team_side: "none"`.
   "match_id": 881,
   "season_label": "2026/2027",
   "teams": {
-    "us":   { "name": "Klub A", "short": "KLA", "color": "#E8722C", "crest": "/storage/crests/3.png" },
+    "us":   { "name": "Klub A", "short": "KLA", "color": "#E8722C", "crest": "/storage/crests/3.png",
+              "source_names": ["KLUB A", "KLUB A II"] },
     "them": { "name": "Klub B", "short": "KLB", "color": "#2C6FE8", "crest": "/storage/crests/9.png" }
   },
   "mapping_profile": { "version": 4, "rules": [] },
@@ -149,6 +173,21 @@ wykryte w danych, a wszystkie zdarzenia mają `team_side: "none"`.
 Silnik nie odgaduje nazw ani barw klubów — dostaje je w konfiguracji. Wykryte w danych nazwy
 zwraca w `meta.coverage.teams`, żeby PHP mógł zaproponować dopasowanie przy pierwszym imporcie.
 
+### Pola drużyny
+
+| Pole | Do czego służy | Gdy go brak |
+|---|---|---|
+| `name` | Nazwa wyświetlana w raporcie. Dopasowuje też zdarzenia, gdy zgadza się z zapisem w eksporcie | Nazwa wykryta w danych, a gdy i tej nie ma — `Drużyna A` / `Drużyna B` + ostrzeżenie na stderr |
+| `short` | Etykieta toru na osi czasu, gdzie miejsca jest mało | `name` wielkimi literami |
+| `color` | Barwa drużyny w wykresach i na mapach | `#E6A23C` (gospodarz), `#5CA8E0` (rywal) |
+| `crest` | Ścieżka do herbu. Formaty: svg, png, jpg, webp, gif | Herb zastępczy: biały krążek z pierwszą literą nazwy + ostrzeżenie na stderr |
+| `source_names` | Nazwy tak, jak zapisał je LiveTag — dokładają się do dopasowania obok `name` i `short` | Dopasowanie tylko po `name` i `short` |
+
+**`source_names` istnieje po to, żeby nazwa w raporcie nie zależała od zapisu w eksporcie.**
+Klub bywa otagowany skrótem, pod starą nazwą albo z literówką; bez tego pola każda taka zmiana
+wymuszałaby zmianę nazwy klubu w aplikacji. Nazwa spoza tej listy i spoza `name`/`short` nie
+przepada po cichu — wraca jako ostrzeżenie `UNKNOWN_TEAM`.
+
 ---
 
 ## Wyjście — `meta.json`
@@ -156,7 +195,7 @@ zwraca w `meta.coverage.teams`, żeby PHP mógł zaproponować dopasowanie przy 
 ```json
 {
   "ok": true,
-  "engine_version": "0.7.0",
+  "engine_version": "0.8.0",
   "format_fingerprint": "sha256:9f3c…",
   "half_split_ms": 2730000,
   "duration_ms": 5820000,
@@ -250,7 +289,7 @@ Przy `4` i `5` `meta.json` może nie powstać — PHP musi to przewidzieć.
 
 ```json
 { "ok": false, "code": "MISSING_COLUMNS", "msg": "Brak wymaganych kolumn: end",
-  "engine_version": "0.7.0", "missing_columns": ["end"] }
+  "engine_version": "0.8.0", "missing_columns": ["end"] }
 ```
 
 `missing_columns` występuje wyłącznie przy kodzie `3`.

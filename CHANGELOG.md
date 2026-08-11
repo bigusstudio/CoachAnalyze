@@ -3,6 +3,60 @@
 Format: [wersja silnika] — data — opis.
 Każda zmiana, która modyfikuje wyjście silnika, MUSI mieć tu wpis wraz z powodem.
 
+## [0.8.0] — 2026-08-11
+### Szablon przestał znać klub — generacja v23-noname, ZMIANA WYJŚCIA
+Poprzedni szablon (v17) miał wpisane na sztywno „Hutnik Kraków", „Pogoń-Sokół Lubaczów",
+oba herby i barwy nazwane od klubów. Raport dla drugiego klubu byłby podpisany nazwą pierwszego.
+
+Nowy `engine/templates/dashboard_template.html` powstał z `livetag_dashboard_noname_1.html` —
+generacji v23, już zanonimizowanej. Stary szablon leży w `engine/templates/ARCHIWUM/v17.html`.
+
+Co przyszło razem z generacją v23: wielokrotny wybór przedziałów 15-minutowych zamiast pojedynczego
+fragmentu, belka nawigacyjna z podsumowaniem aktywnych filtrów, powierzchnia znacznika strzału
+proporcjonalna do xG, tooltipy działające na dotyk, kotwice sekcji. Zniknęła stopka i karta
+„Wyprowadzenie: skuteczne / nie".
+
+Konwersja szablonu robiona skryptem `engine/tools/szablon_z_raportu.py`, z **asercją liczby
+wystąpień przy każdej podmianie** — 13 podmian, każda z oczekiwaną liczbą trafień. Po incydencie
+v13 (skrypt trafił w komentarz `/* timeline */` w CSS i zniszczył szablon) podmiana, która
+trafiła w inną liczbę miejsc, niż zakładano, przerywa konwersję.
+
+Skrypt zostaje w repozytorium jako recepta na następną generację: raporty powstają ręcznie
+w kolejnych wersjach, a szablon ma z nich powstawać powtarzalnie, nie przez ręczne szukanie
+i zamienianie. Liczby wystąpień są w nim parametrem — przy nowej generacji najpierw uruchom,
+zobacz, co zgłosi, sprawdź każdą zmianę w źródle i dopiero wtedy popraw oczekiwania.
+Skrypt odmawia zapisu, gdy w wyniku zostanie ślad konkretnego klubu.
+
+Nowe znaczniki, wypełniane z `config.teams`: `__TEAM_{HOME,AWAY}__` (klucz dopasowania),
+`__TEAM_*_LABEL__` (nazwa wyświetlana), `__TEAM_*_SHORT__` (etykieta toru), `__TEAM_*_COLOR__`
+i `__TEAM_*_DIM__` (barwy), `__LOGO_{HOME,AWAY}__` (pełny adres `data:` herbu — **typ MIME idzie
+za rozszerzeniem pliku**, wpisany na sztywno wyświetlałby PNG jako SVG). Zmienne CSS `--hut`/`--pog`
+nazywają się teraz `--team-home`/`--team-away`.
+
+**`team` w zdarzeniu dostaje nazwę z konfiguracji**, wybraną po `team_side` z modelu kanonicznego,
+zamiast surowego napisu z eksportu. Szablon porównuje `e.team` z nazwą klubu przez równość — klub,
+który w kolejnym eksporcie zapisze nazwę inaczej (inna wielkość liter, literówka, zmiana nazwy
+w LiveTag), dostawał raport z zerem zdarzeń dla własnej drużyny i bez ostrzeżenia. Teraz
+dopasowaniem zajmuje się model kanoniczny. Nazwa nierozpoznana **zostaje bez zmian**: skasowanie
+jej przeniosłoby zdarzenie do sekcji „bez przypisania drużyny" i zmieniło liczby.
+
+`config.teams.*.source_names` (nowe, opcjonalne) — nazwy tak, jak zapisał je LiveTag. Rozdzielenie
+nazwy wyświetlanej od nazwy w eksporcie jest po to, żeby zmiana zapisu w LiveTag nie wymuszała
+zmiany nazwy klubu w aplikacji. `docs/KONTRAKT_CLI.md` zaktualizowany w tym samym commicie.
+
+Braki są głośne, ale nie wywracają renderu — jest ostatnim krokiem i wywrócenie się w nim kasuje
+całe przetworzenie. Brak nazwy → `Drużyna A`/`Drużyna B`, brak herbu → biały krążek z pierwszą
+literą nazwy; jedno i drugie z ostrzeżeniem na stderr (`teams_defaulted`, `crests_generated`).
+
+### Zgodność z raportem produkcyjnym
+Render na eksporcie referencyjnym z konfiguracją odtwarzającą wzorzec daje plik **różniący się od
+`livetag_dashboard_noname_1.html` w jednej linii — linii `const DATA`** — i w dwóch zdarzeniach
+z 294 (`b`: −3,2 → 0,0 oraz −0,4 → 0,0, CHANGELOG 0.4.0). `PAL` identyczne bajtowo, `half_split`
+bez zmian, pozostałe 932 linie identyczne.
+
+Porównanie cofa jedną zamierzoną zmianę strukturalną — nazwy zmiennych CSS. Mapowanie leży
+w manifeście (`noname_css_alias`), żeby nie dało się go po cichu rozszerzyć o kolejne „drobiazgi".
+
 ## [0.7.0] — 2026-08-11
 ### Metryki i render — `build` działa end-to-end
 Etap 2 domknięty. `build` kończył się dotąd kodem 4 mimo policzonych danych; teraz zwraca 0
