@@ -21,6 +21,10 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .mypy_cache/
+# Artefakty budowy pakietu — zostają po `pip install ./engine`
+build/
+dist/
+*.egg-info/
 
 # PHP / narzędzia
 vendor/

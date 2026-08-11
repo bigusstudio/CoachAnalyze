@@ -20,7 +20,7 @@
       ],
       "_v23_data_roznice": "Jedyne dopuszczone różnice wobec v23 — przycięcie ujemnego `begin` (CHANGELOG 0.4.0). Każda inna różnica w DATA jest błędem, nie powodem do aktualizacji wzorca.",
       "szablon_generacja": "v23-noname",
-      "_szablon_generacja": "engine/templates/dashboard_template.html powstał z livetag_dashboard_noname_1.html (generacja v23, już zanonimizowana). Poprzednia generacja leży w engine/templates/ARCHIWUM/v17.html — miała nazwy i herby Hutnika wpisane na sztywno. Po każdej podmianie szablonu zmienić tę wartość; test to wymusza.",
+      "_szablon_generacja": "engine/coachanalyze/templates/dashboard_template.html powstał z livetag_dashboard_noname_1.html (generacja v23, już zanonimizowana). Poprzednia generacja leży w engine/coachanalyze/templates/ARCHIWUM/v17.html — miała nazwy i herby Hutnika wpisane na sztywno. Po każdej podmianie szablonu zmienić tę wartość; test to wymusza.",
 
       "noname_html": "livetag_dashboard_noname_1.html",
       "_noname_html": "Raport v23 po anonimizacji: DRUŻYNA A/B zamiast nazw klubów, herby zastępcze. Wzorzec odbioru dla renderu. Poza repozytorium (.gitignore) — niesie dane meczowe inline.",

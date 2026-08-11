@@ -118,9 +118,12 @@ def main(argv):
         sys.exit(__doc__)
 
     zrodlo = pathlib.Path(argv[1])
-    cel = pathlib.Path(argv[2]) if len(argv) == 3 else (
-        pathlib.Path(__file__).resolve().parent.parent / "templates" / "dashboard_template.html"
-    )
+    # Domyślny cel liczony przez `render`, a nie sklejany tutaj — szablon jest danymi
+    # pakietu i jego położenie ma być w jednym miejscu, nie w dwóch.
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+    from coachanalyze import render
+
+    cel = pathlib.Path(argv[2]) if len(argv) == 3 else pathlib.Path(render.default_template_path())
 
     html, raport = konwertuj(zrodlo.read_text(encoding="utf-8"), zrodlo.parent)
 

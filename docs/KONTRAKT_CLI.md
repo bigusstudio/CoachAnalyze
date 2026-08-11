@@ -39,7 +39,7 @@ wcześniej zostawiałby na dysku `ok: true` bez raportu.
 
 ```json
 {
-  "engine_version": "0.8.0",
+  "engine_version": "0.8.1",
   "profile_version": 4,
   "totals": { "events": 294, "mapped": 287, "unmapped": 7,
               "unmapped_tags": ["AKCJA DEFENSYWNA"],
@@ -65,7 +65,7 @@ domyśla się wyniku. Szablon raportu robi w tym miejscu inaczej (patrz niżej).
 
 ### Render HTML
 
-Silnik wstrzykuje dane w szablon `engine/templates/dashboard_template.html`.
+Silnik wstrzykuje dane w szablon `engine/coachanalyze/templates/dashboard_template.html`.
 **Szablon nie zna żadnego klubu** — wszystko, co identyfikuje drużyny, przychodzi z `config.teams`.
 
 | Znacznik | Wypełniany |
@@ -109,7 +109,7 @@ Plik gotowy do wstawienia w `events_canonical` (app/migrations/002 + 003):
 ```json
 {
   "match_id": 881,
-  "engine_version": "0.8.0",
+  "engine_version": "0.8.1",
   "count": 294,
   "events": [
     {
@@ -195,7 +195,7 @@ przepada po cichu — wraca jako ostrzeżenie `UNKNOWN_TEAM`.
 ```json
 {
   "ok": true,
-  "engine_version": "0.8.0",
+  "engine_version": "0.8.1",
   "format_fingerprint": "sha256:9f3c…",
   "half_split_ms": 2730000,
   "duration_ms": 5820000,
@@ -289,7 +289,7 @@ Przy `4` i `5` `meta.json` może nie powstać — PHP musi to przewidzieć.
 
 ```json
 { "ok": false, "code": "MISSING_COLUMNS", "msg": "Brak wymaganych kolumn: end",
-  "engine_version": "0.8.0", "missing_columns": ["end"] }
+  "engine_version": "0.8.1", "missing_columns": ["end"] }
 ```
 
 `missing_columns` występuje wyłącznie przy kodzie `3`.

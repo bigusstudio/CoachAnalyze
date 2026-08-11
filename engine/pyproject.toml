@@ -1,12 +1,42 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "coachanalyze"
-version = "0.8.0"  # trzymać zgodnie z coachanalyze/__init__.py::__version__
+version = "0.8.1"  # trzymać zgodnie z coachanalyze/__init__.py::__version__
 description = "Silnik analityki meczowej CoachAnalyze"
 requires-python = ">=3.11"
 dependencies = []  # ZERO zależności zewnętrznych — hosting z noexec, patrz docs/OGRANICZENIA_HOSTINGU.md
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
+
+# JAWNA LISTA PAKIETÓW, nie automatyczne wykrywanie.
+#
+# Powód: `engine/` ma układ płaski, a automatyczne wykrywanie setuptools uznawało
+# katalog `templates/` za drugi pakiet najwyższego poziomu i odmawiało budowy
+# („Multiple top-level packages discovered"). Wdrożenie padało na `pip install -e`,
+# czyli w kroku, po którym deploy.sh dopiero uruchamia test złoty — awaria wychodziła
+# na serwerze, nie w CI.
+#
+# Szablony leżą teraz WEWNĄTRZ pakietu i są jego danymi. Dopisując podpakiet, dopisz
+# go tutaj — brak wpisu nie wywala budowy, tylko wycina moduł z instalacji i objawia
+# się `ModuleNotFoundError` dopiero przy pierwszym raporcie. Pilnuje tego
+# `tests/test_pakowanie.py`.
+[tool.setuptools]
+packages = [
+    "coachanalyze",
+    "coachanalyze.sources",
+    "coachanalyze.sources.livetag",
+]
+
+# Szablon raportu jako dane pakietu — `render.py` szuka go względem katalogu pakietu,
+# więc działa też po instalacji poza katalogiem repozytorium.
+# Wzorzec NIEREKURENCYJNY: `templates/ARCHIWUM/` zostaje w repozytorium jako materiał
+# historyczny, ale nie ma po co jechać w każdej instalacji.
+[tool.setuptools.package-data]
+coachanalyze = ["templates/*.html"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

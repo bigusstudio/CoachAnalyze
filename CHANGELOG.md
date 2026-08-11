@@ -3,6 +3,44 @@
 Format: [wersja silnika] — data — opis.
 Każda zmiana, która modyfikuje wyjście silnika, MUSI mieć tu wpis wraz z powodem.
 
+## [0.8.1] — 2026-08-11
+### Pakowanie silnika — wdrożenie padało na `pip install -e`
+Automatyczne wykrywanie pakietów setuptools widziało w płaskim układzie `engine/` dwa pakiety
+najwyższego poziomu — `coachanalyze` i `templates` — i odmawiało budowy („Multiple top-level
+packages discovered"). Awaria wychodziła na serwerze, w kroku `deploy.sh`, po którym test złoty
+dopiero się uruchamia; CI tego nie łapało, bo instaluje z tego samego pliku, ale problem pojawił
+się dopiero po dodaniu katalogu szablonów w 0.8.0.
+
+**Szablony przeniesione do wnętrza pakietu**: `engine/coachanalyze/templates/`. To nie jest
+kosmetyka — szablon obok pakietu nie instaluje się nigdzie, więc `render` znajdowałby go tylko
+przy uruchomieniu z katalogu repozytorium. Silnik startuje z katalogu zadania, nie z repo.
+
+`pyproject.toml`:
+- `[build-system]` zadeklarowany wprost, zamiast polegania na domyślnym zachowaniu pip.
+- `[tool.setuptools] packages` — jawna lista trzech pakietów zamiast wykrywania.
+- `[tool.setuptools.package-data]` — `templates/*.html`. Wzorzec **nierekurencyjny**:
+  `templates/ARCHIWUM/` zostaje w repozytorium jako materiał historyczny, ale nie jedzie
+  w każdej instalacji.
+
+`render.default_template_path()` liczy ścieżkę względem katalogu pakietu, nie katalogu wyżej.
+
+`tests/test_pakowanie.py` — bramka na tę klasę błędów. Testy uruchamiane z katalogu repozytorium
+jej nie widzą, bo `conftest.py` dokłada `engine/` do `sys.path` i wszystko się importuje niezależnie
+od tego, co mówi `pyproject.toml`. Sprawdzamy: lista pakietów zgadza się z drzewem katalogów
+(brak wpisu nie wywala budowy — wycina moduł z instalacji i objawia się `ModuleNotFoundError`
+przy pierwszym raporcie), wersja w `pyproject.toml` zgadza się z `__version__`, szablon leży
+w pakiecie i faktycznie pasuje do wzorca `package-data`, a archiwum nie.
+
+Zweryfikowane na Pythonie 3.13, poza katalogiem repozytorium:
+- `pip install -e engine` — przechodzi, `python -m coachanalyze --version` zwraca `0.8.1`.
+- `pip install engine` (nieedytowalna) — w `site-packages` leżą trzy pakiety i szablon,
+  bez `ARCHIWUM/`. Pełny `build` z tej instalacji daje raport **identyczny co do bajtu**
+  z tym z repozytorium: 933 linie, różnica wyłącznie w linii `const DATA` (dwa zdarzenia
+  z przycięcia ujemnego `begin`).
+
+Wyjście silnika bez zmian — podbicie wersji, bo zmienia się sposób instalacji i miejsce,
+z którego czytany jest szablon, a `engine_version` trafia do każdego raportu.
+
 ## [0.8.0] — 2026-08-11
 ### Szablon przestał znać klub — generacja v23-noname, ZMIANA WYJŚCIA
 Poprzedni szablon (v17) miał wpisane na sztywno „Hutnik Kraków", „Pogoń-Sokół Lubaczów",

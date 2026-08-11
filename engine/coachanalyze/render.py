@@ -8,7 +8,7 @@ jest częścią wyjścia — zmiana separatorów zmienia bajty pliku.
 
 Szablon nie zna żadnego klubu. Nazwy, barwy i herby przychodzą z `config.teams` i wchodzą
 w miejsce znaczników `__TEAM_*__` / `__LOGO_*__`. Poprzednia generacja szablonu (v17) miała
-nazwy i herby Hutnika wpisane na sztywno — leży w `templates/ARCHIWUM/v17.html`.
+nazwy i herby Hutnika wpisane na sztywno — leży w `coachanalyze/templates/ARCHIWUM/v17.html`.
 
 ASERCJA LICZBY WYSTĄPIEŃ, NIE SAMEJ OBECNOŚCI. Powód jest historyczny i kosztował
 odtwarzanie szablonu z kopii: przy v13 skrypt podmiany trafił w komentarz `/* timeline */`
@@ -82,9 +82,18 @@ TEMPLATE_TAGS = (
 
 
 def default_template_path():
-    """`engine/templates/dashboard_template.html` — obok pakietu, nie w nim."""
+    """Szablon jako DANE PAKIETU: `coachanalyze/templates/dashboard_template.html`.
+
+    Ścieżka liczona względem katalogu pakietu, nie względem katalogu roboczego ani
+    korzenia repozytorium — po `pip install` silnik startuje spoza repozytorium
+    (deploy.sh uruchamia go z katalogu zadania) i szablon musi jechać razem z kodem.
+
+    Zwykły `os.path`, nie `importlib.resources`: paczka nigdy nie jest zipem —
+    wdrożenie to rsync źródeł plus instalacja edytowalna — a ścieżka jako napis
+    wraca w raporcie renderu i wchodzi wprost do logu.
+    """
     package_dir = os.path.dirname(os.path.abspath(__file__))
-    return os.path.join(os.path.dirname(package_dir), "templates", TEMPLATE_FILENAME)
+    return os.path.join(package_dir, "templates", TEMPLATE_FILENAME)
 
 
 def load_template(path=None):
