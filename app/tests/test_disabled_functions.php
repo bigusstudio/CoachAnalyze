@@ -217,5 +217,45 @@ $engine = (string) file_get_contents($root . '/app/src/Engine.php');
 check('Engine w warstwie żądań czyta tylko artefakt',
     znajdzWywolania($engine, $szukane) === [] && str_contains($engine, 'cachePath'));
 
+echo "\n== poczta wychodzi z kolejki, nie z żądania ==\n";
+
+/*
+ * `stream_socket_client` NIE JEST na liście `disable_functions`, więc PHP-FPM
+ * mógłby otworzyć połączenie do serwera poczty. To jest właśnie powód, dla
+ * którego trzeba tego pilnować osobno: nic nie zatrzyma takiego kodu w locie,
+ * a objawem będzie strona, która wisi kilkanaście sekund, bo cudzy serwer SMTP
+ * nie odpowiada. Wysyłka ma iść zadaniem `send_mail` z crona.
+ *
+ * Sprawdzamy WYWOŁANIA, nie wystąpienia tekstu — `Notifications` i `Mailer`
+ * wyjaśniają tę zasadę w komentarzach i wymieniają nazwę klasy z nazwy.
+ */
+$router = (string) file_get_contents($root . '/app/public/index.php');
+
+/** Czy plik wywołuje `Mailer::send()` albo `Mailer::fromConfig()`. */
+$wolaMailera = static function (string $kod): bool {
+    $tokeny = token_get_all($kod);
+    $liczba = count($tokeny);
+    for ($i = 0; $i < $liczba - 4; $i++) {
+        if (!is_array($tokeny[$i]) || $tokeny[$i][0] !== T_STRING || $tokeny[$i][1] !== 'Mailer') {
+            continue;
+        }
+        if (!is_array($tokeny[$i + 1]) || $tokeny[$i + 1][0] !== T_DOUBLE_COLON) {
+            continue;
+        }
+        $metoda = $tokeny[$i + 2][1] ?? '';
+        if (in_array($metoda, ['send', 'fromConfig'], true)) {
+            return true;
+        }
+    }
+    return false;
+};
+
+check('router nie wysyła poczty w trakcie żądania', $wolaMailera($router) === false);
+check('router może sprawdzić, czy poczta jest skonfigurowana',
+    str_contains($router, 'Mailer::isConfigured'),
+    'ekran ustawień musi umieć powiedzieć, że SMTP nie działa');
+check('to worker wysyła pocztę',
+    $wolaMailera((string) file_get_contents($root . '/app/bin/run_job.php')));
+
 echo "\n=== OK: {$ok}, BŁĘDÓW: {$fail} ===\n";
 exit($fail === 0 ? 0 : 1);

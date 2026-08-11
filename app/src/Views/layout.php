@@ -25,6 +25,14 @@ $active = $active ?? '';
 // jeszcze nie było, zakładamy jasny — taki jest domyślny w większości systemów,
 // a jedno kliknięcie i tak zapisuje jawny wybór.
 $next = $theme === 'dark' ? 'light' : 'dark';
+
+// Licznik nieodczytanych liczony TUTAJ, a nie przekazywany z każdej trasy.
+// Nagłówek jest na każdej stronie panelu; przekazywanie licznika z dwudziestu
+// miejsc kończy się tym, że w którymś go zabraknie i licznik zniknie na jednym
+// ekranie bez żadnego powodu. `unreadCount()` łyka własne błędy i zwraca 0.
+$nieodczytane = $chrome && Session::userId() !== null
+    ? \CoachAnalyze\Notifications::unreadCount((int) Session::userId())
+    : 0;
 ?>
 <!doctype html>
 <html lang="pl"<?= $theme !== null ? ' data-theme="' . View::e($theme) . '"' : '' ?>>
@@ -61,6 +69,20 @@ $next = $theme === 'dark' ? 'light' : 'dark';
         <span><?= View::e(View::t($next === 'dark' ? 'nav.theme.to_dark' : 'nav.theme.to_light')) ?></span>
       </button>
 
+      <?php /*
+        Licznik nieodczytanych. Zeruje sie po wejsciu na /powiadomienia.
+        Gdy nie ma nic nowego, sama liczba znika, ale odnosnik zostaje —
+        znikajaca pozycja nawigacji jest gorsza niz zero obok niej.
+      */ ?>
+      <a class="btn btn--ghost" href="/powiadomienia">
+        <?= View::e(View::t('nav.notifications')) ?>
+        <?php if ($nieodczytane > 0): ?>
+          <span class="licznik" aria-label="<?= View::e(View::t('notif.unread', $nieodczytane)) ?>">
+            <?= $nieodczytane > 99 ? '99+' : (int) $nieodczytane ?>
+          </span>
+        <?php endif; ?>
+      </a>
+
       <a class="btn btn--ghost" href="/konto"><?= View::e(View::t('account.title')) ?></a>
       <button class="btn btn--ghost" type="submit" formaction="/logout">
         <?= View::e(View::t('login.logout')) ?>
@@ -74,6 +96,9 @@ $next = $theme === 'dark' ? 'light' : 'dark';
     </a>
     <a class="side__item<?= $active === 'matches' ? ' is-active' : '' ?>" href="/mecze">
       <?= View::e(View::t('nav.matches')) ?>
+    </a>
+    <a class="side__item<?= $active === 'reports' ? ' is-active' : '' ?>" href="/raporty">
+      <?= View::e(View::t('nav.reports')) ?>
     </a>
     <a class="side__item<?= $active === 'import' ? ' is-active' : '' ?>" href="/import">
       <?= View::e(View::t('import.nav')) ?>

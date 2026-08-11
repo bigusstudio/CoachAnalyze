@@ -139,4 +139,21 @@ if (PHP_SAPI !== 'cli' && !headers_sent()) {
     header('X-Content-Type-Options: nosniff');
     header('X-Frame-Options: DENY');
     header('Referrer-Policy: same-origin');
+
+    // NIE BUFOROWAĆ STRON PANELU.
+    //
+    // Bez tego nagłówka przeglądarka stosuje buforowanie heurystyczne: odpowiedź
+    // bez `Cache-Control`, `Expires` i `ETag` wolno jej trzymać i podawać ponownie
+    // wedle własnego uznania. Skutek zgłoszony z produkcji: zadanie było już
+    // `done`, a strona odświeżana przez `<meta http-equiv="refresh">` w kółko
+    // pokazywała „trwa generowanie" — bo każde odświeżenie dostawało kopię
+    // sprzed zmiany stanu, nie nową odpowiedź.
+    //
+    // Drugi powód, niezależny od tego błędu: po wylogowaniu przycisk „wstecz"
+    // pokazywałby treść panelu z bufora, mimo że sesja już nie istnieje.
+    //
+    // `no-store` zamiast `no-cache`, bo `no-cache` wciąż pozwala zapisać kopię
+    // (wymusza tylko rewalidację), a strony za sesją nie mają leżeć na dysku.
+    header('Cache-Control: no-store, must-revalidate');
+    header('Pragma: no-cache');
 }

@@ -34,9 +34,12 @@ final class Jobs
     public static function retry(int $id): bool
     {
         $stmt = Db::run(
+            // `available_at` KASUJEMY. Zadanie wysyłki poczty po nieudanej próbie
+            // czeka na swoje okno (nawet godzinę); operator, który klika „ponów",
+            // prosi o próbę TERAZ, a nie o dołączenie się do kolejki za godzinę.
             "UPDATE jobs
                 SET status = 'queued', attempts = 0, exit_code = NULL, error_text = NULL,
-                    started_at = NULL, finished_at = NULL
+                    started_at = NULL, finished_at = NULL, available_at = NULL
               WHERE id = :id AND status IN ('failed', 'done')",
             ['id' => $id]
         );
@@ -46,6 +49,32 @@ final class Jobs
             Audit::log('job.retry', Session::userId(), 'job', $id);
         }
         return $changed;
+    }
+
+    /**
+     * Zadanie wraca do kolejki z wyznaczonym terminem kolejnej próby.
+     *
+     * Odróżnienie od zakończenia błędem: zadanie NIE jest nieudane, tylko
+     * odłożone. Kolumna `available_at` sprawia, że proces roboczy je pominie,
+     * dopóki termin nie nadejdzie (patrz `app/bin/run_job.php`).
+     *
+     * Powód zapisujemy OD RAZU, mimo że zadanie dopiero czeka. Bez tego operator
+     * widziałby pozycję w kolejce bez śladu, że cokolwiek poszło nie tak,
+     * i dowiedziałby się dopiero po wyczerpaniu wszystkich prób.
+     */
+    public static function requeueLater(int $id, int $sekundy, string $powod): void
+    {
+        Db::run(
+            "UPDATE jobs
+                SET status = 'queued', available_at = :kiedy, finished_at = NULL,
+                    exit_code = NULL, error_text = :powod
+              WHERE id = :id",
+            [
+                'kiedy' => Stats::now('+' . max(1, $sekundy) . ' seconds'),
+                'powod' => mb_substr($powod, 0, 8000),
+                'id'    => $id,
+            ]
+        );
     }
 
     /**

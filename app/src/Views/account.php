@@ -81,6 +81,42 @@ use CoachAnalyze\View;
 </section>
 
 <section class="panel">
+  <h2 class="h2"><?= View::e(View::t('notif.prefs.title')) ?></h2>
+
+  <?php /*
+    Przelaczniki dotycza WYLACZNIE poczty. Powiadomienia w aplikacji zostaja
+    zawsze — to one niosa historie zdarzen i licznik, a ich wylaczenie
+    zostawiloby operatora bez sladu po tym, co sie dzialo w tle.
+  */ ?>
+  <p class="hint"><?= View::e(View::t('notif.prefs.hint')) ?></p>
+
+  <?php if (!$mailReady): ?>
+    <?php /*
+      SMTP nieskonfigurowany: mowimy o tym wprost, zamiast pokazywac przelaczniki,
+      ktore niczego nie zmienia. Warstwa mailowa wylacza sie po cichu w kodzie,
+      ale nie ma powodu, zeby byla cicha wobec uzytkownika.
+    */ ?>
+    <p class="empty"><?= View::e(View::t('notif.prefs.no_smtp')) ?></p>
+  <?php endif; ?>
+
+  <form method="post" action="/konto/powiadomienia">
+    <input type="hidden" name="csrf" value="<?= View::e(Session::csrfToken()) ?>">
+
+    <?php foreach ($mailPrefs as $typ => $wlaczone): ?>
+      <label class="check">
+        <input type="checkbox" name="typy[]" value="<?= View::e($typ) ?>"
+               <?= $wlaczone ? 'checked' : '' ?> <?= $mailReady ? '' : 'disabled' ?>>
+        <span><?= View::e(View::t('notif.prefs.' . $typ)) ?></span>
+      </label>
+    <?php endforeach; ?>
+
+    <button class="btn" type="submit" <?= $mailReady ? '' : 'disabled' ?>>
+      <?= View::e(View::t('notif.prefs.save')) ?>
+    </button>
+  </form>
+</section>
+
+<section class="panel">
   <h2 class="h2"><?= View::e(View::t('device.title')) ?></h2>
   <p class="hint"><?= View::e(View::t('device.hint')) ?></p>
 

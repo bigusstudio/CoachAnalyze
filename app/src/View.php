@@ -79,6 +79,25 @@ final class View
     }
 
     /**
+     * Znacznik stanu linku publicznego.
+     *
+     * Osobno od `status()`, bo to inna dziedzina: zadanie bywa `failed`, link
+     * bywa `revoked`, a wspólny zestaw nazw kusiłby, żeby je mieszać. Brak linku
+     * jest tu pełnoprawnym stanem, nie pustką — „nieudostępniony" to informacja.
+     */
+    public static function linkStatus(string $stan): string
+    {
+        $znane = ['none', 'active', 'expired', 'revoked'];
+        $slug  = in_array($stan, $znane, true) ? $stan : 'none';
+
+        return sprintf(
+            '<span class="tag tag--link-%s">%s</span>',
+            $slug,
+            self::e(self::t('link.status.' . $slug))
+        );
+    }
+
+    /**
      * Barwa klubu do wstawienia w atrybut `style`.
      *
      * Barwy klubowe to DANE, nie tokeny motywu — dlatego trafiają do zmiennej

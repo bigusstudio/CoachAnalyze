@@ -59,6 +59,53 @@ cp .env.example .env    # uzupełnić
 `club_key` to stały, losowy klucz klubu — nazwa klubu nie pojawia się w adresie.
 Przy złym kluczu i przy złym tokenie zwracamy **identyczne 404**.
 
+## Kolejka zadań
+
+Warstwa żądań wyłącznie **kolejkuje** — PHP-FPM na lh.pl nie może uruchomić procesu
+(`disable_functions`, patrz `docs/OGRANICZENIA_HOSTINGU.md`). Wykonaniem zajmuje się
+`app/bin/run_job.php`, uruchamiany z crona co minutę.
+
+| Typ zadania | Co robi | Skutek uboczny |
+|---|---|---|
+| `inspect` | raport pokrycia bez renderu | zapis `imports.coverage_json` |
+| `build_report` | pełny render HTML | nowy wiersz w `reports`, powiadomienie |
+| `send_mail` | wysyłka jednego powiadomienia | zmiana `notifications.mail_status` |
+
+`send_mail` jest **osobnym typem zadania**, a nie doczepką do renderu. Serwer poczty
+bywa wolny i bywa niedostępny; gdyby wysyłka siedziała w zadaniu renderu, awaria SMTP
+oznaczałaby „raport się nie wygenerował" i uruchamiała ponawianie ciężkiej pracy silnika.
+
+Kolumna `jobs.available_at` odsuwa zadanie w czasie. Używa jej mail „przetwarzanie
+w toku", który ma pójść dopiero, gdy przetwarzanie faktycznie się przeciąga —
+a przed samą wysyłką worker sprawdza jeszcze, czy powód nadal obowiązuje.
+
+## Powiadomienia
+
+W aplikacji działają **zawsze**, mailem **tylko gdy SMTP jest skonfigurowany**.
+Puste `SMTP_HOST` albo `MAIL_FROM` wyłącza warstwę mailową po cichu — bez błędu,
+bez zmian w kodzie, bez wpływu na powiadomienia w panelu.
+
+Poczta idzie własnym klientem SMTP (`app/src/Mailer.php`) przez `stream_socket_client`,
+bez bibliotek zewnętrznych — ta sama zasada, która wyrzuciła `pandas` z silnika
+i rozszerzenie `redis` z warstwy PHP.
+
+`SMTP_ENCRYPTION` wybiera protokół i jest to wybór **jawny**, nie wyprowadzany
+z numeru portu:
+
+| Wartość | Protokół | Zachowanie |
+|---|---|---|
+| `ssl` | SMTPS | połączenie przez `ssl://`, szyfrowane od pierwszego bajtu, **bez** komendy STARTTLS |
+| `tls` | STARTTLS | połączenie przez `tcp://`, szyfrowanie podnoszone komendą po EHLO |
+| `none` | brak | wyklucza `SMTP_USER`/`SMTP_PASS` — hasło poszłoby jawnie |
+
+**lh.pl to `ssl` na porcie 465.** Wysłanie tam `STARTTLS` jest błędem protokołu.
+Nierozpoznana wartość przerywa wysyłkę zamiast cofać się do słabszego wariantu:
+literówka nie ma prawa po cichu obniżyć poziomu szyfrowania.
+
+Nieudana wysyłka **ponawia zadanie**, nie kończy go błędem — odstępy 1, 5, 15
+i 60 minut, do pięciu prób. Awarie SMTP są w przewadze chwilowe, a raport jest
+w tym momencie już wygenerowany i zapisany; jego zadanie pozostaje `done`.
+
 ## Gałęzie
 
 `main` = produkcja · `dev` = staging · `feat/*` = robocze.

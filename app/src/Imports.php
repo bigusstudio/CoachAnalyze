@@ -260,6 +260,22 @@ final class Imports
         return $jobId;
     }
 
+    /**
+     * Najnowszy import meczu — źródło do ponownego wygenerowania raportu.
+     *
+     * Bierzemy najnowszy, nie pierwszy: jeśli operator wgrał poprawiony eksport,
+     * to on jest tym, z którego ma powstać kolejny raport.
+     *
+     * @return array<string,mixed>|null
+     */
+    public static function latestForMatch(int $matchId): ?array
+    {
+        return Db::one(
+            'SELECT * FROM imports WHERE match_id = :id ORDER BY id DESC LIMIT 1',
+            ['id' => $matchId]
+        );
+    }
+
     /** Najnowszy raport dla meczu — do odnośnika po zakończeniu. */
     public static function latestReport(int $matchId): ?array
     {

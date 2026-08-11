@@ -30,6 +30,10 @@ use CoachAnalyze\Config;
 use CoachAnalyze\Db;
 use CoachAnalyze\EngineRunner;
 use CoachAnalyze\Imports;
+use CoachAnalyze\Jobs;
+use CoachAnalyze\Mailer;
+use CoachAnalyze\Matches;
+use CoachAnalyze\Notifications;
 use CoachAnalyze\RedisClient;
 use CoachAnalyze\Stats;
 use CoachAnalyze\Storage;
@@ -78,8 +82,14 @@ try {
     } else {
         // Ograniczona liczba zadań na przejście — cron wróci za minutę, a długa
         // pętla zwiększa tylko ryzyko, że proces zostanie ubity w połowie.
+        // `available_at` przepuszcza tylko zadania, których termin nadszedł.
+        // Służy mailowi „przetwarzanie w toku", który ma pójść dopiero po zwłoce —
+        // bez tego worker podjąłby go od razu i cała zwłoka byłaby fikcją.
         foreach (Db::all(
-            "SELECT id FROM jobs WHERE status = 'queued' ORDER BY id LIMIT 5"
+            "SELECT id FROM jobs
+              WHERE status = 'queued' AND (available_at IS NULL OR available_at <= :teraz)
+              ORDER BY id LIMIT 5",
+            ['teraz' => Stats::now()]
         ) as $wiersz) {
             przetworz((int) $wiersz['id']);
         }
@@ -122,6 +132,20 @@ function przetworz(int $jobId): void
 
     $job = Db::one('SELECT * FROM jobs WHERE id = :id', ['id' => $jobId]);
     $payload = json_decode((string) ($job['payload_json'] ?? ''), true);
+
+    // Wysyłka poczty nie dotyczy importu — obsługujemy ją przed sprawdzeniem
+    // istnienia importu, inaczej każde zadanie mailowe kończyłoby się
+    // komunikatem „Import 0 nie istnieje".
+    if ((string) $job['type'] === 'send_mail') {
+        try {
+            wyslijMail($jobId, (int) ($payload['notification_id'] ?? 0));
+        } catch (\Throwable $e) {
+            error_log("run_job {$jobId} (poczta): " . $e->getMessage() . "\n" . $e->getTraceAsString());
+            zakoncz($jobId, 4, $e->getMessage());
+        }
+        return;
+    }
+
     $importId = (int) ($payload['import_id'] ?? 0);
     $import = $importId > 0 ? Imports::find($importId) : null;
 
@@ -152,7 +176,11 @@ function wykonajInspekcje(int $jobId, int $importId, array $import): void
     if (!$wynik['ok']) {
         // Ten sam opis co przy renderze — inaczej te same awarie tłumaczyłyby się
         // operatorowi inaczej w zależności od tego, którym wejściem przyszły.
-        zakoncz($jobId, $wynik['exit'], opiszAwarie($wynik, (array) ($wynik['meta'] ?? [])));
+        $powod = opiszAwarie($wynik, (array) ($wynik['meta'] ?? []));
+        Db::run('UPDATE matches SET status = :s WHERE id = :id',
+            ['s' => 'failed', 'id' => (int) $import['match_id']]);
+        zakoncz($jobId, $wynik['exit'], $powod);
+        powiadomOAwarii((int) $import['match_id'], $jobId, $powod, Jobs::canRetry('failed'));
         return;
     }
 
@@ -226,13 +254,240 @@ function wykonajRender(int $jobId, int $importId, array $import): void
             'id' => $matchId,
         ]);
 
+        $reportId = (int) Db::pdo()->lastInsertId();
+
         zakoncz($jobId, 0, null);
         Audit::log('report.generated', null, 'match', $matchId, ['job_id' => $jobId]);
+
+        // DOPIERO TERAZ, po domknięciu zadania. Gdyby powiadomienie powstawało
+        // wcześniej i rzuciło wyjątkiem, gotowy raport zostałby oznaczony jako
+        // nieudany — czyli awaria powiadomienia skasowałaby udaną pracę.
+        // `Notifications::create()` dodatkowo łyka własne błędy.
+        powiadomOGotowym($matchId, $reportId);
         return;
     }
 
     Db::run('UPDATE matches SET status = :s WHERE id = :id', ['s' => 'failed', 'id' => $matchId]);
-    zakoncz($jobId, $wynik['exit'], opiszAwarie($wynik, $meta));
+    $powod = opiszAwarie($wynik, $meta);
+    zakoncz($jobId, $wynik['exit'], $powod);
+    powiadomOAwarii($matchId, $jobId, $powod, Jobs::canRetry('failed'));
+}
+
+/** Powiadomienie o gotowym raporcie — w aplikacji zawsze, mailem wedle ustawień. */
+function powiadomOGotowym(int $matchId, int $reportId): void
+{
+    $match = Matches::find($matchId);
+    if ($match === null) {
+        return;
+    }
+
+    Notifications::create((int) $match['owner_id'], [
+        'type'      => Notifications::TYP_READY,
+        'title'     => 'Raport gotowy: ' . opisMeczu($match),
+        'body'      => 'Raport został wygenerowany i jest dostępny w panelu.',
+        'entity'    => 'report',
+        'entity_id' => $reportId,
+        'url'       => '/raport/' . $reportId,
+    ]);
+}
+
+/** Powiadomienie o nieudanym przetwarzaniu, z powodem po polsku. */
+function powiadomOAwarii(int $matchId, int $jobId, string $powod, bool $moznaPonowic): void
+{
+    $match = Matches::find($matchId);
+    if ($match === null) {
+        return;
+    }
+
+    Notifications::create((int) $match['owner_id'], [
+        'type'      => Notifications::TYP_FAILED,
+        'title'     => 'Przetwarzanie nie powiodło się: ' . opisMeczu($match),
+        // Informacja „czy ponawiać" jest częścią powiadomienia, nie ozdobą:
+        // bez niej odbiorca i tak musi wejść do panelu, żeby cokolwiek zrobić.
+        'body'      => $powod . "\n\n" . ($moznaPonowic
+            ? 'To zadanie można ponowić — plik jest zapisany, nie trzeba wgrywać go jeszcze raz.'
+            : 'Tego zadania nie da się ponowić; konieczne jest ponowne wgranie eksportu.'),
+        'entity'    => 'job',
+        'entity_id' => $jobId,
+        'url'       => '/zadania/' . $jobId,
+    ]);
+}
+
+/** Opis meczu do treści powiadomienia: „Nasza drużyna — Rywal". */
+function opisMeczu(array $match): string
+{
+    $nasza = trim((string) ($match['home_name'] ?? '')) ?: 'nasza drużyna';
+    $rywal = trim((string) ($match['away_name'] ?? '')) ?: 'rywal';
+    $data  = $match['played_at'] !== null ? ' (' . $match['played_at'] . ')' : '';
+    return $nasza . ' — ' . $rywal . $data;
+}
+
+/**
+ * Wysyłka jednego powiadomienia mailem.
+ *
+ * OSOBNY TYP ZADANIA, nie doczepka do renderu. Serwer poczty bywa wolny i bywa
+ * niedostępny; gdyby wysyłka siedziała w zadaniu renderu, awaria SMTP oznaczałaby
+ * „raport się nie wygenerował", co jest nieprawdą i uruchamia niepotrzebne
+ * ponawianie ciężkiej pracy silnika.
+ */
+function wyslijMail(int $jobId, int $notificationId): void
+{
+    $powiadomienie = $notificationId > 0 ? Notifications::find($notificationId) : null;
+
+    if ($powiadomienie === null) {
+        // Powiadomienie mogło zniknąć razem z użytkownikiem — to nie jest awaria.
+        zakoncz($jobId, 0, null);
+        return;
+    }
+
+    /*
+     * Stany TRWAŁE: `sent` i `skipped`. Powtórne przejście po nich nie ma prawa
+     * niczego wysłać — bez tego ponowienie zadania dublowałoby mail w skrzynce
+     * albo wskrzeszało powiadomienie świadomie odwołane jako nieaktualne.
+     *
+     * `failed` jest inny: znaczy „skończyły się automatyczne próby". Operator,
+     * który klika „ponów", prosi właśnie o kolejną — więc wracamy do `pending`
+     * i próbujemy. Traktowanie `failed` jako stanu trwałego dawało przycisk,
+     * który kończył się natychmiastowym „gotowe" i nie wysyłał nic.
+     */
+    $stanMaila = (string) $powiadomienie['mail_status'];
+
+    if ($stanMaila === 'sent' || $stanMaila === 'skipped') {
+        zakoncz($jobId, 0, null);
+        return;
+    }
+
+    if ($stanMaila === 'none') {
+        // Mail nie był przewidziany (brak SMTP albo wyłączony przełącznik
+        // w chwili powstania). Zadanie nie ma czego wysłać.
+        zakoncz($jobId, 0, null);
+        return;
+    }
+
+    if ($stanMaila === 'failed') {
+        // Licznik prób zerujemy: stan `failed` powstaje wyłącznie po wyczerpaniu
+        // automatycznych podejść, więc trafiamy tu tylko z ręcznego ponowienia.
+        // Bez zerowania operator dostawałby jedną próbę i natychmiast ten sam
+        // komunikat o wyczerpaniu limitu.
+        Db::run(
+            "UPDATE notifications SET mail_status = 'pending', mail_attempts = 0 WHERE id = :id",
+            ['id' => $notificationId]
+        );
+        $powiadomienie['mail_attempts'] = 0;
+    }
+
+    if (!Mailer::isConfigured()) {
+        Notifications::markSkipped($notificationId, 'SMTP nie jest skonfigurowany.');
+        zakoncz($jobId, 0, null);
+        return;
+    }
+
+    // Sedno wymagania o dwóch minutach: sprawdzamy stan TERAZ, nie w chwili
+    // zaplanowania. Jeśli raport zdążył się wygenerować, mail „przetwarzanie
+    // w toku" jest już nieprawdą i nie ma prawa wyjść.
+    if (!Notifications::stillRelevant($powiadomienie)) {
+        Notifications::markSkipped($notificationId, 'Powód zdezaktualizował się przed wysyłką.');
+        zakoncz($jobId, 0, null);
+        return;
+    }
+
+    try {
+        $mailer = Mailer::fromConfig();
+    } catch (\Throwable $e) {
+        // Błąd KONFIGURACJI, nie łączności — ponawianie nic tu nie da, bo
+        // `.env` sam się nie poprawi. Typowy przypadek: literówka
+        // w SMTP_ENCRYPTION. Kończymy od razu, z powodem po polsku.
+        error_log("poczta {$notificationId}: zła konfiguracja — " . $e->getMessage());
+        Notifications::markFailed($notificationId, $e->getMessage());
+        zakoncz($jobId, 4, 'Konfiguracja poczty jest błędna: ' . $e->getMessage());
+        return;
+    }
+
+    try {
+        $mailer->send(
+            (string) $powiadomienie['mail_to'],
+            (string) $powiadomienie['title'],
+            trescMaila($powiadomienie)
+        );
+    } catch (\Throwable $e) {
+        // Rozmowa z serwerem trafia WYŁĄCZNIE do logu — bywa w niej adres
+        // i nazwa użytkownika SMTP. W bazie zostaje sam powód, po polsku.
+        error_log("poczta {$notificationId}: " . $e->getMessage() . "\n" . $mailer->transcript());
+        ponowWysylke($jobId, $notificationId, (int) $powiadomienie['mail_attempts'], $e->getMessage());
+        return;
+    }
+
+    Notifications::markSent($notificationId);
+    zakoncz($jobId, 0, null);
+}
+
+/**
+ * Nieudana wysyłka: zadanie WRACA DO KOLEJKI, a nie kończy się błędem.
+ *
+ * Raport jest już wygenerowany i zapisany — jego zadanie ma status `done`
+ * i nic tutaj tego nie zmienia. Przewracanie czegokolwiek poza samą wysyłką
+ * byłoby karą za awarię cudzego serwera poczty.
+ *
+ * Polityka ponawiania (ile prób, jakie odstępy) siedzi w `Notifications`,
+ * a odłożenie zadania w `Jobs` — tutaj zostaje samo złożenie tych dwóch rzeczy.
+ */
+function ponowWysylke(int $jobId, int $notificationId, int $probyDotad, string $powod): void
+{
+    $odstep = Notifications::retryDelay($probyDotad);
+
+    if ($odstep === null) {
+        Notifications::markFailed($notificationId, $powod);
+        zakoncz($jobId, 4, sprintf(
+            "Nie udało się wysłać powiadomienia po %d próbach.\n\n%s",
+            Notifications::MAX_PROB_MAILA,
+            $powod
+        ));
+        error_log("poczta {$notificationId}: próby wyczerpane — {$powod}");
+        return;
+    }
+
+    // Powiadomienie zostaje `pending` — inaczej kolejne podejście zobaczyłoby
+    // „już obsłużone" i cicho nic nie zrobiło.
+    Notifications::markRetry($notificationId, $powod);
+
+    Jobs::requeueLater($jobId, $odstep, sprintf(
+        "Próba %d z %d nie powiodła się, kolejna za %s.\n\n%s",
+        $probyDotad + 1,
+        Notifications::MAX_PROB_MAILA,
+        $odstep >= 60 ? intdiv($odstep, 60) . ' min' : $odstep . ' s',
+        $powod
+    ));
+
+    error_log(sprintf(
+        'poczta %d: próba %d z %d nieudana, ponowienie za %d s — %s',
+        $notificationId,
+        $probyDotad + 1,
+        Notifications::MAX_PROB_MAILA,
+        $odstep,
+        $powod
+    ));
+}
+
+/** Treść maila. Zwykły tekst — bez HTML-a, bez śledzenia otwarć. */
+function trescMaila(array $powiadomienie): string
+{
+    $linie = [(string) $powiadomienie['title'], ''];
+
+    if (!empty($powiadomienie['body'])) {
+        $linie[] = (string) $powiadomienie['body'];
+        $linie[] = '';
+    }
+
+    if (!empty($powiadomienie['url'])) {
+        $baza = rtrim((string) Config::get('APP_URL', ''), '/');
+        $linie[] = $baza !== '' ? $baza . $powiadomienie['url'] : (string) $powiadomienie['url'];
+        $linie[] = '';
+    }
+
+    $linie[] = '—';
+    $linie[] = 'CoachAnalyze. Powiadomienia można wyłączyć w panelu, w ustawieniach konta.';
+
+    return implode("\n", $linie);
 }
 
 function zakoncz(int $jobId, int $exitCode, ?string $error): void

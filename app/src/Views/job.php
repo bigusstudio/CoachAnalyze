@@ -37,6 +37,21 @@ $canRetry = Jobs::canRetry((string) $job['status']);
     <?= View::e(View::t($job['status'] === 'queued' ? 'job.waiting' : 'job.working')) ?>
     <span class="hint"><?= View::e(View::t('job.background')) ?></span>
   </p>
+<?php elseif ($job['status'] === 'done'): ?>
+  <?php /*
+    Zakończone — i widać to od razu, bez szukania w tabeli faktów.
+    Zgłoszenie z produkcji: zadanie było `done`, a strona nadal pokazywała
+    generowanie. Właściwą przyczyną było buforowanie odpowiedzi przez
+    przeglądarkę (naprawione nagłówkiem `Cache-Control: no-store`
+    w app/src/bootstrap.php), ale ekran i tak nie mówił wprost, że jest gotowe:
+    o powodzeniu trzeba było wnioskować z braku komunikatu o błędzie.
+  */ ?>
+  <p class="notice notice--ok" role="status">
+    <?= View::e(View::t($report !== null ? 'job.done.report' : 'job.done')) ?>
+    <?php if ($report !== null): ?>
+      <a class="link" href="/raport/<?= (int) $report['id'] ?>"><?= View::e(View::t('job.done.open')) ?></a>
+    <?php endif; ?>
+  </p>
 <?php endif; ?>
 
 <section class="panel">

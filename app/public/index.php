@@ -18,9 +18,12 @@ use CoachAnalyze\Crest;
 use CoachAnalyze\Engine;
 use CoachAnalyze\Imports;
 use CoachAnalyze\Jobs;
+use CoachAnalyze\Mailer;
 use CoachAnalyze\Matches;
 use CoachAnalyze\Notes;
+use CoachAnalyze\Notifications;
 use CoachAnalyze\Remember;
+use CoachAnalyze\Reports;
 use CoachAnalyze\Seasons;
 use CoachAnalyze\Session;
 use CoachAnalyze\Share;
@@ -191,10 +194,28 @@ switch (true) {
             'active'   => 'account',
             'user'     => $user,
             'devices'  => Remember::devices((int) $user['id']),
+            'mailPrefs' => Notifications::preferences($user),
+            'mailReady' => Mailer::isConfigured(),
             'fullAuth' => Session::hasFullAccess(),
             'notice'   => Session::flash('notice'),
             'error'    => Session::flash('error'),
         ]);
+        break;
+
+    case $path === '/konto/powiadomienia' && $method === 'POST':
+        requireCsrf();
+        // Pola wyboru nieodznaczone NIE PRZYCHODZĄ w żądaniu — dlatego budujemy
+        // pełny zestaw z listy nadesłanej, a brak wpisu znaczy „wyłączone".
+        // Odczytywanie tego wprost z $_POST dałoby przełącznik, którego nie da
+        // się wyłączyć.
+        $wybrane = array_flip(array_map('strval', (array) ($_POST['typy'] ?? [])));
+        Notifications::savePreferences((int) $user['id'], [
+            Notifications::TYP_PENDING => isset($wybrane[Notifications::TYP_PENDING]),
+            Notifications::TYP_READY   => isset($wybrane[Notifications::TYP_READY]),
+            Notifications::TYP_FAILED  => isset($wybrane[Notifications::TYP_FAILED]),
+        ]);
+        Session::flash('notice', View::t('notif.prefs.saved'));
+        redirect('/konto');
         break;
 
     case preg_match('#^/konto/urzadzenie/(\d+)/wyloguj$#', $path, $m) === 1 && $method === 'POST':
@@ -371,6 +392,25 @@ switch (true) {
         redirect('/notatki');
         break;
 
+    // ------------------------------------------------- raporty (lista zbiorcza)
+    case $path === '/raporty' && $method === 'GET':
+        showReports();
+        break;
+
+    case preg_match('#^/raport/(\d+)/ponow$#', $path, $m) === 1 && $method === 'POST':
+        requireCsrf();
+        regenerateReport((int) $m[1], (int) $user['id']);
+        break;
+
+    // ------------------------------------------------- powiadomienia
+    case $path === '/powiadomienia' && $method === 'GET':
+        showNotifications((int) $user['id']);
+        break;
+
+    case preg_match('#^/mecze/(\d+)/historia$#', $path, $m) === 1 && $method === 'GET':
+        showMatchHistory((int) $m[1]);
+        break;
+
     case preg_match('#^/raport/(\d+)$#', $path, $m) === 1 && $method === 'GET':
         serveReport((int) $m[1]);
         break;
@@ -393,7 +433,12 @@ switch (true) {
             Share::revoke($id, (int) $user['id']) ? 'notice' : 'error',
             View::t('share.revoked')
         );
-        redirect($link !== null ? '/raport/' . (int) $link['report_id'] . '/udostepnij' : '/linki');
+        // Odwołać link można z kilku ekranów — wracamy tam, skąd przyszliśmy.
+        // `safeReturn()` przepuszcza wyłącznie ścieżki własne, więc pole `powrot`
+        // nie da się użyć do przekierowania na obcą stronę.
+        redirect(isset($_POST['powrot'])
+            ? safeReturn((string) $_POST['powrot'])
+            : ($link !== null ? '/raport/' . (int) $link['report_id'] . '/udostepnij' : '/linki'));
         break;
 
     case $path === '/linki' && $method === 'GET':
@@ -611,6 +656,31 @@ function handleImport(int $userId): void
     );
 
     $jobId = Imports::queueInspect($importId, $userId);
+
+    /*
+     * Powiadomienie „przetwarzanie w toku" — ZE ZWŁOKĄ.
+     *
+     * Mail ma pójść tylko wtedy, gdy przetwarzanie faktycznie się przeciąga.
+     * Przy pustej kolejce raport bywa gotowy w kilkanaście sekund i taki mail
+     * dotarłby PO mailu „raport gotowy", czyli jako dezinformacja.
+     *
+     * Zwłoka sama nie wystarcza: przed wysłaniem worker sprawdza jeszcze, czy
+     * powód nadal obowiązuje (Notifications::stillRelevant). Zwłoka odsuwa
+     * pytanie w czasie, a odpowiedź na nie pada dopiero w chwili wysyłki.
+     */
+    $import = Imports::find($importId);
+    if ($import !== null) {
+        Notifications::create($userId, [
+            'type'      => Notifications::TYP_PENDING,
+            'title'     => View::t('notif.pending.title'),
+            'body'      => View::t('notif.pending.body'),
+            'entity'    => 'match',
+            'entity_id' => (int) $import['match_id'],
+            'url'       => '/zadania/' . $jobId,
+            'delay'     => Notifications::OPOZNIENIE_PENDING,
+        ]);
+    }
+
     redirect('/zadania/' . $jobId);
 }
 
@@ -671,6 +741,97 @@ function queueBuild(int $importId, int $userId): void
     redirect('/zadania/' . $jobId);
 }
 
+
+/** Lista wszystkich raportów, niezależnie od meczu. */
+function showReports(): void
+{
+    $wynik = Reports::search([
+        'club'   => isset($_GET['klub']) && $_GET['klub'] !== '' ? (int) $_GET['klub'] : null,
+        'season' => isset($_GET['sezon']) && $_GET['sezon'] !== '' ? (int) $_GET['sezon'] : null,
+        'sort'   => isset($_GET['sort']) ? (string) $_GET['sort'] : null,
+        'page'   => isset($_GET['strona']) ? (int) $_GET['strona'] : 1,
+    ]);
+
+    View::page('reports_list', [
+        'title'   => View::t('reports.title'),
+        'active'  => 'reports',
+        'rows'    => $wynik['rows'],
+        'total'   => $wynik['total'],
+        'page'    => $wynik['page'],
+        'pages'   => $wynik['pages'],
+        'clubs'   => Reports::filterClubs(),
+        'seasons' => Reports::filterSeasons(),
+        'filters' => [
+            'klub'  => $_GET['klub']  ?? '',
+            'sezon' => $_GET['sezon'] ?? '',
+            'sort'  => Reports::normalizeSort($_GET['sort'] ?? null),
+        ],
+        'notice'  => Session::flash('notice'),
+        'error'   => Session::flash('error'),
+    ]);
+}
+
+/**
+ * Ponowne wygenerowanie raportu dla tego samego meczu.
+ *
+ * Powstaje NOWY raport, stary zostaje. Podmiana w miejscu skasowałaby odpowiedź
+ * na pytanie „dlaczego raport z marca pokazywał inną liczbę" (CLAUDE.md §7),
+ * a przy okazji unieważniła działający link publiczny wskazujący stary plik.
+ */
+function regenerateReport(int $reportId, int $userId): void
+{
+    $report = Reports::find($reportId);
+    if ($report === null) {
+        http_response_code(404);
+        redirect('/raporty');
+    }
+
+    $import = Imports::latestForMatch((int) $report['match_id']);
+    if ($import === null) {
+        // Eksport źródłowy zniknął — mówimy wprost, zamiast kolejkować zadanie,
+        // które i tak padnie za minutę z komunikatem o brakującym imporcie.
+        Session::flash('error', View::t('reports.regen.no_import'));
+        redirect('/raporty');
+    }
+
+    $jobId = Imports::queueBuild((int) $import['id'], $userId);
+    Session::flash('notice', View::t('reports.regen.queued'));
+    redirect('/zadania/' . $jobId);
+}
+
+/** Lista powiadomień. Wejście tutaj zeruje licznik nieodczytanych. */
+function showNotifications(int $userId): void
+{
+    $lista = Notifications::forUser($userId);
+
+    // Odczyt oznaczamy PO pobraniu listy, żeby na tym ekranie było jeszcze
+    // widać, które były nowe. Licznik w nagłówku jest już wtedy wyzerowany.
+    Notifications::markAllRead($userId);
+
+    View::page('notifications_list', [
+        'title'  => View::t('notif.title'),
+        'active' => 'notifications',
+        'rows'   => $lista,
+    ]);
+}
+
+/** Historia zdarzeń jednego meczu: wgranie, pokrycie, raport, udostępnienie. */
+function showMatchHistory(int $matchId): void
+{
+    $match = Matches::find($matchId);
+    if ($match === null) {
+        http_response_code(404);
+        View::page('soon', ['title' => View::t('common.not_found'), 'heading' => View::t('common.not_found')]);
+        return;
+    }
+
+    View::page('match_history', [
+        'title'  => View::t('history.title'),
+        'active' => 'matches',
+        'match'  => $match,
+        'events' => Matches::history($matchId),
+    ]);
+}
 
 function showMatchNotes(int $matchId): void
 {

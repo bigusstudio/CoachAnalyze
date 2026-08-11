@@ -147,4 +147,138 @@ final class Matches
         ]);
         Audit::log('match.season', $userId, 'match', $matchId, ['season_id' => $seasonId]);
     }
+
+    /**
+     * Historia zdarzeń meczu: wgranie, pokrycie, raport, udostępnienie.
+     *
+     * SKŁADANA Z FAKTÓW W TABELACH, nie z `audit_log`. Audyt notuje, kto co
+     * kliknął, i służy do rozliczania dostępu; tutaj chodzi o to, co się
+     * z meczem stało — łącznie ze zdarzeniami, których nikt nie klikał, bo
+     * zrobił je proces roboczy z crona. Gdyby brać to z audytu, przetwarzanie
+     * w tle byłoby w historii niewidoczne, czyli zniknęłaby połowa odpowiedzi
+     * na pytanie „dlaczego to trwało tak długo".
+     *
+     * Każdy wpis: `kind`, `at`, `label`, opcjonalnie `url` i `detail`.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public static function history(int $matchId): array
+    {
+        $zdarzenia = [];
+
+        foreach (Db::all(
+            'SELECT id, created_at, coverage_json, engine_version
+               FROM imports WHERE match_id = :id ORDER BY id',
+            ['id' => $matchId]
+        ) as $import) {
+            $zdarzenia[] = [
+                'kind'   => 'import',
+                'at'     => (string) $import['created_at'],
+                'ref_id' => (int) $import['id'],
+                'url'    => '/import/' . (int) $import['id'],
+            ];
+
+            // Pokrycie to osobne zdarzenie, bo dzieje się później niż wgranie —
+            // między nimi stoi kolejka i to właśnie tam bywa opóźnienie.
+            if (!empty($import['coverage_json'])) {
+                $zdarzenia[] = [
+                    'kind'   => 'coverage',
+                    'at'     => (string) $import['created_at'],
+                    'ref_id' => (int) $import['id'],
+                    'url'    => '/import/' . (int) $import['id'],
+                    'detail' => $import['engine_version'] !== null
+                        ? 'silnik ' . $import['engine_version'] : null,
+                ];
+            }
+        }
+
+        foreach (Db::all(
+            'SELECT id, generated_at, engine_version FROM reports WHERE match_id = :id ORDER BY id',
+            ['id' => $matchId]
+        ) as $report) {
+            $zdarzenia[] = [
+                'kind'   => 'report',
+                'at'     => (string) $report['generated_at'],
+                'ref_id' => (int) $report['id'],
+                'url'    => '/raport/' . (int) $report['id'],
+                'detail' => 'silnik ' . (string) $report['engine_version'],
+            ];
+        }
+
+        foreach (Db::all(
+            'SELECT sl.id, sl.created_at, sl.revoked_at, sl.views, sl.report_id
+               FROM share_links sl
+               JOIN reports r ON r.id = sl.report_id
+              WHERE r.match_id = :id ORDER BY sl.id',
+            ['id' => $matchId]
+        ) as $link) {
+            $zdarzenia[] = [
+                'kind'   => 'share',
+                'at'     => (string) $link['created_at'],
+                'ref_id' => (int) $link['id'],
+                'url'    => '/raport/' . (int) $link['report_id'] . '/udostepnij',
+                'detail' => (int) $link['views'] > 0 ? 'wejść: ' . (int) $link['views'] : null,
+            ];
+
+            // Odwołanie linku jest osobnym zdarzeniem w czasie, nie cechą linku.
+            if ($link['revoked_at'] !== null) {
+                $zdarzenia[] = [
+                    'kind'   => 'share_revoked',
+                    'at'     => (string) $link['revoked_at'],
+                    'ref_id' => (int) $link['id'],
+                    'url'    => '/raport/' . (int) $link['report_id'] . '/udostepnij',
+                ];
+            }
+        }
+
+        // Zadania zakończone błędem — bez nich historia pokazywałaby wyłącznie
+        // sukcesy i wyglądałaby na kompletną, nie będąc nią.
+        //
+        // Powiązanie zadania z importem siedzi w `payload_json`, więc rozwiązujemy
+        // je w PHP, tak samo jak `Imports::latestJob()`. Funkcje JSON-owe SQL-a
+        // różnią się między MariaDB a SQLite, a testy chodzą na tym drugim —
+        // zapytanie z `JSON_EXTRACT` działałoby na produkcji i wywracało się w CI.
+        $importIds = array_map(
+            static fn(array $i) => (int) $i['id'],
+            Db::all('SELECT id FROM imports WHERE match_id = :id', ['id' => $matchId])
+        );
+
+        if ($importIds !== []) {
+            foreach (Db::all(
+                "SELECT id, finished_at, type, error_text, payload_json
+                   FROM jobs WHERE status = 'failed' ORDER BY id DESC LIMIT :lim",
+                ['lim' => 500]
+            ) as $job) {
+                $payload = json_decode((string) $job['payload_json'], true);
+                if (!is_array($payload) || !in_array((int) ($payload['import_id'] ?? 0), $importIds, true)) {
+                    continue;
+                }
+                $zdarzenia[] = [
+                    'kind'   => 'failed',
+                    'at'     => (string) ($job['finished_at'] ?? ''),
+                    'ref_id' => (int) $job['id'],
+                    'url'    => '/zadania/' . (int) $job['id'],
+                    'detail' => self::pierwszaLinia((string) ($job['error_text'] ?? '')),
+                ];
+            }
+        }
+
+        usort($zdarzenia, static function (array $a, array $b): int {
+            return [$a['at'], $a['kind']] <=> [$b['at'], $b['kind']];
+        });
+
+        return $zdarzenia;
+    }
+
+    /** Skrót powodu awarii na jedną linię — pełny zapis zostaje w podglądzie zadania. */
+    private static function pierwszaLinia(string $tekst): ?string
+    {
+        $tekst = trim($tekst);
+        if ($tekst === '') {
+            return null;
+        }
+        $koniec = strpos($tekst, "\n");
+        $linia = $koniec === false ? $tekst : substr($tekst, 0, $koniec);
+        return mb_substr($linia, 0, 160);
+    }
 }

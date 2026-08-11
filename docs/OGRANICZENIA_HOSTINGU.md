@@ -412,3 +412,75 @@ Cofać jednak nie warto bez powodu. Kolejka daje rzeczy, których natychmiastowe
 nie dawało: ponowienia, widoczny stan zadania, limit równoległości, historię błędów.
 Na VPS-ie sensowniejsze jest zostawienie kolejki i zastąpienie crona demonem —
 zysk to opóźnienie startu poniżej sekundy zamiast do minuty.
+
+---
+
+## Poczta wychodząca: SMTPS na porcie 465, nie STARTTLS
+
+Serwer poczty lh.pl dla tego konta:
+
+```
+host:        mail-serwer400227.lh.pl
+port:        465
+szyfrowanie: SMTPS — od pierwszego bajtu
+logowanie:   AUTH LOGIN, pełny adres jako nazwa użytkownika
+```
+
+**SMTPS i STARTTLS to dwa różne protokoły, nie warianty jednego.** Przy SMTPS klient
+łączy się przez `ssl://` i rozmowa jest szyfrowana, zanim padnie pierwsze słowo
+protokołu. Komenda `STARTTLS` jest tam **błędem** — serwer odpowiada `503 already
+using TLS` albo zrywa połączenie.
+
+Odwrotny błąd jest groźniejszy: pominięcie `STARTTLS` na serwerze, który go oczekuje,
+kończy się wysłaniem hasła otwartym tekstem. Rozmowa idzie dalej, poczta działa,
+a jedynym objawem jest brak szyfrowania — czyli nic widocznego.
+
+### Konfiguracja jest jawna, nie zgadywana z portu
+
+`SMTP_ENCRYPTION` w `.env` przyjmuje `ssl`, `tls` albo `none`. Wyprowadzanie tego
+z numeru portu byłoby zgadywaniem: 465 i 587 to zwyczaj, a nie deklaracja protokołu,
+i serwer może słuchać gdzie indziej. Przy przenosinach na inny hosting zmienia się
+wpis w `.env`, nie kod.
+
+Wartość spoza listy **przerywa wysyłkę**. Cofnięcie się do wartości domyślnej przy
+literówce oznaczałoby wdrożenie ze słabszym szyfrowaniem, którego nikt nie zauważy —
+poczta chodzi, tylko hasło lata otwartym tekstem.
+
+Domyślna wartość wyprowadzona z portu (465 → `ssl`) istnieje wyłącznie dla wdrożeń
+sprzed wprowadzenia tej pozycji.
+
+### Weryfikacja certyfikatu zostaje włączona
+
+`verify_peer` i `verify_peer_name` są włączone. Szyfrowanie bez sprawdzenia, z kim
+się rozmawia, jest ozdobą: połączenie byłoby szyfrowane z kimkolwiek, kto odpowie
+pod tym adresem — razem z hasłem do SMTP.
+
+Gdy hosting ma nieaktualny zasób CA, służy do tego `SMTP_CA_FILE` (ścieżka do
+własnego pliku z urzędami). Rozwiązaniem **nie jest** wyłączenie weryfikacji, choć
+to właśnie odpowiedź, którą się w takiej sytuacji najczęściej znajduje.
+
+### Limity czasu
+
+`SMTP_TIMEOUT` (domyślnie 10 s) obejmuje **dwie różne rzeczy**: nawiązanie połączenia
+(argument `stream_socket_client`) oraz czekanie na odpowiedź serwera
+(`stream_set_timeout`). Bez pierwszego z nich PHP użyłby `default_socket_timeout`,
+zwykle 60 s.
+
+To nie jest szczegół: cron chodzi **co minutę**, a proces roboczy bierze do pięciu
+zadań na przejście. Przy niedostępnym serwerze poczty i limicie 60 s jedno przejście
+trwałoby pięć minut i kolejka zatrzymałaby się razem z generowaniem raportów.
+
+### Nieudana wysyłka ponawia zadanie, nie przewraca raportu
+
+Awarie SMTP są w przewadze chwilowe: przeciążony serwer, zerwana sieć, limit wysyłek
+na minutę. Zadanie `send_mail` wraca więc do kolejki z rosnącym odstępem
+(1, 5, 15, 60 minut, do pięciu prób), zamiast kończyć się błędem po pierwszej próbie.
+
+Raport jest w tej chwili już wygenerowany i zapisany, a jego zadanie ma status `done` —
+awaria cudzego serwera poczty nie ma prawa tego zmienić. Powód każdej nieudanej próby
+trafia do logu i do `jobs.error_text`, widocznego w panelu **od razu**, a nie dopiero
+po wyczerpaniu wszystkich prób.
+
+Powiadomienie zostaje przy tym w stanie `pending`. Ustawienie `failed` po pierwszej
+porażce sprawiłoby, że kolejne podejście zobaczyłoby „już obsłużone" i cicho nic nie
+zrobiło — mechanizm ponawiania wyglądałby na działający, nie będąc nim.
