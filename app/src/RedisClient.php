@@ -163,6 +163,19 @@ final class RedisClient
         return (int) $this->command('DEL', $this->key($key));
     }
 
+    /**
+     * Blokada: ustaw, jeśli klucza nie ma, i wygaś po `ttl` sekundach.
+     *
+     * `SET k v NX EX ttl` jest ATOMOWE — sprawdzenie i zapis w jednym poleceniu.
+     * Wariant „sprawdź GET, potem SET" pozwoliłby dwóm procesom przejść naraz.
+     * TTL jest obowiązkowy: proces ubity w połowie nie może zablokować kolejki
+     * na zawsze.
+     */
+    public function setNx(string $key, string $value, int $ttl): bool
+    {
+        return $this->command('SET', $this->key($key), $value, 'NX', 'EX', (string) $ttl) === 'OK';
+    }
+
     public function ping(): bool
     {
         return $this->command('PING') === 'PONG';

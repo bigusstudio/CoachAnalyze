@@ -14,6 +14,7 @@ final class Config
     /** @var array<string,string> */
     private static array $values = [];
     private static bool $loaded = false;
+    private static ?string $loadedFrom = null;
 
     public static function load(?string $path = null): void
     {
@@ -36,6 +37,7 @@ final class Config
 
         if ($raw !== false) {
             self::$values = self::parse($raw);
+            self::$loadedFrom = $path;
         } else {
             // Bez `.env` aplikacja nie ma haseł do bazy ani ścieżki do silnika.
             // Do logu, nigdy do przeglądarki.
@@ -55,17 +57,57 @@ final class Config
      */
     public static function envPath(): string
     {
-        // Nadpisanie na potrzeby nietypowego wdrożenia albo testu.
+        foreach (self::envCandidates() as $candidate) {
+            // Próba odczytu, nie `is_file` — na tym hostingu test istnienia
+            // kłamie dla ścieżek spoza open_basedir.
+            if (@file_get_contents($candidate, false, null, 0, 1) !== false) {
+                return $candidate;
+            }
+        }
+        return self::envCandidates()[0];
+    }
+
+    /**
+     * Kandydaci na plik konfiguracji — LISTA ZAMKNIĘTA, bez przeszukiwania drzewa.
+     *
+     * Warstwa żądań i warstwa zadań startują z RÓŻNYCH katalogów:
+     *
+     *   FPM   {domena}/index.php            -> CA_ROOT = {domena}       -> {domena}/.env
+     *   cron  repo/app/bin/run_job.php      -> CA_ROOT = repo           -> repo/.env
+     *
+     * `repo/.env` nie powinien istnieć — `.env` nie należy do repozytorium.
+     * Gdy jednak zostanie po starszej instalacji, cron czyta NIEAKTUALNE wartości
+     * i aplikacja rozjeżdża się sama ze sobą: FPM widzi jedną ścieżkę storage,
+     * proces roboczy drugą. Dokładnie to wyszło na produkcji.
+     *
+     * Dlatego dokładamy trzeciego kandydata — `shared/.env`, czyli źródło prawdy
+     * obok repozytorium. Kolejność zostaje, żeby jawne wdrożenie wygrywało,
+     * ale bootstrap zapisuje w logu, KTÓRY plik faktycznie wczytał.
+     *
+     * @return list<string>
+     */
+    public static function envCandidates(): array
+    {
+        $lista = [];
+
         $override = getenv('CA_ENV_PATH');
         if (is_string($override) && $override !== '') {
-            return $override;
+            $lista[] = $override;
         }
 
-        // CA_ROOT ustala bootstrap (i niezależnie app/public/index.php).
-        // Zapasowo liczymy je stąd: `app/src/` nie zmienia położenia względem `app/`.
         $root = defined('CA_ROOT') ? CA_ROOT : dirname(__DIR__, 2);
+        $lista[] = $root . '/.env';
 
-        return $root . '/.env';
+        // Układ z crona: CA_ROOT wypada na `repo/`, a konfiguracja leży obok.
+        $lista[] = dirname($root) . '/shared/.env';
+
+        return $lista;
+    }
+
+    /** Ścieżka faktycznie wczytanego pliku — do diagnostyki, nie do logiki. */
+    public static function loadedFrom(): ?string
+    {
+        return self::$loadedFrom;
     }
 
     /** @return array<string,string> */
@@ -139,5 +181,6 @@ final class Config
     {
         self::$values = $values;
         self::$loaded = true;
+        self::$loadedFrom = null;
     }
 }

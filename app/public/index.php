@@ -514,8 +514,17 @@ function showJob(int $id): void
         'notice' => Session::flash('notice'),
         'error'  => Session::flash('error'),
         // Odświeżamy tylko wtedy, gdy jest na co czekać. Strona zakończonego
-        // zadania odświeżająca się w kółko utrudniałaby czytanie tracebacku.
-        'refresh' => in_array($job['status'], ['queued', 'running'], true) ? 4 : null,
+        // zadania odświeżająca się w kółko utrudniałaby czytanie komunikatu o błędzie.
+        //
+        // Odstępy dobrane pod cron, nie pod wrażenie płynności: zadanie w kolejce
+        // ruszy najwcześniej przy najbliższym przejściu workera, czyli w ciągu
+        // minuty — odpytywanie co kilka sekund to same puste żądania.
+        // Gdy silnik już pracuje, sprawdzamy częściej, bo koniec może przyjść lada chwila.
+        'refresh' => match ((string) $job['status']) {
+            'queued'  => 20,
+            'running' => 6,
+            default   => null,
+        },
     ]);
 }
 
@@ -582,31 +591,27 @@ function handleImport(int $userId): void
         redirect('/import');
     }
 
-    $result = Engine::inspect((string) $csv['path'], $json['path'] ?? null);
-
-    if (!$result['ok']) {
-        @unlink((string) $csv['path']);
-        if (!empty($json['path'])) {
-            @unlink((string) $json['path']);
-        }
-        // Traceback silnika idzie do logu, nigdy do przeglądarki (CLAUDE.md §5).
-        if ($result['stderr'] !== '') {
-            error_log('inspect stderr: ' . $result['stderr']);
-        }
-        $powod = (string) ($result['meta']['msg'] ?? View::t('common.error'));
-        Session::flash('error', View::t('import.err.engine', $powod));
-        redirect('/import');
-    }
-
+    /*
+     * ŻADNEGO URUCHAMIANIA SILNIKA W TEJ ŚCIEŻCE.
+     *
+     * PHP-FPM na lh.pl ma `disable_functions` obejmujące proc_open, exec,
+     * shell_exec i resztę — z przeglądarki nie da się odpalić procesu.
+     * Wcześniej stało tu synchroniczne `Engine::inspect()`, które wywalało się
+     * wyjątkiem PRZED zapisem zadania, przez co tabela `jobs` zostawała pusta
+     * i nie było nawet czego ponowić.
+     *
+     * Teraz zapisujemy import bez pokrycia i wstawiamy zadanie `inspect`
+     * do kolejki. Podniesie je cron (co minutę, app/bin/run_job.php).
+     */
     $importId = Imports::create(
         $userId,
         (string) $csv['path'],
         $json['path'] ?? null,
-        (string) $csv['sha256'],
-        (array) $result['meta']
+        (string) $csv['sha256']
     );
 
-    redirect('/import/' . $importId);
+    $jobId = Imports::queueInspect($importId, $userId);
+    redirect('/zadania/' . $jobId);
 }
 
 function showCoverage(int $importId): void
@@ -624,18 +629,24 @@ function showCoverage(int $importId): void
 
     $report = Imports::report($import);
 
-    // Sekcje niedostępne nie mieszczą się w schemacie `imports`, więc odtwarzamy
-    // je z ostatniego przebiegu silnika. Gdy ich nie ma — pytamy silnik jeszcze raz.
-    $meta = Engine::inspect((string) $import['csv_path'], $import['json_path'] ?: null);
+    /*
+     * Wszystko poniżej pochodzi z ARTEFAKTÓW zapisanych przez proces roboczy.
+     * Warstwa żądań nie uruchamia silnika (disable_functions), więc gdy pokrycia
+     * jeszcze nie ma, pokazujemy stan zadania zamiast pustych liczb.
+     */
+    if ($report['coverage'] === []) {
+        $job = Imports::latestJob($importId, 'inspect');
+        redirect($job !== null ? '/zadania/' . (int) $job['id'] : '/import');
+    }
 
     View::page('import_coverage', [
         'title'               => View::t('coverage.title'),
         'active'              => 'import',
         'import'              => $import,
-        'coverage'            => $report['coverage'] ?: (array) ($meta['meta']['coverage'] ?? []),
-        'warnings'            => $report['warnings'] ?: (array) ($meta['meta']['warnings'] ?? []),
-        'sectionsUnavailable' => (array) ($meta['meta']['sections_unavailable'] ?? []),
-        'sectionsAvailable'   => (array) ($meta['meta']['sections_available'] ?? []),
+        'coverage'            => $report['coverage'],
+        'warnings'            => $report['warnings'],
+        'sectionsUnavailable' => $report['sections_unavailable'],
+        'sectionsAvailable'   => $report['sections_available'],
         'report'              => Imports::latestReport((int) $import['match_id']),
         'notice'              => Session::flash('notice'),
     ]);
@@ -655,14 +666,8 @@ function queueBuild(int $importId, int $userId): void
 
     $jobId = Imports::queueBuild($importId, $userId);
 
-    if (!Engine::launchWorker($jobId)) {
-        // Zadanie zostaje w kolejce — podniesie je cron-siatka. Operator ma
-        // o tym wiedzieć, zamiast patrzeć na status, który się nie zmienia.
-        Session::flash('error', View::t('job.launch_failed'));
-    } else {
-        Session::flash('notice', View::t('coverage.queued'));
-    }
-
+    // Zadanie czeka na crona — z przeglądarki nie wolno uruchomić procesu.
+    Session::flash('notice', View::t('coverage.queued'));
     redirect('/zadania/' . $jobId);
 }
 
@@ -928,17 +933,15 @@ function saveClub(?int $id, int $userId): void
     $primary   = View::color($_POST['color_primary'] ?? null, '#E8722C');
     $secondary = View::color($_POST['color_secondary'] ?? null, '#2C6FE8');
 
-    // Korekta kontrastu liczona przez SILNIK (Engine::contrastColor). Gdy silnik
-    // nie odpowie, zapisujemy barwę wybraną przez operatora i mówimy o tym —
-    // podstawienie własnego wyliczenia dałoby inną wartość niż paleta raportu.
-    $engineDown = false;
-    if (!empty($_POST['contrast_fix'])) {
-        $fixed1 = Engine::contrastColor($primary);
-        $fixed2 = Engine::contrastColor($secondary);
-        $engineDown = $fixed1 === null || $fixed2 === null;
-        $primary   = $fixed1 ?? $primary;
-        $secondary = $fixed2 ?? $secondary;
-    }
+    /*
+     * Korekta kontrastu NIE jest już liczona przy zapisie.
+     *
+     * Wymagała uruchomienia Pythona, a warstwa żądań nie może uruchamiać
+     * procesów (disable_functions). Zapisujemy barwę wybraną przez operatora,
+     * a korektę stosuje silnik przy renderze — konfiguracja niesie
+     * `options.contrast_fix`, więc arytmetyka koloru zostaje po jednej stronie
+     * i nadal nie jest przepisywana do PHP.
+     */
 
     $data = [
         'name'            => $name,
@@ -969,7 +972,7 @@ function saveClub(?int $id, int $userId): void
         }
     }
 
-    Session::flash('notice', View::t($engineDown ? 'club.saved_no_contrast' : 'club.saved'));
+    Session::flash('notice', View::t('club.saved'));
     redirect(safeReturn($_POST['powrot'] ?? null) !== '/' ? safeReturn($_POST['powrot'] ?? null) : '/kluby');
 }
 

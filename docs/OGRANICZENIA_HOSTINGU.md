@@ -8,7 +8,7 @@
 |---|---|---|
 | Python | **3.11.2** | `/usr/bin/python3.11` |
 | PHP | **8.3.33** | CLI, `max_execution_time=0`, `memory_limit=256M` |
-| `proc_open` | **dostępne** | PHP może uruchamiać Pythona — architektura workera stoi |
+| `proc_open` | **tylko CLI** | Bramkę robiono przez SSH, czyli w CLI. Na PHP-FPM ta funkcja jest na liście `disable_functions` — patrz niżej. Silnik uruchamia wyłącznie cron |
 | phpredis | **załadowane** | Połączenie do serwera Redis do potwierdzenia |
 | Redis | **działa** | Gniazdo uniksowe `/usr/local/redis/sockets/serwer400227.sock`, port `0`. Host/port TCP odmawia połączenia — to normalne |
 | MariaDB | **10.11** | Nie MySQL. `SKIP LOCKED` dostępne (od 10.6), `JSON` to alias `LONGTEXT` |
@@ -89,17 +89,20 @@ przeglądarki, albo usługa zewnętrzna, albo VPS.
 `crontab -l` zwraca `/var/spool/cron: No such file or directory`. Zadania cykliczne ustawia się
 w panelu klienta, a minimalny interwał bywa dłuższy niż minuta.
 
-**Konsekwencja architektoniczna — ścieżka podstawowa nie czeka na cron.** Skoro `proc_open` działa,
-PHP uruchamia silnik natychmiast po wgraniu eksportu, jako proces w tle:
+**Konsekwencja architektoniczna — cron jest ścieżką PODSTAWOWĄ, nie siatką bezpieczeństwa.**
 
-```php
-proc_open("nohup {$python} -m coachanalyze build ... > /dev/null 2>&1 &", $desc, $pipes);
-```
+Pierwotny plan zakładał, że PHP uruchomi silnik natychmiast po wgraniu eksportu
+(`proc_open` z procesem w tle), a cron będzie tylko ponawiał to, co padło. Ten plan upadł:
+PHP-FPM ma `proc_open` na liście `disable_functions` (patrz sekcja na końcu dokumentu),
+więc z przeglądarki nie da się uruchomić niczego.
 
-Użytkownik dostaje stronę statusu odświeżaną co kilka sekund; raport pojawia się po kilkudziesięciu.
+Warstwa żądań zapisuje plik i wstawia zadanie ze statusem `queued`. Wykonaniem zajmuje się
+`app/bin/run_job.php`, uruchamiany z crona **co minutę** — to najkrótszy interwał, jaki daje
+panel lh.pl. Użytkownik dostaje stronę stanu odświeżaną przez `<meta http-equiv="refresh">`
+i komunikat, że raport powstaje w tle i można wrócić później.
 
-Cron zostaje wyłącznie jako siatka bezpieczeństwa: ponowienie zadań zakończonych błędem
-i sprzątanie zawieszonych. W tej roli interwał 15 minut jest w zupełności wystarczający.
+Minuta oczekiwania jest ceną tego hostingu. Na VPS-ie cron zastąpi demon, a opóźnienie
+spadnie poniżej sekundy — bez zmiany reszty architektury.
 
 
 ## `open_basedir` — aplikacja webowa musi mieszkać w katalogu domeny
@@ -125,32 +128,40 @@ w katalogu domeny jest przy FPM ignorowany.
 | PHP CLI — worker, cron, deploy | **brak ograniczeń** (`php -i` → `no value`) |
 | Python — silnik | **brak ograniczeń** |
 
-Dlatego silnik uruchamiany przez `proc_open` działa normalnie, mimo że leży poza katalogiem domeny.
+Dlatego silnik uruchamiany z crona działa normalnie, mimo że leży poza katalogiem domeny.
+Z przeglądarki nie da się go uruchomić w ogóle — ale nie przez `open_basedir`, tylko przez
+`disable_functions` (osobna sekcja na końcu dokumentu). To dwa niezależne ograniczenia
+i mylenie ich prowadzi diagnostykę w złą stronę.
 
 ### Wynikający układ katalogów
 
 ```
 ~/CoachAnalyze/                      poza zasięgiem PHP-FPM
-├── repo/                            źródło (git)
+├── repo/                            źródło (git) — stąd startuje cron
 ├── venv/                            silnik Pythona
 └── shared/
-    ├── .env                         sekrety
-    ├── storage/                     uploady, raporty, herby
+    ├── .env                         wzorzec sekretów
     └── backups/
+
+~/tmp/                               na liście open_basedir — logi aplikacji i crona
 
 ~/public_html/app.coachanalyze.pl/   synchronizowany przy wdrożeniu
 ├── index.php  assets/  .htaccess    publiczne
 ├── app/                             kod — .htaccess: Require all denied
-├── .env      -> ~/CoachAnalyze/shared/.env
-└── storage/  -> ~/CoachAnalyze/shared/storage
+├── .env                             ZWYKŁY PLIK, kopiowany przy wdrożeniu
+└── storage/                         PRAWDZIWY KATALOG — .htaccess: Require all denied
 ```
 
 **Symlink całego katalogu domeny nie działa** — hosting za nim podąża (sprawdzone),
 ale `open_basedir` i tak blokuje pliki spoza listy. Dlatego `deploy.sh` **synchronizuje**
 pliki przez `rsync`, zamiast przepinać dowiązanie.
 
-Symlinki pojedynczych zasobów (`.env`, `storage/`) działają, bo ich cel jest odczytywany
-przez CLI i Pythona, nie przez FPM.
+**Dowiązania pojedynczych zasobów też nie działają** — ani przy odczycie, ani przy zapisie
+(osobna sekcja niżej). Wcześniejszy układ z `storage/ -> ~/CoachAnalyze/shared/storage`
+przechodził wdrożenie i wywalał się dopiero przy pierwszym uploadzie. Dlatego `.env` jest
+kopiowany jako zwykły plik, a `storage/` jest prawdziwym katalogiem w drzewie domeny.
+Poufności nie daje położenie poza drzewem, tylko `.htaccess` — i to jest sprawdzane
+po każdym wdrożeniu.
 
 ### Ochrona plików
 
@@ -317,3 +328,87 @@ i odnotowuje ten fakt. Log w nieoczywistym miejscu jest lepszy niż brak logu.
 - `storage/` jest katalogiem, nie dowiązaniem, i jest zapisywalny,
 - katalog z `LOG_PATH` istnieje i daje się do niego zapisać,
 - `/.env`, `/storage/`, `/storage/uploads/` i `/app/src/bootstrap.php` zwracają 403.
+
+---
+
+## Blokada: `disable_functions` na PHP-FPM — warstwa żądań nie uruchamia procesów
+
+**Wykryte na produkcji 2026-08-11.** Bramka techniczna tego nie złapała, bo była robiona
+przez SSH, a `php -i` w CLI pokazuje inną konfigurację niż ta, z którą chodzi FPM.
+To jest wzorzec do zapamiętania: **wszystko, co dotyczy warstwy żądań, trzeba sprawdzić
+w przeglądarce, nie w konsoli.**
+
+Objaw w logu:
+
+```
+PHP Fatal error: Uncaught Error: Call to undefined function CoachAnalyze\proc_open()
+```
+
+„Undefined", nie „disabled" — funkcja wyłączona przez `disable_functions` znika z przestrzeni
+nazw, więc komunikat sugeruje brakujące rozszerzenie i prowadzi diagnostykę w złą stronę.
+
+### Pełna lista wyłączonych funkcji (PHP-FPM, zweryfikowana na serwerze)
+
+```
+exec, system, passthru, shell_exec, proc_close, proc_open, dl, popen, show_source,
+posix_kill, posix_mkfifo, posix_getpwuid, posix_setpgid, posix_setsid,
+posix_setuid, posix_setgid, posix_seteuid, posix_setegid, posix_uname,
+opcache_reset, opcache_invalidate, opcache_compile_file,
+opcache_get_configuration, opcache_get_status
+```
+
+**W PHP CLI żadna z nich nie jest wyłączona.** Cron i ręczne uruchomienia działają normalnie.
+
+### Wniosek: FPM nie uruchamia żadnego procesu
+
+Nie da się tego obejść — nie ma zapasowej funkcji, którą przeoczono. `popen`, `system`
+i `passthru` są na liście razem z `proc_open`, a `pcntl` nie jest na tym hostingu dostępne.
+Architektura musiała się do tego dostosować, a nie znaleźć furtkę.
+
+| Warstwa | Rola | Uruchamia Pythona |
+|---|---|---|
+| PHP-FPM (przeglądarka) | zapis pliku, `INSERT` do `jobs` ze statusem `queued`, wyświetlenie stanu | **nie, nigdy** |
+| PHP CLI (cron, co minutę) | pobranie zadania, uruchomienie silnika, zapis wyniku | tak, to jego jedyne zadanie |
+
+Warstwa żądań **wyłącznie kolejkuje**. `Engine::inspect()` też — nie ma ścieżki „szybkiej",
+która omijałaby kolejkę, bo taka ścieżka wywalała się wyjątkiem *przed* zapisem zadania
+i tabela `jobs` zostawała pusta: nie było nawet czego ponowić.
+
+### Granica jest fizyczna, nie umowna
+
+Kod uruchamiający procesy leży w `app/bin/EngineRunner.php` — **poza drzewem autoloadera**.
+Warstwa żądań nie ma jak go zawołać, bo autoloader go nie znajdzie, a `require` musi być
+napisany ręcznie. Wcześniejszy wariant ze sprawdzeniem `PHP_SAPI !== 'cli'` w czasie
+wykonania był słabszy: wystarczyło jedno nowe wywołanie z kontrolera, żeby błąd wrócił,
+i to znowu dopiero na produkcji.
+
+`app/src/Engine.php` w warstwie żądań **czyta gotowe artefakty**, których nie tworzy —
+`version()` bierze wersję silnika z pliku zapisanego przez crona, a wyniki inspekcji
+i renderu pochodzą z bazy i z plików JSON zapisanych przez CLI.
+
+Pilnuje tego `app/tests/test_disabled_functions.php`: skanuje `app/public/index.php`
+oraz całe `app/src/**` **tokenizerem** (`token_get_all`), nie `grep`-em. Wyszukiwanie
+tekstowe nie nadaje się, bo komentarze w tym projekcie wymieniają te funkcje z nazwy —
+wyjaśniają właśnie to, dlaczego ich nie używamy. Test ma też autotesty samego skanera:
+udowadnia, że wykrywa prawdziwe wywołanie i że ignoruje komentarz, napis oraz metodę
+o tej samej nazwie. Bez tego zielony wynik nie znaczyłby nic.
+
+### Skutki uboczne, o których łatwo zapomnieć
+
+- **`opcache_reset` jest wyłączone**, więc wdrożenie nie może wyczyścić cache kodu.
+  Nowe pliki wchodzą po wygaśnięciu `opcache.revalidate_freq`. Przy pilnej poprawce
+  zostaje restart puli PHP z panelu klienta.
+- **`opcache_get_status` jest wyłączone**, więc żadna diagnostyka nie może na nim polegać.
+- Rozszerzenia PHP wymagające `dl()` odpadają — i tak są niemożliwe przez `noexec`.
+
+### To ograniczenie znika na Cloud Server
+
+`disable_functions` to decyzja operatora współdzielonego hostingu, nie ograniczenie
+techniczne. Na VPS-ie (tym samym, który jest już potrzebny dla modułu M6 — eksport PPTX,
+patrz „Wpływ na moduły") lista jest pusta i **zmianę da się cofnąć**: wystarczy przywrócić
+uruchamianie silnika zaraz po wgraniu eksportu.
+
+Cofać jednak nie warto bez powodu. Kolejka daje rzeczy, których natychmiastowe uruchamianie
+nie dawało: ponowienia, widoczny stan zadania, limit równoległości, historię błędów.
+Na VPS-ie sensowniejsze jest zostawienie kolejki i zastąpienie crona demonem —
+zysk to opóźnienie startu poniżej sekundy zamiast do minuty.

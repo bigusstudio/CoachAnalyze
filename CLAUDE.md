@@ -94,9 +94,10 @@ Szczegóły kontraktu: `docs/KONTRAKT_CLI.md`. Zmiana kontraktu wymaga aktualiza
 
 ## 5. Bezpieczeństwo — reguły nienegocjowalne
 
-- Pliki użytkownika **nigdy** nie są serwowane bezpośrednio. Fizycznie leżą w `~/CoachAnalyze/shared/storage`
-  (dowiązanym do katalogu domeny), a dostęp do nich blokują trzy warstwy `.htaccess` — hosting wymusza
-  ten układ przez `open_basedir`, patrz `docs/OGRANICZENIA_HOSTINGU.md`. Nazwa pliku losowa, serwowanie przez PHP.
+- Pliki użytkownika **nigdy** nie są serwowane bezpośrednio. Leżą w `{katalog domeny}/storage/` — jako
+  prawdziwy katalog, nie dowiązanie, bo `open_basedir` czyni dowiązania poza katalog domeny niewidocznymi
+  dla PHP-FPM także przy zapisie (`docs/OGRANICZENIA_HOSTINGU.md`). Poufność daje wyłącznie trzy warstwy
+  `.htaccess`, weryfikowane przez `deploy.sh`. Nazwa pliku losowa, serwowanie przez PHP.
 - **Nie usuwaj plików `.htaccess`** z `app/`, `app/public/` i `storage/`. To jedyne, co oddziela kod aplikacji
   od publicznego internetu w tym układzie. `deploy.sh` weryfikuje je po każdym wdrożeniu.
 - Adres publiczny to `/r/{club_key}/{token}`. `club_key` jest stały dla klubu, `token` odwoływalny.

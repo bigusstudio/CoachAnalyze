@@ -17,10 +17,13 @@ declare(strict_types=1);
  */
 
 use CoachAnalyze\Alerts;
+use CoachAnalyze\EngineRunner;
 use CoachAnalyze\Db;
-use CoachAnalyze\Engine;
 
 require dirname(__DIR__) . '/src/bootstrap.php';
+
+// Uruchamianie procesow lezy POZA drzewem autoloadera - patrz naglowek klasy.
+require __DIR__ . '/EngineRunner.php';
 
 if (PHP_SAPI !== 'cli') {
     http_response_code(404);
@@ -32,19 +35,20 @@ if ($zwolnione > 0) {
     fwrite(STDOUT, "Zwolniono zawieszonych zadań: {$zwolnione}\n");
 }
 
-// Zadania, które nigdy nie wystartowały — panel zgłasza to operatorowi,
-// ale cron ma je po prostu podnieść.
-$czekajace = Db::all("SELECT id FROM jobs WHERE status = 'queued' ORDER BY id LIMIT 5");
-foreach ($czekajace as $job) {
-    if (Engine::launchWorker((int) $job['id'])) {
-        fwrite(STDOUT, "Uruchomiono zadanie #{$job['id']}\n");
-    }
+// Zadania z kolejki podnosi app/bin/run_job.php, uruchamiany osobnym wpisem
+// crona co minutę. Nadzorca ich nie startuje — dublowanie tej roli dałoby dwa
+// procesy walczące o te same wiersze.
+$czekajace = (int) Db::one("SELECT COUNT(*) c FROM jobs WHERE status = 'queued'")['c'];
+if ($czekajace > 0) {
+    fwrite(STDOUT, "Zadań czekających w kolejce: {$czekajace}\n");
 }
 
 $wygasle = \CoachAnalyze\Remember::purgeExpired();
 if ($wygasle > 0) {
     fwrite(STDOUT, "Usunięto wygasłych tokenów trwałych: {$wygasle}\n");
 }
+
+EngineRunner::refreshVersion();
 
 $alerty = Alerts::all();
 foreach ($alerty as $alert) {

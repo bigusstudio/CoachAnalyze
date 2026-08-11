@@ -16,62 +16,128 @@ final class Imports
     /**
      * Nowy import wraz z meczem w stanie `draft`.
      *
-     * @param array<string,mixed> $meta wynik `inspect`
+     * BEZ POKRYCIA. Warstwa żądań nie uruchamia silnika (disable_functions na
+     * PHP-FPM), więc `coverage_json`, `warnings_json` i `sections_json`
+     * wypełnia dopiero zadanie `inspect` podniesione przez crona.
      */
     public static function create(
         int $ownerId,
         string $csvPath,
         ?string $jsonPath,
         string $checksum,
-        array $meta,
     ): int {
         $pdo = Db::pdo();
         $pdo->beginTransaction();
         try {
             Db::run(
-                'INSERT INTO matches (owner_id, season_id, status, half_split_ms, created_at)
-                 VALUES (:owner, NULL, :status, :hs, :now)',
-                [
-                    'owner'  => $ownerId,
-                    'status' => 'draft',
-                    'hs'     => $meta['half_split_ms'] ?? null,
-                    'now'    => Stats::now(),
-                ]
+                'INSERT INTO matches (owner_id, season_id, status, created_at)
+                 VALUES (:owner, NULL, :status, :now)',
+                ['owner' => $ownerId, 'status' => 'draft', 'now' => Stats::now()]
             );
             $matchId = (int) $pdo->lastInsertId();
 
             Db::run(
-                'INSERT INTO imports (match_id, csv_path, json_path, checksum_csv,
-                                      format_fingerprint, coverage_json, warnings_json,
-                                      engine_version, created_at)
-                 VALUES (:mid, :csv, :json, :sum, :fp, :cov, :warn, :ver, :now)',
+                'INSERT INTO imports (match_id, csv_path, json_path, checksum_csv, created_at)
+                 VALUES (:mid, :csv, :json, :sum, :now)',
                 [
                     'mid'  => $matchId,
                     'csv'  => $csvPath,
                     'json' => $jsonPath,
                     'sum'  => $checksum,
-                    // Odcisk zapisujemy bez prefiksu `sha256:` — kolumna to CHAR(64).
-                    'fp'   => self::bareFingerprint($meta['format_fingerprint'] ?? null),
-                    'cov'  => self::encode($meta['coverage'] ?? null),
-                    'warn' => self::encode($meta['warnings'] ?? null),
-                    'ver'  => $meta['engine_version'] ?? null,
                     'now'  => Stats::now(),
                 ]
             );
             $importId = (int) $pdo->lastInsertId();
 
             $pdo->commit();
-
-            // Kluby znane z wcześniejszych meczów dopasowują się same — po to
-            // trzymamy aliasy. Operator nie wpisuje nazw przy każdym imporcie.
-            self::assignClubs($matchId, array_map('strval', (array) ($meta['coverage']['teams'] ?? [])));
-
             Audit::log('import.created', $ownerId, 'import', $importId, ['match_id' => $matchId]);
             return $importId;
         } catch (\Throwable $e) {
             $pdo->rollBack();
             throw $e;
         }
+    }
+
+    /**
+     * Zapis wyniku `inspect`. Wołane WYŁĄCZNIE z procesu roboczego.
+     *
+     * @param array<string,mixed> $meta
+     */
+    public static function saveInspection(int $importId, array $meta): void
+    {
+        Db::run(
+            'UPDATE imports
+                SET format_fingerprint = :fp, coverage_json = :cov, warnings_json = :warn,
+                    sections_json = :sec, engine_version = :ver
+              WHERE id = :id',
+            [
+                'fp'   => self::bareFingerprint($meta['format_fingerprint'] ?? null),
+                'cov'  => self::encode($meta['coverage'] ?? null),
+                'warn' => self::encode($meta['warnings'] ?? null),
+                'sec'  => self::encode([
+                    'available'   => $meta['sections_available'] ?? [],
+                    'unavailable' => $meta['sections_unavailable'] ?? [],
+                ]),
+                'ver'  => $meta['engine_version'] ?? null,
+                'id'   => $importId,
+            ]
+        );
+
+        $import = self::find($importId);
+        if ($import !== null) {
+            Db::run('UPDATE matches SET half_split_ms = :hs WHERE id = :id', [
+                'hs' => $meta['half_split_ms'] ?? null,
+                'id' => (int) $import['match_id'],
+            ]);
+            // Kluby dopasowujemy dopiero teraz — wcześniej nie znaliśmy nazw z danych.
+            self::assignClubs((int) $import['match_id'],
+                array_map('strval', (array) ($meta['coverage']['teams'] ?? [])));
+        }
+    }
+
+    /** Zadanie `inspect` do kolejki. Nic nie uruchamia — podnosi je cron. */
+    public static function queueInspect(int $importId, int $userId): int
+    {
+        $import = self::find($importId);
+        if ($import === null) {
+            throw new \RuntimeException("Import {$importId} nie istnieje");
+        }
+
+        Db::run(
+            'INSERT INTO jobs (type, payload_json, status, attempts, created_at)
+             VALUES (:type, :payload, :status, 0, :now)',
+            [
+                'type'    => 'inspect',
+                'payload' => json_encode([
+                    'import_id' => $importId,
+                    'match_id'  => (int) $import['match_id'],
+                ], JSON_UNESCAPED_UNICODE),
+                'status'  => 'queued',
+                'now'     => Stats::now(),
+            ]
+        );
+        $jobId = (int) Db::pdo()->lastInsertId();
+        Audit::log('inspect.queued', $userId, 'import', $importId, ['job_id' => $jobId]);
+        return $jobId;
+    }
+
+    /** Ostatnie zadanie danego typu dla importu — do pokazania stanu. */
+    public static function latestJob(int $importId, ?string $type = null): ?array
+    {
+        $rows = Db::all(
+            'SELECT id, type, status, payload_json FROM jobs ORDER BY id DESC LIMIT 200'
+        );
+        foreach ($rows as $row) {
+            $payload = json_decode((string) $row['payload_json'], true);
+            if (!is_array($payload) || (int) ($payload['import_id'] ?? 0) !== $importId) {
+                continue;
+            }
+            if ($type !== null && $row['type'] !== $type) {
+                continue;
+            }
+            return $row;
+        }
+        return null;
     }
 
     /** @return array<string,mixed>|null */
@@ -87,24 +153,25 @@ final class Imports
     }
 
     /**
-     * Sekcje niedostępne wracają z silnika w `meta`, ale w bazie trzymamy tylko
-     * `coverage` i `warnings` (tak wygląda schemat). Ekran pokrycia potrzebuje
-     * jednego i drugiego, więc rozpakowujemy je tutaj, w jednym miejscu.
+     * Pokrycie, ostrzeżenia i sekcje — wszystko z artefaktów zapisanych przez
+     * proces roboczy. Warstwa żądań nie ma jak zapytać silnika (disable_functions),
+     * więc to jest jedyne źródło tych danych.
      *
-     * @return array{coverage:array<string,mixed>, warnings:list<array<string,mixed>>}
+     * @return array{coverage:array<string,mixed>, warnings:list<array<string,mixed>>,
+     *               sections_available:list<string>, sections_unavailable:list<array<string,mixed>>}
      */
     public static function report(array $import): array
     {
+        $sections = self::decode($import['sections_json'] ?? null);
+
         return [
-            'coverage' => self::decode($import['coverage_json'] ?? null),
-            'warnings' => array_values(self::decode($import['warnings_json'] ?? null)),
+            'coverage'             => self::decode($import['coverage_json'] ?? null),
+            'warnings'             => array_values(self::decode($import['warnings_json'] ?? null)),
+            'sections_available'   => array_values((array) ($sections['available'] ?? [])),
+            'sections_unavailable' => array_values((array) ($sections['unavailable'] ?? [])),
         ];
     }
 
-    /**
-     * Zadanie renderu dla tego importu. Ten sam import można renderować wiele
-     * razy — regeneracja nie wymaga ponownego wgrywania pliku.
-     */
     /**
      * Dopasowanie nazw z eksportu do klubów i przypisanie ich do meczu.
      *

@@ -119,6 +119,14 @@ return [
     'job.not_found'       => 'Nie znaleziono zadania.',
     'job.launch_failed'   => 'Nie udało się uruchomić silnika w tle. Zadanie czeka w kolejce.',
     'job.preview'         => 'Podgląd',
+    // Raport powstaje w tle, a start bierze się z crona chodzącego co minutę —
+    // dlatego mówimy wprost, ile to potrwa i że nie trzeba tu siedzieć.
+    // Bez tego użytkownik czeka przy ekranie, myśląc, że coś się zacięło.
+    'job.waiting'         => 'Zadanie czeka w kolejce. Raport powstaje w tle — zwykle rusza w ciągu minuty. '
+                             . 'Nie musisz tu czekać, możesz wrócić później: ten adres pokaże gotowy raport.',
+    'job.working'         => 'Silnik pracuje nad tym zadaniem. Raport powstaje w tle — możesz zamknąć tę stronę '
+                             . 'i wrócić później, postęp się nie zgubi.',
+    'job.background'      => 'Raport powstaje w tle — możesz zamknąć tę stronę i wrócić później. Lista zadań jest na pulpicie.',
     'report.missing'      => 'Raport nie istnieje albo plik został usunięty ze schowka.',
 
     'status.draft'        => 'szkic',
@@ -159,7 +167,7 @@ return [
     'coverage.count'      => '%d razy',
     'coverage.generate'   => 'Generuj raport',
     'coverage.regenerate' => 'Generuj ponownie',
-    'coverage.queued'     => 'Raport trafił do kolejki. Strona odświeży się sama.',
+    'coverage.queued'     => 'Raport trafił do kolejki. Strona odświeża się sama, ale możesz ją zamknąć — silnik pracuje w tle.',
 
     'cov.events'          => 'Zdarzenia',
     'cov.shots'           => 'Strzały',

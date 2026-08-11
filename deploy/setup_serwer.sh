@@ -4,9 +4,27 @@
 set -euo pipefail
 
 BASE="$HOME/CoachAnalyze"
+DOMENA="${CA_DOMAIN_DIR:-$HOME/public_html/app.coachanalyze.pl}"
+
 echo "==> Katalogi"
-mkdir -p "$BASE"/{releases,shared/logs,shared/storage/{uploads,reports,crests,golden}}
-chmod 700 "$BASE/shared/storage"
+mkdir -p "$BASE"/{releases,shared}
+
+# Pliki użytkownika MUSZĄ leżeć w drzewie domeny, nie w ~/CoachAnalyze/shared.
+# PHP-FPM ma `open_basedir` ograniczony do katalogu domeny, a dowiązanie poza
+# niego jest dla FPM niewidoczne także przy ZAPISIE — upload kończył się wtedy
+# błędem bez wyjaśnienia. Ochronę przed serwowaniem daje `.htaccess`, nie
+# położenie poza drzewem. Szczegóły: docs/OGRANICZENIA_HOSTINGU.md.
+mkdir -p "$DOMENA"/storage/{uploads,reports,crests,golden}
+chmod 700 "$DOMENA/storage"
+
+# Log również wewnątrz open_basedir — ~/tmp jest na liście i dosięga go
+# zarówno FPM, jak i cron. `shared/logs` byłoby dla panelu ślepe.
+mkdir -p "$HOME/tmp"
+
+if [ -d "$BASE/shared/storage" ]; then
+  echo "    UWAGA: $BASE/shared/storage pochodzi ze starego układu i nie jest już używane."
+  echo "    Przenieś zawartość do $DOMENA/storage, a katalog skasuj ręcznie."
+fi
 
 echo "==> Repozytorium"
 if [ -d "$BASE/repo/.git" ]; then

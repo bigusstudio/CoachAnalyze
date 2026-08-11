@@ -1,9 +1,27 @@
-# Worker — cron zamiast demona, bo hosting współdzielony nie gwarantuje długich procesów.
-# Blokada w Redis zapobiega nakładaniu się uruchomień.
-* * * * * /usr/bin/php /home/platne/serwer400227/CoachAnalyze/current/app/bin/worker.php >> /home/platne/serwer400227/CoachAnalyze/shared/logs/worker.log 2>&1
+# Cron dla CoachAnalyze — lh.pl.
+#
+# UWAGA: na lh.pl `crontab` z konsoli NIE DZIAŁA (`/var/spool/cron` nie istnieje).
+# Zadania ustawia się w panelu klienta. Ten plik jest wzorcem tego, co ma tam stać.
+#
+# CRON JEST TU ŚCIEŻKĄ PODSTAWOWĄ, NIE SIATKĄ BEZPIECZEŃSTWA.
+# PHP-FPM ma `disable_functions` obejmujące proc_open, exec, shell_exec i resztę,
+# więc warstwa żądań nie może uruchomić Pythona. Cała praca silnika idzie tędy.
+# Szczegóły: docs/OGRANICZENIA_HOSTINGU.md.
+#
+# INTERPRETER: 8.4 dla crona, 8.3 dla FPM. Kod musi działać na obu.
 
-# Kopia bazy — codziennie o 3:15
-15 3 * * * /home/platne/serwer400227/CoachAnalyze/current/deploy/backup_db.sh daily
+# Kolejka zadań — inspekcja eksportu i render raportu. CO MINUTĘ.
+# Blokada w Redis (SET NX EX) zapobiega nakładaniu się uruchomień; właściwą
+# wyłączność daje atomowe przejęcie zadania w SQL, więc brak Redisa nie blokuje kolejki.
+* * * * * /usr/local/php84/bin/php /home/platne/serwer400227/CoachAnalyze/repo/app/bin/run_job.php >> /home/platne/serwer400227/tmp/run_job.log 2>&1
 
-# Kontrola zawieszonych zadań — alert, gdy zadanie stoi dłużej niż 5 minut
-*/5 * * * * /usr/bin/php /home/platne/serwer400227/CoachAnalyze/current/app/bin/watchdog.php
+# Nadzorca — zwalnia zadania wiszące dłużej niż 5 minut, sprząta wygasłe tokeny,
+# wypisuje alerty. Kod wyjścia 1 przy alertach poziomu błędu, żeby cron wysłał powiadomienie.
+*/5 * * * * /usr/local/php84/bin/php /home/platne/serwer400227/CoachAnalyze/repo/app/bin/watchdog.php >> /home/platne/serwer400227/tmp/watchdog.log 2>&1
+
+# Kopia bazy — codziennie o 3:15.
+15 3 * * * /home/platne/serwer400227/CoachAnalyze/repo/deploy/backup_db.sh daily
+
+# LOGI CRONA trafiają do ~/tmp, bo ten katalog jest na liście open_basedir
+# i pisze do niego zarówno CLI, jak i FPM. `shared/logs` NIE nadaje się:
+# FPM go nie dosięga, więc diagnostyka z panelu byłaby ślepa.

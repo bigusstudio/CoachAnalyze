@@ -45,12 +45,17 @@ final class Storage
         if (!is_dir($dir) && !@mkdir($dir, 0770, true) && !is_dir($dir)) {
             throw new \RuntimeException("Nie mogę utworzyć katalogu: {$dir}");
         }
-        if (!is_writable($dir)) {
+        // Zapisywalność sprawdzamy PRÓBĄ ZAPISU. `is_writable` na ścieżce spoza
+        // open_basedir zwraca false także dla katalogu, do którego da się pisać —
+        // i odwrotnie bywa mylące. Liczy się to, czy plik faktycznie powstanie.
+        $probka = $dir . '/.probe';
+        if (@file_put_contents($probka, '') === false) {
             throw new \RuntimeException(
                 "Katalog nie jest zapisywalny: {$dir}. "
                 . 'Sprawdź uprawnienia i open_basedir dla PHP-FPM.'
             );
         }
+        @unlink($probka);
         return $dir;
     }
 

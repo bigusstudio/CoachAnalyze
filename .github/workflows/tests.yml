@@ -36,12 +36,54 @@ jobs:
           python -m coachanalyze inspect --help > /dev/null
 
   php:
-    name: Warstwa PHP — składnia
+    name: Warstwa PHP — PHP ${{ matrix.php }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Dokładnie te wersje, co na lh.pl: 8.3 obsługuje żądania (PHP-FPM),
+        # 8.4 chodzi z crona. `app/src/**` ładują OBIE, więc jedna wersja w CI
+        # nie wystarcza. Wcześniej stało tu 8.2 — wersja, której nigdzie nie ma.
+        php: ['8.3', '8.4']
     steps:
       - uses: actions/checkout@v4
       - uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.2'
+          php-version: ${{ matrix.php }}
       - name: Lint
         run: find app -name "*.php" -print0 | xargs -0 -n1 php -l
+
+      # Układ katalogów w repozytorium NIE jest układem produkcyjnym: deploy.sh
+      # przenosi zawartość app/public/ do katalogu domeny. Dwa błędy z tej klasy
+      # wróciły już po raz drugi, więc pilnuje ich test, a nie pamięć.
+      - name: Układ katalogów i wdrożenie
+        run: php app/tests/test_layout.php
+
+      # Atrybuty autocomplete nic nie robią widocznie, więc wypadają pierwsze
+      # przy przepisywaniu szablonu — i menedżer haseł przestaje działać.
+      - name: Formularze uwierzytelniania
+        run: php app/tests/test_forms.php
+
+      # PHP-FPM ma `disable_functions` obejmujące uruchamianie procesów, a CLI nie.
+      # Wywołanie `proc_open` z kontrolera przechodzi każdy test lokalny i wywala
+      # się dopiero w przeglądarce na produkcji. Skan tokenizerem, nie grepem.
+      - name: Warstwa żądań nie uruchamia procesów
+        run: php app/tests/test_disabled_functions.php
+
+      # Konstrukcje dostępne tylko w jednej z dwóch wersji produkcyjnych.
+      - name: Zgodność z PHP 8.3 i 8.4
+        run: php app/tests/test_php_wersje.php
+
+      # Deprecacje muszą być widoczne: na cronie lądują w logu i zagłuszają
+      # rzeczywiste błędy, a w PHP 9 staną się awarią.
+      - name: Brak ostrzeżeń o deprecacji przy ładowaniu klas
+        run: php -d error_reporting=E_ALL -d display_errors=1 -r '
+          spl_autoload_register(static function (string $k) {
+            $p = __DIR__ . "/app/src/" . str_replace("CoachAnalyze\\", "", $k) . ".php";
+            if (is_file($p)) { require $p; }
+          });
+          foreach (glob(__DIR__ . "/app/src/*.php") as $f) {
+            $n = basename($f, ".php");
+            if ($n !== "bootstrap") { class_exists("CoachAnalyze\\" . $n); }
+          }
+          echo "klasy załadowane bez ostrzeżeń\n";'
