@@ -164,11 +164,17 @@ final class Imports
     {
         $sections = self::decode($import['sections_json'] ?? null);
 
+        $meta = self::decode($import['coverage_json'] ?? null);
+
         return [
-            'coverage'             => self::decode($import['coverage_json'] ?? null),
+            'coverage'             => $meta,
             'warnings'             => array_values(self::decode($import['warnings_json'] ?? null)),
             'sections_available'   => array_values((array) ($sections['available'] ?? [])),
             'sections_unavailable' => array_values((array) ($sections['unavailable'] ?? [])),
+            // Co NIE weszlo do analizy. Raport pokrycia, ktory tego nie pokazuje,
+            // sugeruje kompletnosc, ktorej nie ma — a to najgrozniejszy rodzaj
+            // bledu w raporcie pokazywanym zarzadowi.
+            'excluded'             => self::excluded($import, $meta),
         ];
     }
 
@@ -273,6 +279,131 @@ final class Imports
         return Db::one(
             'SELECT * FROM imports WHERE match_id = :id ORDER BY id DESC LIMIT 1',
             ['id' => $matchId]
+        );
+    }
+
+
+    /**
+     * Zdarzenia poza analiza: ile ich jest i z jakich tagow pochodza.
+     *
+     * DWA ZRODLA, obydwa musza byc widoczne:
+     *  - tagi NIEROZPOZNANE (silnik ich nie zna i nikt jeszcze nie zdecydowal),
+     *  - tagi swiadomie oznaczone „nie analizuj" w profilu klubu.
+     *
+     * Drugie sa grozniejsze, bo wygladaja na obsluzone. Decyzja „pomijamy" jest
+     * poprawna, ale musi byc WIDOCZNA przy kazdym raporcie — inaczej po pol roku
+     * nikt nie pamieta, ze jedna trzecia zdarzen nie wchodzi do liczb.
+     *
+     * @return array{count:?int, unrecognised:list<string>, ignored:list<string>, total:?int}
+     */
+    private static function excluded(array $import, array $meta): array
+    {
+        $clubId = self::mappingClubId($import);
+
+        $nierozpoznane = [];
+        foreach ((array) ($meta['unmapped_tags'] ?? []) as $poz) {
+            $nazwa = is_array($poz) ? (string) ($poz['tag'] ?? $poz['name'] ?? '') : (string) $poz;
+            if ($nazwa !== '') {
+                $nierozpoznane[] = $nazwa;
+            }
+        }
+
+        $zdecydowane = $clubId !== null ? Mappings::decidedTags($clubId) : [];
+        $pominiete   = $clubId !== null ? Mappings::ignoredTags($clubId) : [];
+
+        // Z listy „nierozpoznanych" WYPADAJA tagi, o ktorych juz zdecydowano.
+        //
+        // `inspect` nie dostaje profilu klubu (docs/KONTRAKT_CLI.md), wiec zglasza
+        // jako nierozpoznane rowniez te tagi, ktore operator wlasnie zmapowal.
+        // Pokazywanie ich dalej jako nierozpoznanych sugerowaloby, ze decyzja
+        // nie zadzialala — a zadziala przy najblizszym renderze, bo tam profil
+        // juz idzie do silnika.
+        $nierozpoznane = array_values(array_filter(
+            $nierozpoznane,
+            static fn(string $tag) => !isset($zdecydowane[$tag])
+        ));
+
+        // Liczba zdarzen: bierzemy ja z `meta`, jesli silnik ja podaje.
+        // NIE liczymy jej w PHP — parsowanie eksportu tutaj oznaczaloby drugi
+        // parser i wszystkie jedenascie pulapek formatu LiveTag od nowa.
+        $ile = $meta['coverage']['unanalysed'] ?? ($meta['unanalysed_events'] ?? null);
+
+        return [
+            'count'        => $ile !== null ? (int) $ile : null,
+            'total'        => isset($meta['coverage']['events']) ? (int) $meta['coverage']['events'] : null,
+            'unrecognised' => array_values(array_unique($nierozpoznane)),
+            'ignored'      => $pominiete,
+        ];
+    }
+
+    /**
+     * Klub „nasz" wykryty w eksporcie — właściciel profilu mapowań.
+     *
+     * Kreator działa PRZED ekranem pokrycia, czyli zanim kluby zostaną
+     * przypisane do meczu. Rozstrzygamy więc z nazw wykrytych w danych,
+     * tak samo jak `assignClubs()`, tylko bez zapisu.
+     *
+     * Gdy żaden klub nie pasuje, profilu nie ma i wszystkie tagi są nowe —
+     * co jest prawdą o pierwszym imporcie nowego klubu.
+     */
+    public static function mappingClubId(array $import): ?int
+    {
+        $matchId = (int) ($import['match_id'] ?? 0);
+        if ($matchId > 0) {
+            $mecz = Db::one(
+                'SELECT club_home_id FROM matches WHERE id = :id',
+                ['id' => $matchId]
+            );
+            if ($mecz !== null && $mecz['club_home_id'] !== null) {
+                return (int) $mecz['club_home_id'];
+            }
+        }
+
+        $pierwszyDopasowany = null;
+        foreach (self::detectedTeams($import) as $nazwa) {
+            $club = Clubs::matchByExportName((string) $nazwa);
+            if ($club === null) {
+                continue;
+            }
+            if (!empty($club['is_own_team'])) {
+                return (int) $club['id'];
+            }
+            $pierwszyDopasowany ??= (int) $club['id'];
+        }
+
+        return $pierwszyDopasowany;
+    }
+
+    /**
+     * Czy import wymaga zatrzymania na kreatorze mapowań.
+     *
+     * Pytamy o to przy każdym wejściu na pokrycie, a nie raz po imporcie:
+     * profil klubu mógł się w międzyczasie zmienić i decyzja podjęta wtedy
+     * bywa już nieaktualna.
+     */
+    public static function needsMapping(array $import): bool
+    {
+        $meta = self::decode($import['coverage_json'] ?? null);
+        if (!is_array($meta) || $meta === []) {
+            return false;   // Bez pokrycia nie ma czego porównywać.
+        }
+
+        $nieznane = Mappings::unknown($meta, self::mappingClubId($import));
+        return $nieznane['tags'] !== [] || $nieznane['labels'] !== [];
+    }
+
+    /**
+     * Zapamiętanie, z jaką wersją profilu przeszedł ten import.
+     *
+     * Bez tego nie da się odróżnić „nie było nowych tagów, przeszliśmy dalej"
+     * od „ekran mapowania nigdy się nie pokazał". Pierwsze jest poprawne,
+     * drugie jest błędem — i mają wyglądać inaczej.
+     */
+    public static function setMappingProfile(int $importId, int $profileId): void
+    {
+        Db::run(
+            'UPDATE imports SET mapping_profile_id = :p WHERE id = :id',
+            ['p' => $profileId, 'id' => $importId]
         );
     }
 

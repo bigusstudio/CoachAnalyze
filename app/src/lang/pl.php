@@ -438,6 +438,103 @@ return [
     'history.kind.share_revoked' => 'Odwołanie linku',
     'history.kind.failed'        => 'Przetwarzanie nie powiodło się',
 
+    // --- poczta ---
+    // Zamiast slowa zastepczego („rywal") podajemy date meczu. Slowo zastepcze
+    // wyglada jak nazwa i czyta sie jak blad systemu — data jest prawdziwa.
+    'mail.match.on_date'   => 'mecz z %s',
+    'mail.match.unknown'   => 'mecz bez przypisanej daty',
+    'mail.open_report'     => 'Otwórz raport',
+    'mail.footer'          => 'Wiadomość wysłana automatycznie przez CoachAnalyze.',
+    'mail.footer.settings' => 'ustawieniach konta',
+
+    // --- kreator mapowań tagów ---
+    'mapping.title'        => 'Nowe tagi w eksporcie',
+    'mapping.why'          => 'Ten eksport zawiera tagi, których profil klubu jeszcze nie zna. '
+                              . 'Dopóki nie zdecydujesz, co znaczą, zdarzenia z tymi tagami nie wejdą do metryk — '
+                              . 'raport powstanie, ale będzie niepełny i nic tego nie zasygnalizuje w liczbach.',
+    'mapping.for_club'     => 'Profil klubu: %s',
+    'mapping.tags'         => 'Nierozpoznane tagi',
+    'mapping.labels'       => 'Nierozpoznane etykiety',
+    'mapping.labels.hint'  => 'Etykiety uszczegóławiają zdarzenie (kwalifikator), nie tworzą nowego rodzaju zdarzenia.',
+    'mapping.col.tag'      => 'Tag z eksportu',
+    'mapping.col.label'    => 'Etykieta z eksportu',
+    'mapping.col.count'    => 'Wystąpień',
+    'mapping.col.labels'   => 'Etykiety towarzyszące',
+    'mapping.col.concept'  => 'Pojęcie kanoniczne',
+    'mapping.col.qualifier' => 'Kwalifikator',
+    'mapping.col.version'  => 'Wersja',
+    'mapping.col.when'     => 'Kiedy',
+    'mapping.col.who'      => 'Kto',
+    'mapping.col.rules'    => 'Reguł',
+    'mapping.col.note'     => 'Powód zmiany',
+    'mapping.col.rationale' => 'Uzasadnienie',
+    'mapping.col.status'   => 'Stan',
+    'mapping.skip'         => 'nie analizuj',
+    'mapping.report_missing' => 'żadne pojęcie nie pasuje — zgłoś do przejrzenia',
+    'mapping.suggested'    => 'Podpowiedź: %s. Zatwierdź albo zmień.',
+    'mapping.rationale'    => 'Uzasadnienie zgłoszenia',
+    'mapping.rationale.hint' => 'Wypełnij tylko przy zgłaszaniu brakującego pojęcia',
+    'mapping.count.unknown' => 'Silnik nie podaje jeszcze liczby wystąpień',
+    'mapping.note'         => 'Powód zmiany',
+    'mapping.note.hint'    => 'Np. „klub dodał tagi presingu od meczu z Pogonią"',
+    'mapping.versioning'   => 'Zapis tworzy nową wersję profilu klubu. Poprzednie wersje zostają — '
+                              . 'dzięki temu wiadomo, dlaczego starszy raport pokazywał inne liczby.',
+    'mapping.submit'       => 'Zapisz mapowanie i przejdź do pokrycia',
+    'mapping.saved'        => 'Mapowanie zapisane jako nowa wersja profilu klubu.',
+    'mapping.saved_with_request' => 'Mapowanie zapisane. Zgłoszeń brakujących pojęć: %d — '
+                              . 'te tagi są tymczasowo nieanalizowane i widoczne w raporcie pokrycia.',
+    'mapping.err.no_club'  => 'Nie rozpoznano klubu w tym eksporcie, więc nie ma gdzie zapisać profilu. '
+                              . 'Załóż klub i dopasuj nazwę z eksportu, potem wróć tutaj.',
+    'mapping.err.unknown_concept' => 'Odrzucono zapis: żądanie zawierało pojęcie spoza zamkniętej listy. '
+                              . 'Nic nie zostało zmienione.',
+
+    // Pojęcia kanoniczne — nazwy po polsku. Klucze zostają angielskie
+    // (docs/MODEL_KANONICZNY.md), bo to one jadą do silnika i do archiwum.
+    'concept.shot'          => 'strzał',
+    'concept.entry_sbz'     => 'zdobycie SBZ',
+    'concept.entry_third'   => 'wejście w III strefę',
+    'concept.duel'          => 'pojedynek',
+    'concept.loss'          => 'strata',
+    'concept.recovery'      => 'odbiór',
+    'concept.press'         => 'pressing',
+    'concept.transition'    => 'transformacja',
+    'concept.set_piece'     => 'stały fragment gry',
+    'concept.foul'          => 'faul',
+    'concept.card'          => 'kartka',
+    'concept.keeper_action' => 'interwencja bramkarza',
+
+    // --- mapowania w ustawieniach klubu ---
+    'mapping.club.link'    => 'Mapowania',
+    'mapping.club.title'   => 'Mapowania tagów',
+    'mapping.club.back'    => 'Wróć do klubu',
+    'mapping.club.ignored' => 'Tagi pominięte w analizie',
+    'mapping.club.ignored.hint' => 'Te tagi nie wracają przy kolejnych importach. '
+                              . 'Decyzję można zmienić tutaj — kolejny raport uwzględni je od nowej wersji profilu.',
+    'mapping.club.ignored.empty' => 'Żaden tag nie jest pominięty.',
+    'mapping.club.assigned' => 'Tagi przypisane do pojęć',
+    'mapping.club.assigned.empty' => 'Klub korzysta wyłącznie ze słownika domyślnego silnika.',
+    'mapping.club.requests' => 'Zgłoszone brakujące pojęcia',
+    'mapping.club.history' => 'Historia wersji profilu',
+    'mapping.club.history.empty' => 'Profil nie był jeszcze zmieniany.',
+    'mapping.club.save'    => 'Zapisz zmiany jako nową wersję',
+    'mapping.club.saved'   => 'Zapisano nową wersję profilu mapowań.',
+    'mapping.author.system' => 'system',
+    'mapping.status.new'      => 'do przejrzenia',
+    'mapping.status.accepted' => 'przyjęte',
+    'mapping.status.rejected' => 'odrzucone',
+
+    // --- pokrycie: co nie weszło do analizy ---
+    'coverage.excluded'    => 'Poza analizą',
+    'coverage.excluded.none' => 'Wszystkie zdarzenia z eksportu wchodzą do analizy.',
+    'coverage.excluded.count' => 'Zdarzeń poza analizą: %d. Raport ich nie obejmuje.',
+    'coverage.excluded.count_of' => 'Zdarzeń poza analizą: %d z %d. Raport ich nie obejmuje.',
+    'coverage.excluded.count_unknown' => 'Poniższe tagi nie wchodzą do metryk. '
+                              . 'Silnik nie podaje jeszcze liczby pominiętych zdarzeń, więc nie pokazujemy jej zmyślonej.',
+    'coverage.excluded.unrecognised' => 'Tagi nierozpoznane',
+    'coverage.excluded.map_now' => 'Przypisz je do pojęć kanonicznych',
+    'coverage.excluded.ignored' => 'Tagi świadomie pominięte',
+    'coverage.excluded.ignored.hint' => 'Decyzja z profilu klubu. Do zmiany w ustawieniach klubu.',
+
     // --- strona zapowiedzi ---
     'soon.title'          => 'Wkrótce',
     'soon.body'           => 'Ta część panelu powstaje w kolejnym etapie prac.',

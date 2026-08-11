@@ -43,12 +43,50 @@ final class Notifications
     public static function create(int $userId, array $dane): ?int
     {
         try {
+            self::assertUsableTarget($dane);
             return self::insert($userId, $dane);
         } catch (\Throwable $e) {
             // Log, nie wyjątek. Utrata powiadomienia jest przykra; utrata raportu
             // przez to, że nie dało się o nim powiadomić, byłaby absurdem.
             error_log('notifications: nie udało się zapisać powiadomienia — ' . $e->getMessage());
             return null;
+        }
+    }
+
+    /**
+     * Powiadomienie MUSI prowadzic tam, gdzie cos jest.
+     *
+     * USTERKA Z PRODUKCJI: pierwszy mail z serwera prowadzil do `/raport/0`.
+     * Identyfikator raportu byl odczytywany za pozno i przychodzil tu jako zero,
+     * a powiadomienie powstawalo bez szemrania — z odnosnikiem donikad.
+     *
+     * Odbiorca maila nie ma jak sprawdzic, czy adres jest prawdziwy; klika.
+     * Dlatego zamiast wysylac powiadomienie z zepsutym odnosnikiem, odmawiamy
+     * jego utworzenia i zostawiamy w logu jednoznaczny slad.
+     *
+     * @param array<string,mixed> $dane
+     * @throws \RuntimeException gdy cel powiadomienia nie istnieje
+     */
+    private static function assertUsableTarget(array $dane): void
+    {
+        $encja = (string) ($dane['entity'] ?? '');
+        $adres = (string) ($dane['url'] ?? '');
+
+        // Zero i pustka to NIE sa prawidlowe identyfikatory. `entity_id`
+        // sprawdzamy dla wszystkich encji wskazujacych konkretny wiersz.
+        if (in_array($encja, ['report', 'job', 'import', 'match'], true)) {
+            $id = $dane['entity_id'] ?? null;
+            if ($id === null || (int) $id <= 0) {
+                throw new \RuntimeException(
+                    "Powiadomienie typu {$encja} bez prawidlowego identyfikatora (otrzymano: "
+                    . var_export($id, true) . ')'
+                );
+            }
+        }
+
+        // Odnosnik z zerem w miejscu identyfikatora — dokladnie objaw z produkcji.
+        if ($adres !== '' && preg_match('#/(0+)(/|$)#', $adres) === 1) {
+            throw new \RuntimeException("Powiadomienie z odnosnikiem do zerowego identyfikatora: {$adres}");
         }
     }
 

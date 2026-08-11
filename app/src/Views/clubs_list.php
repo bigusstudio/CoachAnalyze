@@ -69,7 +69,17 @@ use CoachAnalyze\View;
             <?php endif; ?>
           </td>
           <td><?= (int) ($c['matches_count'] ?? 0) ?></td>
-          <td><a class="link" href="/kluby/<?= (int) $c['id'] ?>"><?= View::e(View::t('club.edit')) ?></a></td>
+          <td class="akcje">
+            <a class="link" href="/kluby/<?= (int) $c['id'] ?>"><?= View::e(View::t('club.edit')) ?></a>
+            <?php /*
+              Mapowania sa osobnym ekranem, nie sekcja formularza klubu:
+              to decyzje wplywajace na liczby w raporcie, wersjonowane
+              i z wlasna historia — a nie pole do poprawienia przy okazji.
+            */ ?>
+            <a class="link" href="/kluby/<?= (int) $c['id'] ?>/mapowania">
+              <?= View::e(View::t('mapping.club.link')) ?>
+            </a>
+          </td>
         </tr>
       <?php endforeach; ?>
       </tbody>

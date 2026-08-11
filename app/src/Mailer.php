@@ -59,6 +59,7 @@ final class Mailer
         private float $timeout = 10.0,
         private string $encryption = 'tls',
         private ?string $caFile = null,
+        private ?string $replyTo = null,
     ) {
         $this->encryption = self::normalizeEncryption($encryption);
     }
@@ -119,7 +120,12 @@ final class Mailer
             // wdrożeniu wpisujemy to jawnie: numer portu jest zwyczajem,
             // a nie deklaracją protokołu, i serwer może słuchać gdzie indziej.
             (string) Config::get('SMTP_ENCRYPTION', $port === 465 ? 'ssl' : 'tls'),
-            Config::get('SMTP_CA_FILE')
+            Config::get('SMTP_CA_FILE'),
+            // USTERKA Z PRODUKCJI: `MAIL_REPLY_TO` stalo w `.env` i nie bylo
+            // czytane, wiec odpowiedz klienta trafiala pod adres nadawcy —
+            // czyli w prozne. Adres zwrotny to czesto INNA skrzynka niz
+            // techniczny nadawca i musi dac sie ustawic osobno.
+            Config::get('MAIL_REPLY_TO')
         );
     }
 
@@ -143,7 +149,7 @@ final class Mailer
      *
      * @throws \RuntimeException z komunikatem po polsku; pełna rozmowa w `transcript()`
      */
-    public function send(string $to, string $subject, string $body): void
+    public function send(string $to, string $subject, string $body, ?string $html = null): void
     {
         $this->transcript = '';
 
@@ -152,7 +158,7 @@ final class Mailer
             $this->handshake();
             $this->authenticate();
             $this->envelope($to);
-            $this->data($to, $subject, $body);
+            $this->data($to, $subject, $body, $html);
             $this->command('QUIT', [221]);
         } finally {
             $this->disconnect();
@@ -309,9 +315,19 @@ final class Mailer
         $this->command('RCPT TO:<' . $to . '>', [250, 251]);
     }
 
-    private function data(string $to, string $subject, string $body): void
+    /**
+     * Zbudowanie i wyslanie tresci wiadomosci.
+     *
+     * MULTIPART/ALTERNATIVE: ta sama tresc w dwoch postaciach. Czytnik wybiera
+     * te, ktora umie pokazac — nowoczesny wezmie HTML, tekstowy i czytnik
+     * ekranu wezma czysty tekst. Kolejnosc czesci jest ISTOTNA: od najprostszej
+     * do najbogatszej, bo klient bierze OSTATNIA, ktora rozumie.
+     */
+    private function data(string $to, string $subject, string $body, ?string $html = null): void
     {
         $this->command('DATA', [354]);
+
+        $granica = 'ca_' . bin2hex(random_bytes(12));
 
         $naglowki = [
             'From: ' . $this->encodeHeader($this->fromName) . ' <' . $this->from . '>',
@@ -319,23 +335,52 @@ final class Mailer
             'Subject: ' . $this->encodeHeader($subject),
             'Date: ' . date(DATE_RFC2822),
             'MIME-Version: 1.0',
-            'Content-Type: text/plain; charset=utf-8',
-            'Content-Transfer-Encoding: base64',
-            // Powiadomienie automatyczne. Bez tego autoresponder odbiorcy potrafi
-            // odpowiedzieć, a odpowiedź trafia donikąd.
-            'Auto-Submitted: auto-generated',
-            'X-Auto-Response-Suppress: All',
         ];
 
-        // base64 z zawijaniem: treść po polsku ma znaki spoza ASCII, a SMTP
-        // gwarantuje przejście tylko liniom do 998 znaków.
-        $tresc = chunk_split(base64_encode($body), 76, "\r\n");
+        // Adres zwrotny. Bez niego odpowiedz idzie na adres nadawcy, ktory bywa
+        // skrzynka techniczna nikogo nieczytana — dokladnie to zglosila produkcja.
+        if ($this->replyTo !== null && trim($this->replyTo) !== '') {
+            $naglowki[] = 'Reply-To: <' . trim($this->replyTo) . '>';
+        }
+
+        $naglowki[] = 'Auto-Submitted: auto-generated';
+        $naglowki[] = 'X-Auto-Response-Suppress: All';
+
+        if ($html === null || trim($html) === '') {
+            $naglowki[] = 'Content-Type: text/plain; charset=utf-8';
+            $naglowki[] = 'Content-Transfer-Encoding: base64';
+            $tresc = chunk_split(base64_encode($body), 76, "\r\n");
+        } else {
+            $naglowki[] = 'Content-Type: multipart/alternative; boundary="' . $granica . '"';
+
+            $tresc = implode("\r\n", [
+                // Zdanie dla klientow, ktore nie rozumieja multipart. W praktyce
+                // nikt go nie zobaczy, ale jego brak jest bledem formatu.
+                'Ta wiadomosc jest w formacie MIME multipart/alternative.',
+                '',
+                '--' . $granica,
+                'Content-Type: text/plain; charset=utf-8',
+                'Content-Transfer-Encoding: base64',
+                '',
+                rtrim(chunk_split(base64_encode($body), 76, "\r\n")),
+                '',
+                '--' . $granica,
+                'Content-Type: text/html; charset=utf-8',
+                'Content-Transfer-Encoding: base64',
+                '',
+                rtrim(chunk_split(base64_encode($html), 76, "\r\n")),
+                '',
+                '--' . $granica . '--',
+                '',
+            ]);
+        }
 
         $wiadomosc = implode("\r\n", $naglowki) . "\r\n\r\n" . $tresc;
 
-        // Kropka na początku linii kończy DATA — trzeba ją podwoić.
-        // Kodowanie base64 czyni to niemożliwym, ale zabezpieczenie zostaje:
-        // zmiana kodowania na 8bit nie może po cichu otworzyć wstrzyknięcia.
+        // Kropka na poczatku linii konczy DATA — trzeba ja podwoic.
+        // Kodowanie base64 czyni to niemozliwym w samej tresci, ale
+        // zabezpieczenie zostaje: zmiana kodowania na 8bit nie moze po cichu
+        // otworzyc wstrzykniecia.
         $wiadomosc = str_replace("\r\n.", "\r\n..", $wiadomosc);
 
         $this->write($wiadomosc . "\r\n.\r\n");

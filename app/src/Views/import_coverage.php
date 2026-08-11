@@ -15,6 +15,7 @@ use CoachAnalyze\View;
  * @var array<string,mixed>       $coverage
  * @var list<array<string,mixed>> $warnings
  * @var list<array<string,mixed>> $sectionsUnavailable
+ * @var array<string,mixed> $excluded
  * @var list<string>              $sectionsAvailable
  * @var array<string,mixed>|null  $report
  * @var string|null               $notice
@@ -132,6 +133,64 @@ $liczby = [
 </section>
 
 <div class="actions">
+<section class="panel">
+  <h2 class="h2"><?= View::e(View::t('coverage.excluded')) ?></h2>
+
+  <?php /*
+    RAPORT NIE OBEJMUJE WSZYSTKIEGO — i to musi być widoczne.
+
+    Dwa źródła zdarzeń poza analizą, i drugie jest groźniejsze:
+      1. tagi nierozpoznane — nikt jeszcze nie zdecydował, co z nimi zrobić,
+      2. tagi świadomie pominięte — decyzja jest poprawna, ale wygląda na
+         „obsłużone" i po pół roku nikt nie pamięta, że część zdarzeń
+         nie wchodzi do liczb.
+
+    Bez tej sekcji raport pokrycia sugeruje kompletność, której nie ma.
+  */ ?>
+  <?php if (($excluded['unrecognised'] ?? []) === [] && ($excluded['ignored'] ?? []) === []): ?>
+    <p class="empty"><?= View::e(View::t('coverage.excluded.none')) ?></p>
+  <?php else: ?>
+    <?php if ($excluded['count'] !== null): ?>
+      <p class="alert" role="alert">
+        <?= View::e($excluded['total'] !== null
+            ? View::t('coverage.excluded.count_of', (int) $excluded['count'], (int) $excluded['total'])
+            : View::t('coverage.excluded.count', (int) $excluded['count'])) ?>
+      </p>
+    <?php else: ?>
+      <?php /*
+        Liczby zdarzeń poza analizą nie ma dziś w wyniku `inspect`
+        (docs/KONTRAKT_CLI.md). Mówimy to wprost zamiast pokazywać zero —
+        zero znaczyłoby „wszystko policzone", a to nieprawda.
+      */ ?>
+      <p class="notice" role="status"><?= View::e(View::t('coverage.excluded.count_unknown')) ?></p>
+    <?php endif; ?>
+
+    <?php if (($excluded['unrecognised'] ?? []) !== []): ?>
+      <h3 class="h3"><?= View::e(View::t('coverage.excluded.unrecognised')) ?></h3>
+      <p class="tagi">
+        <?php foreach ($excluded['unrecognised'] as $tag): ?>
+          <code class="tag-nazwa"><?= View::e((string) $tag) ?></code>
+        <?php endforeach; ?>
+      </p>
+      <p class="hint">
+        <a class="link" href="/import/<?= (int) $import['id'] ?>/mapowanie">
+          <?= View::e(View::t('coverage.excluded.map_now')) ?>
+        </a>
+      </p>
+    <?php endif; ?>
+
+    <?php if (($excluded['ignored'] ?? []) !== []): ?>
+      <h3 class="h3"><?= View::e(View::t('coverage.excluded.ignored')) ?></h3>
+      <p class="tagi">
+        <?php foreach ($excluded['ignored'] as $tag): ?>
+          <code class="tag-nazwa tag-nazwa--pominiety"><?= View::e((string) $tag) ?></code>
+        <?php endforeach; ?>
+      </p>
+      <p class="hint"><?= View::e(View::t('coverage.excluded.ignored.hint')) ?></p>
+    <?php endif; ?>
+  <?php endif; ?>
+</section>
+
   <form method="post" action="/import/<?= (int) $import['id'] ?>/generuj">
     <input type="hidden" name="csrf" value="<?= View::e(Session::csrfToken()) ?>">
     <button class="btn" type="submit">

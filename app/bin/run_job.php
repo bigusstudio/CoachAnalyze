@@ -32,11 +32,13 @@ use CoachAnalyze\EngineRunner;
 use CoachAnalyze\Imports;
 use CoachAnalyze\Jobs;
 use CoachAnalyze\Mailer;
+use CoachAnalyze\Mappings;
 use CoachAnalyze\Matches;
 use CoachAnalyze\Notifications;
 use CoachAnalyze\RedisClient;
 use CoachAnalyze\Stats;
 use CoachAnalyze\Storage;
+use CoachAnalyze\View;
 
 require dirname(__DIR__) . '/src/bootstrap.php';
 
@@ -208,7 +210,17 @@ function wykonajRender(int $jobId, int $importId, array $import): void
         'match_id'        => $matchId,
         'season_label'    => null,
         'teams'           => $teams === [] ? new stdClass() : $teams,
-        'mapping_profile' => ['version' => 1, 'rules' => []],
+        // PROFIL MAPOWAŃ KLUBU, nie pusty zestaw.
+        //
+        // Dotąd szedł tu `['version' => 1, 'rules' => []]`, czyli silnik liczył
+        // wyłącznie słownikiem domyślnym. Klub z własnym nazewnictwem dostawał
+        // przez to raport z pustymi sekcjami, a decyzje operatora z kreatora
+        // mapowań nie miały żadnego wpływu na liczby.
+        //
+        // Bierzemy profil klubu „naszego": to jego metodyka opisuje tagi.
+        'mapping_profile' => Mappings::forEngine(
+            $match['club_home_id'] !== null ? (int) $match['club_home_id'] : null
+        ),
         // Korekta kontrastu barw klubu należy do silnika: PHP nie może uruchomić
         // Pythona z warstwy żądań, a arytmetyki koloru nie przepisujemy.
         'options'         => ['contrast_fix' => true, 'engine_locale' => 'pl_PL'],
@@ -242,6 +254,26 @@ function wykonajRender(int $jobId, int $importId, array $import): void
             ]
         );
 
+        /*
+         * IDENTYFIKATOR ODCZYTUJEMY NATYCHMIAST PO WSTAWIENIU.
+         *
+         * Usterka z produkcji: mail prowadził do `/raport/0`. `lastInsertId()`
+         * stało tu niżej, za `saveInspection()` i `UPDATE matches` — a każde
+         * kolejne zapytanie wstawiające wiersz (choćby wpis w `audit_log`)
+         * podmienia wartość zwracaną przez sterownik.
+         *
+         * To nie jest miejsce na sprytniejsze rozwiązanie: odczyt ma stać
+         * bezpośrednio przy INSERT i nic nie ma prawa się między nie wcisnąć.
+         */
+        $reportId = (int) Db::pdo()->lastInsertId();
+
+        if ($reportId <= 0) {
+            // Raport JEST zapisany — brakuje tylko jego identyfikatora. Nie
+            // przewracamy zadania, ale mówimy o tym w logu, bo powiadomienie
+            // pójdzie wtedy bez odnośnika.
+            error_log("run_job {$jobId}: raport zapisany, ale sterownik nie zwrócił identyfikatora");
+        }
+
         // Pokrycie z pełnego przebiegu jest dokładniejsze niż z `inspect`
         // (tam nie było konfiguracji klubów) — nadpisujemy je.
         if ($meta !== []) {
@@ -253,8 +285,6 @@ function wykonajRender(int $jobId, int $importId, array $import): void
             'hs' => $meta['half_split_ms'] ?? $import['half_split_ms'],
             'id' => $matchId,
         ]);
-
-        $reportId = (int) Db::pdo()->lastInsertId();
 
         zakoncz($jobId, 0, null);
         Audit::log('report.generated', null, 'match', $matchId, ['job_id' => $jobId]);
@@ -316,10 +346,42 @@ function powiadomOAwarii(int $matchId, int $jobId, string $powod, bool $moznaPon
 /** Opis meczu do treści powiadomienia: „Nasza drużyna — Rywal". */
 function opisMeczu(array $match): string
 {
-    $nasza = trim((string) ($match['home_name'] ?? '')) ?: 'nasza drużyna';
-    $rywal = trim((string) ($match['away_name'] ?? '')) ?: 'rywal';
-    $data  = $match['played_at'] !== null ? ' (' . $match['played_at'] . ')' : '';
-    return $nasza . ' — ' . $rywal . $data;
+    $nasza = trim((string) ($match['home_name'] ?? ''));
+    $rywal = trim((string) ($match['away_name'] ?? ''));
+
+    /*
+     * ŻADNYCH SŁÓW ZASTĘPCZYCH W TEMACIE MAILA.
+     *
+     * Usterka z produkcji: temat brzmiał „KS WIĄZOWNICA — rywal", bo przeciwnik
+     * nie był przypisany do meczu (eksport LiveTag zawierał tylko jedną nazwę
+     * drużyny), a kod wstawiał w to miejsce dosłowne słowo „rywal".
+     *
+     * Słowo zastępcze wygląda jak nazwa i czyta się jak błąd systemu. Data
+     * meczu jest informacją PRAWDZIWĄ i wystarczającą, żeby odbiorca wiedział,
+     * o który mecz chodzi — a przy okazji widać, że nazwy po prostu nie mamy,
+     * zamiast udawać, że mamy (CLAUDE.md §8).
+     */
+    $data = '';
+    if (!empty($match['played_at'])) {
+        $stamp = strtotime((string) $match['played_at']);
+        if ($stamp !== false) {
+            $data = date('d.m', $stamp);
+        }
+    }
+
+    if ($nasza !== '' && $rywal !== '') {
+        return $nasza . ' — ' . $rywal;
+    }
+
+    $znana = $nasza !== '' ? $nasza : $rywal;
+
+    if ($znana !== '') {
+        return $data !== ''
+            ? $znana . ' — ' . View::t('mail.match.on_date', $data)
+            : $znana;
+    }
+
+    return $data !== '' ? View::t('mail.match.on_date', $data) : View::t('mail.match.unknown');
 }
 
 /**
@@ -407,7 +469,8 @@ function wyslijMail(int $jobId, int $notificationId): void
         $mailer->send(
             (string) $powiadomienie['mail_to'],
             (string) $powiadomienie['title'],
-            trescMaila($powiadomienie)
+            trescMaila($powiadomienie),
+            trescMailaHtml($powiadomienie)
         );
     } catch (\Throwable $e) {
         // Rozmowa z serwerem trafia WYŁĄCZNIE do logu — bywa w niej adres
@@ -488,6 +551,87 @@ function trescMaila(array $powiadomienie): string
     $linie[] = 'CoachAnalyze. Powiadomienia można wyłączyć w panelu, w ustawieniach konta.';
 
     return implode("\n", $linie);
+}
+
+/**
+ * Wersja HTML wiadomosci.
+ *
+ * BEZ OBRAZKOW, BEZ SLEDZENIA OTWARC, BEZ ZASOBOW Z ZEWNATRZ. Powiadomienie ma
+ * dojsc i dac sie kliknac, a nie raportowac, kto je przeczytal. Zewnetrzny zasob
+ * w mailu to dodatkowo najprostszy sposob na wpadniecie do spamu.
+ *
+ * Style SA WPISANE W ATRYBUTY. To jedyne miejsce w projekcie, gdzie odchodzimy
+ * od zmiennych CSS — arkusze i zmienne nie dzialaja w wiekszosci klientow
+ * pocztowych, a Gmail usuwa nawet znacznik `<style>`. Barwy sa tu przepisane
+ * z motywu jasnego i to jest swiadome powielenie, nie przeoczenie.
+ */
+function trescMailaHtml(array $powiadomienie): ?string
+{
+    $tytul = htmlspecialchars((string) $powiadomienie['title'], ENT_QUOTES, 'UTF-8');
+    $tresc = !empty($powiadomienie['body'])
+        ? nl2br(htmlspecialchars((string) $powiadomienie['body'], ENT_QUOTES, 'UTF-8'))
+        : '';
+
+    $baza = rtrim((string) Config::get('APP_URL', ''), '/');
+    $adres = '';
+    if (!empty($powiadomienie['url'])) {
+        $adres = $baza !== '' ? $baza . $powiadomienie['url'] : (string) $powiadomienie['url'];
+    }
+    $adresHtml = htmlspecialchars($adres, ENT_QUOTES, 'UTF-8');
+
+    $przycisk = $adres === '' ? '' : <<<PRZYCISK
+        <p style="margin:24px 0;">
+          <a href="{$adresHtml}"
+             style="display:inline-block;padding:12px 22px;border-radius:8px;
+                    background:#E8722C;color:#FFFFFF;text-decoration:none;
+                    font-weight:600;font-size:15px;">Otwórz raport</a>
+        </p>
+        <p style="margin:0 0 8px;font-size:12px;color:#6B7A88;">
+          Jeśli przycisk nie działa, skopiuj adres:<br>
+          <a href="{$adresHtml}" style="color:#B4551A;">{$adresHtml}</a>
+        </p>
+PRZYCISK;
+
+    $ustawienia = $baza !== '' ? $baza . '/konto' : '/konto';
+    $ustawieniaHtml = htmlspecialchars($ustawienia, ENT_QUOTES, 'UTF-8');
+
+    return <<<HTML
+<!doctype html>
+<html lang="pl">
+<head><meta charset="utf-8"><title>{$tytul}</title></head>
+<body style="margin:0;padding:0;background:#F3F5F7;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+         style="background:#F3F5F7;padding:24px 12px;">
+    <tr><td align="center">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+             style="max-width:560px;background:#FFFFFF;border:1px solid #DCE3E9;
+                    border-radius:12px;overflow:hidden;
+                    font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;">
+
+        <tr><td style="padding:18px 28px;border-bottom:1px solid #DCE3E9;">
+          <span style="font-size:16px;font-weight:700;color:#1B2430;">CoachAnalyze</span>
+          <span style="font-size:13px;color:#6B7A88;"> · Analityka meczowa</span>
+        </td></tr>
+
+        <tr><td style="padding:28px;">
+          <h1 style="margin:0 0 12px;font-size:19px;line-height:1.35;color:#1B2430;">{$tytul}</h1>
+          <p style="margin:0;font-size:15px;line-height:1.55;color:#3A4753;">{$tresc}</p>
+          {$przycisk}
+        </td></tr>
+
+        <tr><td style="padding:16px 28px;border-top:1px solid #DCE3E9;
+                       font-size:12px;line-height:1.5;color:#6B7A88;">
+          Wiadomość wysłana automatycznie przez CoachAnalyze.<br>
+          Powiadomienia mailem możesz wyłączyć w panelu, w
+          <a href="{$ustawieniaHtml}" style="color:#B4551A;">ustawieniach konta</a>.
+        </td></tr>
+
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>
+HTML;
 }
 
 function zakoncz(int $jobId, int $exitCode, ?string $error): void

@@ -19,6 +19,7 @@ use CoachAnalyze\Engine;
 use CoachAnalyze\Imports;
 use CoachAnalyze\Jobs;
 use CoachAnalyze\Mailer;
+use CoachAnalyze\Mappings;
 use CoachAnalyze\Matches;
 use CoachAnalyze\Notes;
 use CoachAnalyze\Notifications;
@@ -172,6 +173,25 @@ switch (true) {
     case preg_match('#^/import/(\d+)/generuj$#', $path, $m) === 1 && $method === 'POST':
         requireCsrf();
         queueBuild((int) $m[1], (int) $user['id']);
+        break;
+
+    // ------------------------------------------------- kreator mapowań
+    case preg_match('#^/import/(\d+)/mapowanie$#', $path, $m) === 1 && $method === 'GET':
+        showMapping((int) $m[1]);
+        break;
+
+    case preg_match('#^/import/(\d+)/mapowanie$#', $path, $m) === 1 && $method === 'POST':
+        requireCsrf();
+        saveMapping((int) $m[1], (int) $user['id']);
+        break;
+
+    case preg_match('#^/kluby/(\d+)/mapowania$#', $path, $m) === 1 && $method === 'GET':
+        showClubMappings((int) $m[1]);
+        break;
+
+    case preg_match('#^/kluby/(\d+)/mapowania$#', $path, $m) === 1 && $method === 'POST':
+        requireCsrf();
+        updateClubMappings((int) $m[1], (int) $user['id']);
         break;
 
     case preg_match('#^/zadania/(\d+)$#', $path, $m) === 1 && $method === 'GET':
@@ -751,6 +771,21 @@ function showCoverage(int $importId): void
         redirect($job !== null ? '/zadania/' . (int) $job['id'] : '/import');
     }
 
+    /*
+     * KREATOR MAPOWAŃ przed raportem pokrycia.
+     *
+     * Cztery eksporty od trzech klubów mają trzy różne słowniki, a klub potrafi
+     * dołożyć tag w trakcie sezonu. Bez zatrzymania w tym miejscu nowy klub
+     * dostaje raport z pustymi sekcjami, a zmiana metodyki po cichu wycina
+     * zdarzenia z metryk — bez błędu i bez ostrzeżenia.
+     *
+     * Gdy wszystkie tagi są znane, NIE ZATRZYMUJEMY SIĘ. Ekran, który pyta
+     * o nic, uczy klikać „dalej" bez czytania.
+     */
+    if (Imports::needsMapping($import)) {
+        redirect('/import/' . $importId . '/mapowanie');
+    }
+
     View::page('import_coverage', [
         'title'               => View::t('coverage.title'),
         'active'              => 'import',
@@ -759,9 +794,178 @@ function showCoverage(int $importId): void
         'warnings'            => $report['warnings'],
         'sectionsUnavailable' => $report['sections_unavailable'],
         'sectionsAvailable'   => $report['sections_available'],
+        'excluded'            => $report['excluded'],
         'report'              => Imports::latestReport((int) $import['match_id']),
         'notice'              => Session::flash('notice'),
     ]);
+}
+
+/**
+ * Kreator mapowań: tagi z eksportu, o których profil klubu jeszcze nie wie.
+ */
+function showMapping(int $importId): void
+{
+    $import = Imports::find($importId);
+    if ($import === null) {
+        http_response_code(404);
+        View::page('soon', [
+            'title'   => View::t('common.not_found'),
+            'heading' => View::t('common.not_found'),
+        ]);
+        return;
+    }
+
+    $meta = json_decode((string) ($import['coverage_json'] ?? ''), true);
+    if (!is_array($meta) || $meta === []) {
+        // Bez pokrycia nie ma czego mapować — wracamy do stanu zadania.
+        $job = Imports::latestJob($importId, 'inspect');
+        redirect($job !== null ? '/zadania/' . (int) $job['id'] : '/import');
+    }
+
+    $clubId   = Imports::mappingClubId($import);
+    $nieznane = Mappings::unknown($meta, $clubId);
+
+    // Nic nowego — nie zatrzymujemy operatora na pustym ekranie.
+    if ($nieznane['tags'] === [] && $nieznane['labels'] === []) {
+        redirect('/import/' . $importId);
+    }
+
+    // Podpowiedzi liczone na podstawie tego, co klub JUŻ ma zmapowane, oraz
+    // słownika domyślnego silnika. To sugestia — zaznaczona wstępnie, ale
+    // zatwierdza ją człowiek.
+    $znane = Mappings::decidedTags($clubId) + Mappings::domyslneTagi();
+    foreach ($nieznane['tags'] as &$tag) {
+        $tag['suggestion'] = Mappings::suggest((string) $tag['name'], $znane);
+    }
+    unset($tag);
+
+    View::page('mapping_form', [
+        'title'      => View::t('mapping.title'),
+        'active'     => 'import',
+        'import'     => $import,
+        'club'       => $clubId !== null ? Clubs::find($clubId) : null,
+        'tags'       => $nieznane['tags'],
+        'labels'     => $nieznane['labels'],
+        'concepts'   => Mappings::POJECIA,
+        'qualifiers' => Mappings::KWALIFIKATORY,
+        'error'      => Session::flash('error'),
+    ]);
+}
+
+/**
+ * Zapis decyzji operatora jako NOWEJ WERSJI profilu klubu.
+ */
+function saveMapping(int $importId, int $userId): void
+{
+    $import = Imports::find($importId);
+    if ($import === null) {
+        http_response_code(404);
+        redirect('/import');
+    }
+
+    $clubId = Imports::mappingClubId($import);
+    if ($clubId === null) {
+        // Bez klubu nie ma gdzie zapisać profilu. Mówimy wprost, zamiast
+        // przyjmować decyzje i gubić je po cichu.
+        Session::flash('error', View::t('mapping.err.no_club'));
+        redirect('/import/' . $importId . '/mapowanie');
+    }
+
+    $tagi     = (array) ($_POST['tag'] ?? []);
+    $etykiety = (array) ($_POST['label'] ?? []);
+
+    // Zgłoszenia brakujących pojęć wyjmujemy PRZED zapisem profilu: tag idzie
+    // wtedy tymczasowo jako nieanalizowany, a sprawa zostaje do przejrzenia.
+    $doZgloszenia = [];
+    foreach ($tagi as $tag => $wybor) {
+        if ((string) $wybor === Mappings::ZGLOS) {
+            $doZgloszenia[] = (string) $tag;
+            $tagi[$tag] = Mappings::NIE_ANALIZUJ;
+        }
+    }
+
+    try {
+        $profileId = Mappings::saveVersion(
+            $clubId,
+            array_map('strval', $tagi),
+            array_map('strval', $etykiety),
+            $userId,
+            isset($_POST['note']) ? (string) $_POST['note'] : null
+        );
+    } catch (\Throwable $e) {
+        // Nieznane pojęcie w żądaniu = ktoś obszedł listę wyboru. Nie zapisujemy
+        // niczego i mówimy o tym wprost.
+        error_log('mapowania: ' . $e->getMessage());
+        Session::flash('error', View::t('mapping.err.unknown_concept'));
+        redirect('/import/' . $importId . '/mapowanie');
+    }
+
+    foreach ($doZgloszenia as $tag) {
+        Mappings::requestConcept(
+            $clubId,
+            $importId,
+            $tag,
+            (string) ($_POST['rationale'][$tag] ?? ''),
+            $userId
+        );
+    }
+
+    Imports::setMappingProfile($importId, $profileId);
+
+    Session::flash('notice', View::t(
+        $doZgloszenia === [] ? 'mapping.saved' : 'mapping.saved_with_request',
+        count($doZgloszenia)
+    ));
+    redirect('/import/' . $importId);
+}
+
+/** Ustawienia mapowań klubu: historia wersji i decyzje do zmiany. */
+function showClubMappings(int $clubId): void
+{
+    $club = Clubs::find($clubId);
+    if ($club === null) {
+        http_response_code(404);
+        View::page('soon', ['title' => View::t('common.not_found'), 'heading' => View::t('common.not_found')]);
+        return;
+    }
+
+    View::page('club_mappings', [
+        'title'      => View::t('mapping.club.title'),
+        'active'     => 'clubs',
+        'club'       => $club,
+        'assigned'   => Mappings::assignedTags($clubId),
+        'ignored'    => Mappings::ignoredTags($clubId),
+        'history'    => Mappings::history($clubId),
+        'requests'   => Mappings::requestsFor($clubId),
+        'concepts'   => Mappings::POJECIA,
+        'notice'     => Session::flash('notice'),
+        'error'      => Session::flash('error'),
+    ]);
+}
+
+/** Zmiana decyzji o tagu — również cofnięcie „nie analizuj". */
+function updateClubMappings(int $clubId, int $userId): void
+{
+    if (Clubs::find($clubId) === null) {
+        http_response_code(404);
+        redirect('/kluby');
+    }
+
+    try {
+        Mappings::saveVersion(
+            $clubId,
+            array_map('strval', (array) ($_POST['tag'] ?? [])),
+            [],
+            $userId,
+            isset($_POST['note']) ? (string) $_POST['note'] : null
+        );
+        Session::flash('notice', View::t('mapping.club.saved'));
+    } catch (\Throwable $e) {
+        error_log('mapowania: ' . $e->getMessage());
+        Session::flash('error', View::t('mapping.err.unknown_concept'));
+    }
+
+    redirect('/kluby/' . $clubId . '/mapowania');
 }
 
 /**

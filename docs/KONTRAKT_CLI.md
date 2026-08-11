@@ -145,6 +145,46 @@ $PYTHON_BIN -m coachanalyze --version               # wersja silnika
 ```
 
 `inspect` służy ekranowi raportu pokrycia — operator widzi ostrzeżenia **przed** wygenerowaniem raportu.
+Zasila też **kreator mapowań** (`/import/{id}/mapowanie`), który porównuje `unmapped_tags`
+i `unmapped_labels` z profilem klubu i zatrzymuje operatora, gdy w eksporcie są nowe tagi.
+
+### Braki po stronie kreatora — do uzupełnienia w silniku
+
+`unmapped_tags` i `unmapped_labels` zwracają dziś **same nazwy**:
+
+```json
+"unmapped_tags": ["1x1 DEF", "AKCJA DEFENSYWNA", "SBZ PODAJĄCY"]
+```
+
+Kreator potrzebuje dwóch rzeczy więcej. **Liczby wystąpień** — bo „tag wystąpił 2 razy"
+i „tag wystąpił 140 razy" to zupełnie inne decyzje, a bez niej operator wybiera w ciemno.
+Oraz **etykiet towarzyszących** — bo `SBZ PODAJĄCY` z etykietami `STRZAŁ` / `BRAK STRZAŁU`
+znaczy co innego niż ten sam tag z etykietami `WYGRANY` / `PRZEGRANY`.
+
+`canon.build()` **już te liczby zbiera** (`unmapped_tags[tag] = ... + 1`) i gubi je przy
+emisji — `sorted(unmapped_tags)` zwraca same klucze. Proponowany kształt:
+
+```json
+"unmapped_tags": [
+  { "tag": "AKCJA DEFENSYWNA", "count": 7, "sample_labels": ["UDANA", "NIEUDANA"] }
+],
+"unmapped_labels": [ { "label": "PRESSING WYSOKI", "count": 3 } ]
+```
+
+Przydałaby się też liczba zdarzeń poza analizą (`coverage.unanalysed`), żeby raport
+pokrycia mógł powiedzieć „7 z 120 zdarzeń nie wchodzi do metryk" zamiast samej listy tagów.
+
+**Warstwa PHP czyta OBA kształty** (`Mappings::unknown()`), więc zmiana w silniku niczego
+nie zepsuje — ekran po prostu zacznie pokazywać liczby zamiast kresek. Do czasu tej zmiany
+pokazujemy „—" i mówimy wprost, że liczby nie znamy; podstawienie zera byłoby wymyśloną
+daną, na której operator opierałby decyzję.
+
+### Profil mapowań idzie do `build`, nie do `inspect`
+
+`inspect` nie przyjmuje `--config`, więc porównanie z profilem klubu robi PHP.
+`build` dostaje profil w `config.json` (`mapping_profile`) i to on decyduje, które
+zdarzenia wejdą do metryk. Tag z regułą `"concept": null` jest silnikowi **znany**
+i przestaje trafiać do `unmapped_tags` — tak zapisujemy decyzję „nie analizuj".
 
 Wypisuje `meta.json` na stdout; `--out-meta` dodatkowo zapisuje go do pliku. `--json` jest
 opcjonalny i włącza wykrywanie literówek w palecie tablicy kodowej. **`inspect` nie przyjmuje

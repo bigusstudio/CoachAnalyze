@@ -84,6 +84,30 @@ fragment tekstu łapie `CELNY` wewnątrz `NIECELNY` i psuje liczby po cichu — 
 Profil jest wersjonowany i przypisany do klubu. Tagi nierozpoznane trafiają do `unmapped`
 i są widoczne w raporcie pokrycia — nigdy nie znikają milcząco.
 
+### Kto wypełnia profil
+
+**Kreator mapowań** (`/import/{id}/mapowanie`, `app/src/Mappings.php`), uruchamiany po
+wgraniu eksportu a przed raportem pokrycia. Gdy wszystkie tagi są znane, kreator się nie
+pokazuje — ekran pytający o nic uczy klikać „dalej" bez czytania.
+
+Reguły obowiązujące kreator:
+
+- **Lista pojęć jest zamknięta.** Operator przypisuje tag do istniejącego pojęcia albo
+  oznacza „nie analizuj". Nowego pojęcia nie tworzy. Gdy żadne nie pasuje, ma opcję
+  „zgłoś brakujące pojęcie" — sprawa trafia do `concept_requests`, a tag idzie
+  **tymczasowo** jako nieanalizowany.
+- **Podpowiedź to sugestia, nie automat.** `1x1 DEF.` przy istniejącym `1x1 DEF`,
+  `SBZ PODAJĄCY` przy `entry_sbz` — propozycja jest wstępnie zaznaczona, ale zatwierdza
+  ją człowiek. Automatyczne przypisanie byłoby zgadywaniem pojęcia, a to zmienia liczby
+  w raporcie.
+- **„Nie analizuj" zapisujemy jako `"concept": null`.** Silnik zna wtedy tag i przestaje
+  zgłaszać go jako nierozpoznany, a zdarzenie trafia do archiwum bez pojęcia — jest,
+  ale nie wchodzi do metryk. Tagi te NIE wracają przy kolejnym imporcie, ale są widoczne
+  w ustawieniach klubu i decyzję da się cofnąć.
+- **Zapis tworzy nową wersję, poprzednie zostają.** Wraz z autorem, datą i powodem zmiany
+  (`mapping_profiles.created_by`, `.note` — migracja 007). Mapowanie decyduje o tym, które
+  zdarzenia wchodzą do metryk, więc jest zmianą tej samej wagi co zmiana kodu silnika.
+
 ## Zapis do archiwum
 
 `canon.to_records()` tłumaczy zdarzenia kanoniczne na kształt tabeli `events_canonical`

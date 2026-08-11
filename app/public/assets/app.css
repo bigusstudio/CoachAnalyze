@@ -650,3 +650,36 @@ form.chmurka__zamknij button:hover { color: var(--tekst); }
 @media (max-width: 640px) {
   .chmurki { left: 16px; right: 16px; width: auto; }
 }
+
+/* --- kreator mapowań tagów ----------------------------------------------- */
+.tag-nazwa {
+  display: inline-block;
+  padding: 2px 7px;
+  margin: 0 4px 4px 0;
+  border: 1px solid var(--obramowanie);
+  border-radius: 6px;
+  background: var(--tlo-pole);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  /* Nazwy tagów bywają długie i zawierają spacje — łamiemy zamiast rozpychać. */
+  overflow-wrap: anywhere;
+}
+
+/* Tag świadomie pominięty wygląda inaczej niż nierozpoznany: pierwsze jest
+   decyzją, drugie brakiem decyzji, i nie wolno ich mylić. */
+.tag-nazwa--pominiety {
+  border-style: dashed;
+  color: var(--tekst-slaby);
+}
+
+.tagi { margin: 8px 0 4px; }
+
+.field--slim { margin-top: 8px; margin-bottom: 0; }
+.field--slim .field__label { font-size: 12px; }
+
+.h3 { margin: 16px 0 6px; font-size: 14px; }
+
+/* Stan zgłoszenia brakującego pojęcia. */
+.tag--req-new      { border-color: var(--akcent); color: var(--akcent); }
+.tag--req-accepted { border-color: var(--ok-obram); color: var(--ok-tekst); }
+.tag--req-rejected { border-color: var(--blad-tekst); color: var(--blad-tekst); }
