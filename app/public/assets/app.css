@@ -337,6 +337,28 @@ body {
   .btn--ghost span { display: none; }
 }
 
+/* --- raport pokrycia --- */
+.facts--wide { grid-template-columns: 260px 1fr; }
+
+.warns { list-style: none; margin: 0; padding: 0; }
+.warns__row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--obramowanie);
+  font-size: 14px;
+}
+.warns__row:last-child { border-bottom: 0; }
+.warns__msg { flex: 1; }
+
+.actions--head {
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 20px;
+}
+.actions--head .h1 { margin: 0; }
+
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }

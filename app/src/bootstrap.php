@@ -41,6 +41,20 @@ ini_set('display_errors', $debug ? '1' : '0');
 ini_set('log_errors', '1');
 error_reporting(E_ALL);
 
+/**
+ * Docelowy plik logu. Proces roboczy (app/bin/run_job.php) startuje odpięty,
+ * ze strumieniami do /dev/null — bez tego ustawienia jego `error_log()` nie ma
+ * dokąd pisać i pełny traceback silnika przepada. A ma trafiać do logu,
+ * skoro nie wolno mu trafić do przeglądarki (CLAUDE.md §5).
+ */
+$logPath = Config::get('LOG_PATH');
+if ($logPath !== null) {
+    $logDir = dirname($logPath);
+    if (is_dir($logDir) || @mkdir($logDir, 0770, true) || is_dir($logDir)) {
+        ini_set('error_log', $logPath);
+    }
+}
+
 set_exception_handler(static function (\Throwable $e) use ($debug): void {
     error_log(sprintf(
         '[%s] %s w %s:%d%s%s',

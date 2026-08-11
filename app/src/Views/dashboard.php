@@ -12,7 +12,10 @@ use CoachAnalyze\View;
  * @var string|null $notice
  */
 ?>
-<h1 class="h1"><?= View::e(View::t('dash.title')) ?></h1>
+<div class="actions actions--head">
+  <h1 class="h1"><?= View::e(View::t('dash.title')) ?></h1>
+  <a class="btn btn--ghost" href="/import"><?= View::e(View::t('import.nav')) ?></a>
+</div>
 
 <?php if (!empty($notice)): ?>
   <p class="notice" role="status"><?= View::e($notice) ?></p>

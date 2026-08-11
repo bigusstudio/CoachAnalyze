@@ -21,6 +21,37 @@ final class Db
             return self::$pdo;
         }
 
+        // Produkcja to MySQL. `sqlite` istnieje wyłącznie dla testów — proces
+        // roboczy (app/bin/run_job.php) startuje osobno i musi trafić do tej samej
+        // bazy co żądanie HTTP. Zapytania w tej warstwie są przenośne: bez NOW(),
+        // bez INTERVAL, bez FIELD().
+        //
+        // Bramka jest twarda i celowo nie ma trybu „ostrzeż i jedź dalej": literówka
+        // w .env, która po cichu przestawia produkcję na plik SQLite, oznacza panel
+        // pokazujący pustą, równoległą bazę — bez jednego komunikatu o błędzie.
+        $driver = strtolower((string) Config::get('DB_DRIVER', 'mysql'));
+
+        if ($driver !== 'mysql') {
+            $env = (string) Config::get('APP_ENV', 'production');
+            if ($env !== 'test') {
+                throw new \RuntimeException(sprintf(
+                    'DB_DRIVER=%s jest dozwolony wyłącznie przy APP_ENV=test (obecnie APP_ENV=%s). '
+                    . 'Produkcja działa na MySQL.',
+                    $driver,
+                    $env
+                ));
+            }
+            if ($driver !== 'sqlite') {
+                throw new \RuntimeException("Nieznany DB_DRIVER: {$driver}. Dozwolone: mysql, sqlite.");
+            }
+
+            self::$pdo = new PDO('sqlite:' . Config::require('DB_PATH'), null, null, [
+                PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            ]);
+            return self::$pdo;
+        }
+
         $dsn = sprintf(
             'mysql:host=%s;dbname=%s;charset=utf8mb4',
             Config::get('DB_HOST', 'localhost'),

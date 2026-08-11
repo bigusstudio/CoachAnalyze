@@ -32,6 +32,11 @@ $next = $theme === 'dark' ? 'light' : 'dark';
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
+<?php if (!empty($refresh)): ?>
+<?php // Odświeżanie statusu bez JavaScriptu — panel nie ma ani jednego skryptu
+      // i nie ma powodu, żeby dokładać go dla licznika sekund. ?>
+<meta http-equiv="refresh" content="<?= (int) $refresh ?>">
+<?php endif; ?>
 <title><?= View::e($title ?? View::t('app.name')) ?> — <?= View::e(View::t('app.name')) ?></title>
 <link rel="stylesheet" href="/assets/app.css">
 </head>
@@ -68,6 +73,9 @@ $next = $theme === 'dark' ? 'light' : 'dark';
     </a>
     <a class="side__item<?= $active === 'matches' ? ' is-active' : '' ?>" href="/mecze">
       <?= View::e(View::t('nav.matches')) ?>
+    </a>
+    <a class="side__item<?= $active === 'import' ? ' is-active' : '' ?>" href="/import">
+      <?= View::e(View::t('import.nav')) ?>
     </a>
     <?php // Kluby i Notatki to jeszcze nie są trasy — pozycja nieaktywna mówi
           // wprost „będzie", zamiast prowadzić w stronę, której nie ma. ?>
