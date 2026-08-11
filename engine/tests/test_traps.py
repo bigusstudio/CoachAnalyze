@@ -98,7 +98,7 @@ def test_etykieta_bez_mapowania_nie_znika_po_cichu(write_csv, row):
     path = write_csv([row("STRZAŁ", labels="ETYKIETA SPOZA SŁOWNIKA")])
     _, result, meta = _meta(path)
     assert result["report"]["unmapped_labels"] == ["ETYKIETA SPOZA SŁOWNIKA"]
-    assert meta["unmapped_labels"] == ["ETYKIETA SPOZA SŁOWNIKA"]
+    assert meta["unmapped_labels"] == [{"label": "ETYKIETA SPOZA SŁOWNIKA", "count": 1}]
     assert result["events"][0]["source_labels"] == ["ETYKIETA SPOZA SŁOWNIKA"]
 
 

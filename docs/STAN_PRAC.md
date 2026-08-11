@@ -172,25 +172,46 @@ na produkcji** — na MySQL, nie na SQLite:
 - usunięcie klubu,
 - wgranie eksportu z datą meczu (wykrywanie sezonu).
 
-### 4.2 Kreator: brak liczby wystąpień i etykiet towarzyszących
+### 4.2 Kreator: liczby wystąpień i etykiety towarzyszące — ZROBIONE (silnik 0.9.0)
 
-Ekran mapowania pokazuje „—" zamiast liczby wystąpień tagu, bo `inspect` zwraca
-**same nazwy**:
+`meta.json` niesie teraz kształt wzbogacony (`{tag, count, sample_labels}`,
+`{label, count}`) oraz `coverage.unanalysed`. Warstwa PHP czytała oba kształty
+już wcześniej, więc ekran sam zaczął pokazywać liczby. Szczegóły: `CHANGELOG.md`
+[0.9.0] i `docs/KONTRAKT_CLI.md`, sekcja „Dane dla kreatora".
 
-```json
-"unmapped_tags": ["1x1 DEF", "AKCJA DEFENSYWNA", "SBZ PODAJĄCY"]
+Przy okazji naprawiona usterka silnika wykryta przelotem HTTP: etykieta z regułą
+`qualifier: null` („nie analizuj") wracała w `unmapped_labels` przy każdym
+renderze — `get()` nie odróżniał jawnego `null` od braku reguły.
+
+### 4.2a Kreator na produkcji: STARE WIERSZE `coverage_json` nie naprawią się same
+
+Ustalone przelotem HTTP (`app/tests/integracja/test_mapowania_http.php`, 37 asercji):
+kod z repozytorium zatrzymuje na kreatorze poprawnie — produkcyjny objaw
+(puste `mapping_profiles`, `mapping_profile_id` NULL, klub 7, mecze 4 i 5) ma
+DWIE warstwy:
+
+1. Produkcja działa na kodzie sprzed naprawy `saveInspection()` (commit
+   `32e2f60` niewdrożony) — `coverage_json` bez `unmapped_tags`, więc
+   `needsMapping()` zawsze widziało pustkę.
+2. **Po wdrożeniu istniejące importy nadal ominą kreator**: ich `coverage_json`
+   zapisał stary kod i nic go nie odświeża. „Wygeneruj ponownie" przejdzie bez
+   zatrzymania (render bez profilu); dopiero zapis pokrycia PO tym renderze
+   uzupełnia wpis. Symulacja w scenariuszu 4 testu HTTP.
+
+**Droga naprawy po wdrożeniu** (sprawdzona w teście): „Ponów" na zadaniu
+`inspect` danego importu — działa też dla zadań `done` — albo zbiorczo z SQL:
+
+```sql
+INSERT INTO jobs (type, payload_json, status, attempts, created_at)
+SELECT 'inspect',
+       CONCAT('{"import_id":', i.id, ',"match_id":', i.match_id, '}'),
+       'queued', 0, NOW()
+  FROM imports i
+ WHERE i.coverage_json IS NOT NULL
+   AND i.coverage_json NOT LIKE '%unmapped_tags%';
 ```
 
-`canon.build()` te liczby **już zbiera** (`unmapped_tags[tag] = ... + 1`) i gubi
-przy emisji — `sorted(unmapped_tags)` zwraca same klucze.
-
-Wymaga zmiany w `engine/`, którego **nie ruszam** (drugie sesja). Proponowany
-kształt jest opisany w `docs/KONTRAKT_CLI.md`, sekcja „Braki po stronie kreatora".
-Warstwa PHP czyta **oba kształty** (`Mappings::unknown()`), więc zmiana w silniku
-niczego nie zepsuje — ekran zacznie pokazywać liczby zamiast kresek.
-
-Do czasu tej zmiany pokazujemy „—" i mówimy wprost, że liczby nie znamy;
-podstawienie zera byłoby wymyśloną daną, na której operator opierałby decyzję.
+Wykonać PO wdrożeniu nowego kodu (inspekcję podnosi cron w ciągu minuty).
 
 ### 4.3 Migracje 006, 007, 008 do wdrożenia
 
@@ -250,7 +271,8 @@ wszystkich klubów. Separacja danych między klientami wymaga osobnego wdrożeni
 
 1. Wdrożyć migracje 006, 007, 008 i potwierdzić naprawy z §4.1 na MySQL.
 2. Rozmowa z analitykiem (§5) i uzupełnienie słownika mapowań.
-3. Wzbogacenie `inspect` o liczby wystąpień (§4.2) — zadanie dla sesji silnika.
+3. Po wdrożeniu: przeinspekcjonować stare importy (§4.2a) — inaczej kreator
+   nadal ominie mecze 4 i 5 klubu 7.
 
 ---
 

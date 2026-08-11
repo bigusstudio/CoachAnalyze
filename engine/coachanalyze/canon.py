@@ -198,6 +198,10 @@ def build(frame, mapping_profile=None, teams=None):
 
     events = []
     unmapped_tags, unmapped_labels, teams_detected, unknown_teams = {}, {}, {}, {}
+    # Etykiety towarzyszące nierozpoznanemu tagowi — kreator pokazuje je
+    # operatorowi, bo `SBZ PODAJĄCY` z etykietami STRZAŁ/BRAK STRZAŁU znaczy
+    # co innego niż ten sam tag z WYGRANY/PRZEGRANY (docs/KONTRAKT_CLI.md).
+    unmapped_tag_labels = {}
     xg_outside = {}
     typo_hits = 0
 
@@ -226,11 +230,26 @@ def build(frame, mapping_profile=None, teams=None):
             typo_hits += 1 if label_fixed else 0
             source_labels.append(label)
             # RÓWNOŚĆ, nie fragment — patrz nagłówek modułu.
-            qualifier = label_rules.get(label)
-            if qualifier is None:
+            #
+            # `in`, a nie `get()`: reguła z kwalifikatorem `null` to świadoma
+            # decyzja „nie analizuj" i taka etykieta jest silnikowi ZNANA —
+            # dokładnie jak tag z `concept: null` (docs/KONTRAKT_CLI.md).
+            # Przy `get()` decyzja operatora wracała w `unmapped_labels`
+            # przy każdym renderze, jakby jej nigdy nie podjęto.
+            if label in label_rules:
+                qualifier = label_rules[label]
+                if qualifier is not None and qualifier not in qualifiers:
+                    qualifiers.append(qualifier)
+            else:
                 unmapped_labels[label] = unmapped_labels.get(label, 0) + 1
-            elif qualifier not in qualifiers:
-                qualifiers.append(qualifier)
+
+        if rule is None and tag is not None:
+            # Próbka, nie komplet: kolejność pierwszego wystąpienia, z górnym
+            # limitem — kreator pokazuje kontekst decyzji, nie pełną listę.
+            sample = unmapped_tag_labels.setdefault(tag, [])
+            for label in source_labels:
+                if label not in sample and len(sample) < 8:
+                    sample.append(label)
 
         raw_team = raw.get("team")
         if raw_team is None:
@@ -287,8 +306,25 @@ def build(frame, mapping_profile=None, teams=None):
     return {
         "events": events,
         "report": {
+            # Same nazwy — używane w tekstach ostrzeżeń i w metrykach.
+            # Kształt z liczbami idzie OSOBNO (`*_detail`), żeby nie zmieniać
+            # istniejących konsumentów ani wyjścia objętego testem złotym.
             "unmapped_tags": sorted(unmapped_tags),
             "unmapped_labels": sorted(unmapped_labels),
+            # Liczby wystąpień i etykiety towarzyszące — trafiają do `meta.json`
+            # dla kreatora mapowań (docs/KONTRAKT_CLI.md, sekcja kreatora).
+            "unmapped_tags_detail": [
+                {
+                    "tag": tag,
+                    "count": unmapped_tags[tag],
+                    "sample_labels": unmapped_tag_labels.get(tag, []),
+                }
+                for tag in sorted(unmapped_tags)
+            ],
+            "unmapped_labels_detail": [
+                {"label": label, "count": unmapped_labels[label]}
+                for label in sorted(unmapped_labels)
+            ],
             "teams_detected": sorted(teams_detected),
             "unknown_teams": sorted(unknown_teams),
             "xg_outside_shot": {"count": sum(xg_outside.values()), "tags": sorted(xg_outside)},

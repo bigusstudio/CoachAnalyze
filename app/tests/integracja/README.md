@@ -25,6 +25,11 @@ php test_konta.php /tmp/ca.sock
 # Wymagają silnika Pythona (PYTHONPATH, bo venv bywa bez zainstalowanej paczki)
 PYTHONPATH=../../../engine php test_kolejka.php
 
+# Przelot całej ścieżki importu przez PRAWDZIWY HTTP: wbudowany serwer PHP,
+# atrapa Redisa (uruchamia sam), cron i prawdziwy silnik. Jedyny zestaw, który
+# łapie klasę błędu „testy zielone, funkcja nieosiągalna z interfejsu".
+php test_mapowania_http.php
+
 # Protokół SMTP przeciw atrapie serwera; certyfikat wytwarza sam test
 php test_smtp.php
 

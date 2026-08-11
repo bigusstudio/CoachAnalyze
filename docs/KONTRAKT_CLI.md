@@ -148,21 +148,12 @@ $PYTHON_BIN -m coachanalyze --version               # wersja silnika
 Zasila też **kreator mapowań** (`/import/{id}/mapowanie`), który porównuje `unmapped_tags`
 i `unmapped_labels` z profilem klubu i zatrzymuje operatora, gdy w eksporcie są nowe tagi.
 
-### Braki po stronie kreatora — do uzupełnienia w silniku
+### Dane dla kreatora — kształt wzbogacony (od silnika 0.9.0)
 
-`unmapped_tags` i `unmapped_labels` zwracają dziś **same nazwy**:
-
-```json
-"unmapped_tags": ["1x1 DEF", "AKCJA DEFENSYWNA", "SBZ PODAJĄCY"]
-```
-
-Kreator potrzebuje dwóch rzeczy więcej. **Liczby wystąpień** — bo „tag wystąpił 2 razy"
-i „tag wystąpił 140 razy" to zupełnie inne decyzje, a bez niej operator wybiera w ciemno.
-Oraz **etykiet towarzyszących** — bo `SBZ PODAJĄCY` z etykietami `STRZAŁ` / `BRAK STRZAŁU`
-znaczy co innego niż ten sam tag z etykietami `WYGRANY` / `PRZEGRANY`.
-
-`canon.build()` **już te liczby zbiera** (`unmapped_tags[tag] = ... + 1`) i gubi je przy
-emisji — `sorted(unmapped_tags)` zwraca same klucze. Proponowany kształt:
+Kreator potrzebuje **liczby wystąpień** — bo „tag wystąpił 2 razy" i „tag wystąpił
+140 razy" to zupełnie inne decyzje — oraz **etykiet towarzyszących**, bo `SBZ PODAJĄCY`
+z etykietami `STRZAŁ` / `BRAK STRZAŁU` znaczy co innego niż ten sam tag z etykietami
+`WYGRANY` / `PRZEGRANY`. Od 0.9.0 `meta.json` je niesie:
 
 ```json
 "unmapped_tags": [
@@ -171,13 +162,13 @@ emisji — `sorted(unmapped_tags)` zwraca same klucze. Proponowany kształt:
 "unmapped_labels": [ { "label": "PRESSING WYSOKI", "count": 3 } ]
 ```
 
-Przydałaby się też liczba zdarzeń poza analizą (`coverage.unanalysed`), żeby raport
-pokrycia mógł powiedzieć „7 z 120 zdarzeń nie wchodzi do metryk" zamiast samej listy tagów.
+`sample_labels` to próbka (kolejność pierwszego wystąpienia, najwyżej 8 pozycji).
+Do tego `coverage.unanalysed` — liczba zdarzeń poza analizą, żeby raport pokrycia
+mógł powiedzieć „7 z 120 zdarzeń nie wchodzi do metryk" zamiast samej listy tagów.
 
-**Warstwa PHP czyta OBA kształty** (`Mappings::unknown()`), więc zmiana w silniku niczego
-nie zepsuje — ekran po prostu zacznie pokazywać liczby zamiast kresek. Do czasu tej zmiany
-pokazujemy „—" i mówimy wprost, że liczby nie znamy; podstawienie zera byłoby wymyśloną
-daną, na której operator opierałby decyzję.
+**Warstwa PHP czyta OBA kształty** (`Mappings::unknown()`): przy samych nazwach
+(silnik < 0.9.0, stare artefakty w bazie) ekran pokazuje „—" i mówi wprost, że liczby
+nie znamy — podstawienie zera byłoby wymyśloną daną, na której operator opierałby decyzję.
 
 ### Profil mapowań idzie do `build`, nie do `inspect`
 
@@ -264,16 +255,25 @@ przepada po cichu — wraca jako ostrzeżenie `UNKNOWN_TEAM`.
     { "code": "TYPO_MASZA", "msg": "Wykryto 'MASZA POŁOWA' — zmapowano na NASZA", "count": 12 },
     { "code": "NEGATIVE_BEGIN", "msg": "Ujemny czas startu taga — przycięto do 0", "count": 3 }
   ],
-  "unmapped_tags": ["PRESS WYSOKI 2"],
+  "unmapped_tags": [
+    { "tag": "PRESS WYSOKI 2", "count": 7, "sample_labels": ["UDANY", "NIEUDANY"] }
+  ],
   "unmapped_labels": []
 }
 ```
+
+`unmapped_tags` niesie **liczbę wystąpień** i **etykiety towarzyszące** (`sample_labels`
+to próbka: kolejność pierwszego wystąpienia, najwyżej 8 pozycji) — bez nich operator
+kreatora decydowałby w ciemno. `unmapped_labels` analogicznie: `{ "label": ..., "count": ... }`.
+Wersje silnika sprzed 0.9.0 zwracały same nazwy; warstwa PHP czyta oba kształty
+(`Mappings::unknown()`), więc stare artefakty w bazie pozostają czytelne.
 
 ### Klucze `coverage`
 
 | Klucz | Znaczenie |
 |---|---|
 | `events` | Liczba zdarzeń kanonicznych — zawsze równa liczbie wierszy eksportu |
+| `unanalysed` | Zdarzenia poza analizą (`concept: null`): tag nierozpoznany albo „nie analizuj" z profilu |
 | `shots` · `duels` · `sbz` · `third` | Liczności pojęć: `shot`, `duel`, `entry_sbz`, `entry_third` |
 | `sbz_with_vector` | Zdobycia SBZ z punktem docelowym (`x_end`) — bez nich nie ma strzałek na mapie |
 | `third_pos` | Zdarzenia III strefy ze współrzędnymi. `0` przy niepustym `third` wyłącza `tl_iii` |

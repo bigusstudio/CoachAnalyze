@@ -39,6 +39,10 @@ def build_coverage(frame, canon_result, has_json=False):
 
     return {
         "events": len(events),
+        # Zdarzenia POZA analizą (concept null): nierozpoznany tag albo świadome
+        # „nie analizuj" w profilu. Raport pokrycia mówi dzięki temu
+        # „7 z 120 zdarzeń nie wchodzi do metryk" zamiast samej listy tagów.
+        "unanalysed": sum(1 for e in events if e["concept"] is None),
         "shots": len(shots),
         "duels": _count(events, "duel"),
         "sbz": len(sbz),
@@ -218,6 +222,10 @@ def build_meta(frame, canon_result, config=None, has_json=False, palette=None, o
         "sections_available": available,
         "sections_unavailable": unavailable,
         "warnings": build_warnings(frame, canon_result, has_json=has_json, palette=palette),
-        "unmapped_tags": canon_result["report"]["unmapped_tags"],
-        "unmapped_labels": canon_result["report"]["unmapped_labels"],
+        # Kształt WZBOGACONY: liczba wystąpień i etykiety towarzyszące.
+        # Bez nich operator kreatora decyduje w ciemno — „tag wystąpił 2 razy"
+        # i „tag wystąpił 140 razy" to zupełnie inne decyzje. Warstwa PHP czyta
+        # oba kształty (Mappings::unknown), więc zmiana jest bezpieczna.
+        "unmapped_tags": canon_result["report"]["unmapped_tags_detail"],
+        "unmapped_labels": canon_result["report"]["unmapped_labels_detail"],
     }

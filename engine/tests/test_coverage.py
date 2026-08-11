@@ -15,9 +15,9 @@ KLUCZE_META = {
 }
 
 KLUCZE_COVERAGE = {
-    "events", "shots", "duels", "sbz", "sbz_with_vector", "third", "third_pos",
-    "teams", "no_team", "xg_parsed", "xg_missing", "xg_sum", "negative_begin",
-    "has_json", "players_filled",
+    "events", "unanalysed", "shots", "duels", "sbz", "sbz_with_vector", "third",
+    "third_pos", "teams", "no_team", "xg_parsed", "xg_missing", "xg_sum",
+    "negative_begin", "has_json", "players_filled",
 }
 
 
@@ -31,6 +31,28 @@ def test_meta_ma_wszystkie_klucze_kontraktu(write_csv, row):
 
     assert set(meta) == KLUCZE_META
     assert set(meta["coverage"]) == KLUCZE_COVERAGE
+
+
+def test_nierozpoznane_tagi_niosa_liczby_i_etykiety(write_csv, row):
+    """Kształt wzbogacony z docs/KONTRAKT_CLI.md — kreator mapowań pokazuje
+    liczbę wystąpień i etykiety towarzyszące, bo bez nich operator decyduje
+    w ciemno. Same nazwy zostają w `report` dla ostrzeżeń i metryk."""
+    meta = meta_for(write_csv([
+        row("AKCJA DEFENSYWNA", labels="ETYKIETA OBCA A"),
+        row("AKCJA DEFENSYWNA", labels="ETYKIETA OBCA B"),
+        row("STRZAŁ", team="A", x="80", y="30"),
+    ]))
+
+    assert meta["unmapped_tags"] == [
+        {"tag": "AKCJA DEFENSYWNA", "count": 2,
+         "sample_labels": ["ETYKIETA OBCA A", "ETYKIETA OBCA B"]},
+    ]
+    assert meta["unmapped_labels"] == [
+        {"label": "ETYKIETA OBCA A", "count": 1},
+        {"label": "ETYKIETA OBCA B", "count": 1},
+    ]
+    # 2 z 3 zdarzeń poza analizą — raport pokrycia mówi to liczbą, nie tylko listą.
+    assert meta["coverage"]["unanalysed"] == 2
 
 
 def test_kazda_niedostepna_sekcja_niesie_powod(write_csv, row):

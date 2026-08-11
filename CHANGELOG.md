@@ -3,6 +3,32 @@
 Format: [wersja silnika] — data — opis.
 Każda zmiana, która modyfikuje wyjście silnika, MUSI mieć tu wpis wraz z powodem.
 
+## [0.9.0] — 2026-08-11
+### `meta.json`: liczby wystąpień nierozpoznanych tagów i etykiety towarzyszące
+Kreator mapowań pokazywał „—" zamiast liczby wystąpień, bo `inspect` zwracał same nazwy —
+`canon.build()` liczby zbierał i gubił je przy emisji (`sorted(unmapped_tags)` zwraca
+same klucze). Operator decydował w ciemno: „tag wystąpił 2 razy" i „tag wystąpił 140 razy"
+to zupełnie inne decyzje.
+
+- `meta.unmapped_tags`: `[{ "tag", "count", "sample_labels" }]` — próbka etykiet
+  towarzyszących w kolejności pierwszego wystąpienia, najwyżej 8 pozycji.
+- `meta.unmapped_labels`: `[{ "label", "count" }]`.
+- `meta.coverage.unanalysed` — liczba zdarzeń poza analizą (`concept: null`), żeby raport
+  pokrycia mówił „7 z 120 zdarzeń nie wchodzi do metryk" zamiast samej listy tagów.
+
+**Naprawa przy okazji, wykryta przelotem HTTP** (`app/tests/integracja/test_mapowania_http.php`):
+etykieta z regułą `qualifier: null` („nie analizuj" z kreatora) wracała w `unmapped_labels`
+przy każdym renderze, jakby decyzji nie było — `label_rules.get(label)` nie odróżniał jawnego
+`null` od braku reguły. Po naprawie działa jak tag z `concept: null`: etykieta jest znana,
+zostaje w `source_labels` zdarzenia, nie wchodzi do metryk. Słownik domyślny nie ma reguł
+`null`, więc zmiana dotyka wyłącznie profili klubów — wyjście testu złotego bez zmian.
+
+`canon.build()["report"]` zachowuje `unmapped_tags`/`unmapped_labels` jako same nazwy
+(konsumują je teksty ostrzeżeń i `metrics`); kształt z liczbami idzie osobno
+(`*_detail`). **Render i metryki bez zmian — test złoty nietknięty.** Warstwa PHP czyta
+oba kształty (`Mappings::unknown()`), więc artefakty sprzed 0.9.0 pozostają czytelne.
+Kontrakt: `docs/KONTRAKT_CLI.md`, sekcja „Dane dla kreatora".
+
 ## [0.8.1] — 2026-08-11
 ### Pakowanie silnika — wdrożenie padało na `pip install -e`
 Automatyczne wykrywanie pakietów setuptools widziało w płaskim układzie `engine/` dwa pakiety

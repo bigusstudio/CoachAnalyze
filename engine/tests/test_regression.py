@@ -311,7 +311,7 @@ def test_rozjazd_formatu_wzgledem_referencyjnego(case):
     assert (frame["format_fingerprint"] != referencyjny["format_fingerprint"]) is case["fingerprint_rozny"]
 
     tagi = {e["tag"] for e in frame["events"]}
-    tagi_ref = set(canon.DEFAULT_TAG_RULES) | set(meta["unmapped_tags"])
+    tagi_ref = set(canon.DEFAULT_TAG_RULES) | {p["tag"] for p in meta["unmapped_tags"]}
     assert (tagi != tagi_ref) is case["tagi_rozne"]
 
     for klucz, oczekiwane in case["coverage"].items():

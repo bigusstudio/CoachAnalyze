@@ -38,6 +38,24 @@ def test_tag_bez_mapowania_zachowuje_zdarzenie():
     assert result["report"]["unmapped_tags"] == ["AKCJA DEFENSYWNA"]
 
 
+def test_etykieta_nie_analizuj_jest_znana():
+    """Reguła `qualifier: null` to decyzja operatora „nie analizuj" — etykieta
+    jest silnikowi ZNANA, jak tag z `concept: null`. Przy odczycie przez
+    `get()` decyzja wracała w `unmapped_labels` przy każdym renderze."""
+    profil = {"version": 1, "rules": [
+        {"match": {"label": "PRESSING WYSOKI"}, "qualifier": None},
+    ]}
+    result = canon.build(
+        frame(event(tag="STRZAŁ", labels=["PRESSING WYSOKI"])),
+        mapping_profile=profil,
+    )
+
+    assert result["report"]["unmapped_labels"] == []
+    assert result["events"][0]["source_labels"] == ["PRESSING WYSOKI"], (
+        "decyzja wyłącza etykietę z metryk, ale nie wymazuje jej ze zdarzenia"
+    )
+
+
 def test_kwalifikatory_z_reguly_tagu_i_z_etykiet():
     result = canon.build(frame(event(tag="1x1 OFF", labels=["WYGRANY"])))
     zdarzenie = result["events"][0]
