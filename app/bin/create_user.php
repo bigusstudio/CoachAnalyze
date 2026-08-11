@@ -62,6 +62,8 @@ if ($existing !== null) {
         'role' => $role,
         'id'   => $existing['id'],
     ]);
+    // Reset hasła z konsoli też musi odciąć zapamiętane urządzenia.
+    \CoachAnalyze\Remember::forgetAll((int) $existing['id'], 'reset hasła z konsoli');
     Audit::log('user.password_reset', null, 'user', (int) $existing['id']);
     echo "Zaktualizowano konto {$email} (id {$existing['id']}).\n";
     exit(0);

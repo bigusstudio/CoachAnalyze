@@ -376,8 +376,23 @@ if (is_file($deployPath)) {
     echo "\n== deploy.sh: kontrola po wdrożeniu ==\n";
 
     check('sprawdza, że .env NIE jest dowiązaniem', str_contains($polecenia, '-L "$WEB/.env"'));
-    check('sprawdza, że storage/ NIE jest dowiązaniem', str_contains($polecenia, '-L "$WEB/storage"'));
-    check('sprawdza zapisywalność storage/', str_contains($polecenia, '-w "$WEB/storage"'));
+
+    /**
+     * Kontrola musi dotyczyć ŚCIEŻKI Z KONFIGURACJI, nie katalogu, który skrypt
+     * sam przed chwilą utworzył.
+     *
+     * Poprzednia wersja sprawdzała `$WEB/storage` i przechodziła zawsze, podczas
+     * gdy aplikacja czytała STORAGE_PATH z `.env` i szła do `shared/storage` —
+     * poza open_basedir. Upload padał, a wdrożenie meldowało „OK".
+     */
+    check('czyta STORAGE_PATH z .env, a nie zakłada katalogu',
+        str_contains($polecenia, "grep -E '^STORAGE_PATH='"),
+        'kontrola sprawdzała katalog zamiast wartości z konfiguracji');
+    check('sprawdza, że STORAGE_PATH leży wewnątrz katalogu domeny',
+        str_contains($polecenia, 'WEB_REAL') && str_contains($polecenia, 'STORAGE_REAL'));
+    check('zapisywalność przez PRÓBĘ ZAPISU, nie test dostępu',
+        str_contains($polecenia, '.probe') && !str_contains($polecenia, '-w "$WEB/storage"'),
+        'testy dostępu kłamią na ścieżkach spoza open_basedir');
     check('sprawdza zapisywalność LOG_PATH', str_contains($polecenia, 'LOG_PATH'));
     check(
         'nieudana kontrola przerywa wdrożenie kodem błędu',

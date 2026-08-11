@@ -140,10 +140,78 @@ final class Auth
         return ['ok' => true, 'user' => $user];
     }
 
+    /**
+     * Zalogowanie ciasteczkiem trwałym.
+     *
+     * Sesja dostaje poziom `remembered` — wystarcza do pracy, nie wystarcza do
+     * operacji na koncie. Token jest zużywany i wymieniany na nowy (rotacja),
+     * więc wywołujący MUSI zapisać zwróconą wartość w ciasteczku.
+     *
+     * @return array{ok:bool, token?:string}
+     */
+    public function loginFromCookie(string $presented): array
+    {
+        $result = Remember::consume($presented);
+        if (!$result['ok']) {
+            return ['ok' => false];
+        }
+
+        $userId = (int) $result['user_id'];
+
+        // Konto mogło zniknąć od czasu wydania tokenu.
+        if (Db::one('SELECT id FROM users WHERE id = :id', ['id' => $userId]) === null) {
+            Remember::forgetAll($userId, 'brak konta');
+            return ['ok' => false];
+        }
+
+        Session::login($userId, Session::LEVEL_REMEMBERED);
+        return ['ok' => true, 'token' => (string) $result['token']];
+    }
+
+    /**
+     * Zmiana hasła. Unieważnia WSZYSTKIE tokeny trwałe użytkownika.
+     *
+     * Wymaga sesji o pełnych uprawnieniach ORAZ podania dotychczasowego hasła —
+     * samo ciasteczko trwałe nie może odciąć właściciela od konta.
+     *
+     * @return array{ok:bool, error?:string}
+     */
+    public function changePassword(int $userId, string $current, string $new): array
+    {
+        if (!Session::hasFullAccess()) {
+            return ['ok' => false, 'error' => 'account.err.reauth'];
+        }
+
+        $user = Db::one('SELECT pass_hash FROM users WHERE id = :id', ['id' => $userId]);
+        if ($user === null || !password_verify($current, (string) $user['pass_hash'])) {
+            return ['ok' => false, 'error' => 'account.err.current'];
+        }
+
+        if (mb_strlen($new, 'UTF-8') < self::minPasswordLength()) {
+            return ['ok' => false, 'error' => 'account.err.short'];
+        }
+
+        Db::run('UPDATE users SET pass_hash = :hash WHERE id = :id', [
+            'hash' => self::hashPassword($new),
+            'id'   => $userId,
+        ]);
+
+        // Zmiana hasła to najczęściej reakcja na podejrzenie wycieku. Każde
+        // zapamiętane urządzenie musi wtedy stracić dostęp.
+        Remember::forgetAll($userId, 'zmiana hasła');
+        Audit::log('user.password_changed', $userId, 'user', $userId);
+
+        return ['ok' => true];
+    }
+
     public function logout(): void
     {
         $userId = Session::userId();
         if ($userId !== null) {
+            // Wylogowanie kasuje WSZYSTKIE tokeny trwałe tego użytkownika,
+            // nie tylko bieżące urządzenie — tak brzmi wymaganie i tak jest
+            // bezpieczniej: „wyloguj" ma znaczyć „odetnij dostęp".
+            Remember::forgetAll($userId, 'wylogowanie');
             Audit::log(Audit::LOGOUT, $userId, 'user', $userId);
         }
         Session::destroy();

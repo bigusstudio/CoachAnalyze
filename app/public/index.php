@@ -20,6 +20,7 @@ use CoachAnalyze\Imports;
 use CoachAnalyze\Jobs;
 use CoachAnalyze\Matches;
 use CoachAnalyze\Notes;
+use CoachAnalyze\Remember;
 use CoachAnalyze\Seasons;
 use CoachAnalyze\Session;
 use CoachAnalyze\Share;
@@ -98,6 +99,19 @@ if (preg_match('#^/r/([^/]+)/([^/]+)$#', $path, $m) === 1 && $method === 'GET') 
     exit;
 }
 
+// Zalogowanie ciasteczkiem trwałym, zanim zażądamy sesji. Token jest zużywany
+// i wymieniany na nowy przy KAŻDYM użyciu — patrz Remember::consume().
+if (!Auth::isLoggedIn() && isset($_COOKIE[Remember::COOKIE])) {
+    $wynik = (new Auth())->loginFromCookie((string) $_COOKIE[Remember::COOKIE]);
+    if ($wynik['ok']) {
+        setRememberCookie((string) $wynik['token']);
+    } else {
+        // Token nieznany, zużyty albo wygasły — ciasteczko do kosza, żeby nie
+        // wracało z każdym żądaniem.
+        clearRememberCookie();
+    }
+}
+
 // --- od tego miejsca wszystko wymaga zalogowania --------------------------
 $user = Auth::requireLogin();
 
@@ -165,8 +179,55 @@ switch (true) {
         // obrazek na obcej stronie, żeby wylogować operatora.
         requireCsrf();
         (new Auth())->logout();
+        clearRememberCookie();
         Session::flash('notice', View::t('login.logged_out'));
         redirect('/login');
+        break;
+
+    // ------------------------------------------------- konto i urządzenia
+    case $path === '/konto' && $method === 'GET':
+        View::page('account', [
+            'title'    => View::t('account.title'),
+            'active'   => 'account',
+            'user'     => $user,
+            'devices'  => Remember::devices((int) $user['id']),
+            'fullAuth' => Session::hasFullAccess(),
+            'notice'   => Session::flash('notice'),
+            'error'    => Session::flash('error'),
+        ]);
+        break;
+
+    case preg_match('#^/konto/urzadzenie/(\d+)/wyloguj$#', $path, $m) === 1 && $method === 'POST':
+        requireCsrf();
+        Remember::forget((int) $m[1], (int) $user['id']);
+        Session::flash('notice', View::t('device.forgotten'));
+        redirect('/konto');
+        break;
+
+    case $path === '/konto/wyloguj-wszedzie' && $method === 'POST':
+        requireCsrf();
+        // Dostępne także z sesji `remembered` — to jest droga odzyskania kontroli
+        // po zgubieniu urządzenia i blokowanie jej hasłem działałoby przeciw celowi.
+        $ile = Remember::forgetAll((int) $user['id'], 'wyloguj wszędzie');
+        clearRememberCookie();
+        Session::flash('notice', View::t('device.forgot_all', $ile));
+        redirect('/konto');
+        break;
+
+    case $path === '/konto/haslo' && $method === 'POST':
+        requireCsrf();
+        $wynik = (new Auth())->changePassword(
+            (int) $user['id'],
+            (string) ($_POST['obecne'] ?? ''),
+            (string) ($_POST['nowe'] ?? '')
+        );
+        if ($wynik['ok']) {
+            clearRememberCookie();
+            Session::flash('notice', View::t('account.password_changed'));
+        } else {
+            Session::flash('error', View::t($wynik['error']));
+        }
+        redirect('/konto');
         break;
 
     // ---------------------------------------------------------------- kluby
@@ -374,6 +435,35 @@ function safeReturn(mixed $candidate): string
         return '/';
     }
     return $value;
+}
+
+/**
+ * Ciasteczko trwałego logowania.
+ *
+ * HttpOnly — JavaScript go nie odczyta. Secure — nie wyjdzie po HTTP.
+ * SameSite=Lax — nie poleci przy żądaniu z obcej strony, ale wejście z linku
+ * nadal działa. Te trzy atrybuty to całość ochrony ciasteczka, które żyje 30 dni.
+ */
+function setRememberCookie(string $token): void
+{
+    setcookie(Remember::COOKIE, $token, [
+        'expires'  => time() + Remember::DAYS * 86400,
+        'path'     => '/',
+        'secure'   => str_starts_with((string) \CoachAnalyze\Config::get('APP_URL', ''), 'https://'),
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
+}
+
+function clearRememberCookie(): void
+{
+    setcookie(Remember::COOKIE, '', [
+        'expires'  => time() - 42000,
+        'path'     => '/',
+        'secure'   => str_starts_with((string) \CoachAnalyze\Config::get('APP_URL', ''), 'https://'),
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
 }
 
 function setTheme(string $theme): void
@@ -968,6 +1058,10 @@ function handleLogin(): void
 
     $result = (new Auth())->attempt($email, $password);
     if ($result['ok']) {
+        // Token trwały wydajemy DOPIERO po udanym podaniu hasła.
+        if (!empty($_POST['zapamietaj'])) {
+            setRememberCookie(Remember::issue((int) $result['user']['id']));
+        }
         redirect('/');
     }
 

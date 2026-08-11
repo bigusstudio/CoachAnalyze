@@ -30,6 +30,42 @@ return [
     'login.err.csrf'                => 'Formularz stracił ważność. Spróbuj jeszcze raz.',
     'login.err.empty'               => 'Podaj adres e-mail i hasło.',
 
+    'login.remember'      => 'Zapamiętaj mnie na tym urządzeniu',
+    'login.remember.hint' => 'Zostaniesz zalogowany przez %d dni. Do zmiany hasła i tak poprosimy o nie ponownie.',
+
+    // --- konto operatora ---
+    'account.title'       => 'Konto',
+    'account.level'       => 'Poziom uwierzytelnienia',
+    'account.level.password'   => 'pełny (podane hasło)',
+    'account.level.remembered' => 'ograniczony (zapamiętane urządzenie)',
+    'account.change_password'  => 'Zmiana hasła',
+    'account.current'     => 'Obecne hasło',
+    'account.new'         => 'Nowe hasło',
+    'account.new.hint'    => 'Co najmniej %d znaków. Zmiana hasła wyloguje wszystkie zapamiętane urządzenia.',
+    'account.change'      => 'Zmień hasło',
+    'account.password_changed' => 'Hasło zmienione. Wszystkie zapamiętane urządzenia zostały wylogowane.',
+    'account.relogin'     => 'Zaloguj się hasłem, żeby zmienić hasło',
+    'account.err.reauth'  => 'Ta sesja pochodzi z zapamiętanego urządzenia. Do zmiany hasła zaloguj się, podając hasło.',
+    'account.err.current' => 'Obecne hasło jest nieprawidłowe.',
+    'account.err.short'   => 'Nowe hasło jest za krótkie.',
+
+    // --- urządzenia ---
+    'device.title'        => 'Zapamiętane urządzenia',
+    'device.hint'         => 'Każde urządzenie ma własny token, unieważniany przy każdym użyciu i wymieniany na nowy.',
+    'device.device'       => 'Urządzenie',
+    'device.last_used'    => 'Ostatnie użycie',
+    'device.expires'      => 'Wygasa',
+    'device.this'         => 'to urządzenie',
+    'device.forget'       => 'Wyloguj',
+    'device.forgotten'    => 'Urządzenie wylogowane.',
+    'device.forget_all_btn' => 'Wyloguj wszędzie',
+    'device.forget_all.hint' => 'Unieważnia wszystkie zapamiętane urządzenia. Użyj po zgubieniu telefonu lub komputera.',
+    'device.forgot_all'   => 'Wylogowano wszystkie urządzenia: %d.',
+    'device.empty'        => 'Brak zapamiętanych urządzeń.',
+    'device.unknown'      => 'nieznane urządzenie',
+    'device.browser'      => 'przeglądarka',
+    'device.system'       => 'system',
+
     // --- nawigacja ---
     'nav.dashboard'       => 'Pulpit',
     'nav.matches'         => 'Mecze',

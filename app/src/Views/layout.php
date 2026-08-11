@@ -61,6 +61,7 @@ $next = $theme === 'dark' ? 'light' : 'dark';
         <span><?= View::e(View::t($next === 'dark' ? 'nav.theme.to_dark' : 'nav.theme.to_light')) ?></span>
       </button>
 
+      <a class="btn btn--ghost" href="/konto"><?= View::e(View::t('account.title')) ?></a>
       <button class="btn btn--ghost" type="submit" formaction="/logout">
         <?= View::e(View::t('login.logout')) ?>
       </button>

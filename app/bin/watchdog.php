@@ -41,6 +41,11 @@ foreach ($czekajace as $job) {
     }
 }
 
+$wygasle = \CoachAnalyze\Remember::purgeExpired();
+if ($wygasle > 0) {
+    fwrite(STDOUT, "Usunięto wygasłych tokenów trwałych: {$wygasle}\n");
+}
+
 $alerty = Alerts::all();
 foreach ($alerty as $alert) {
     fwrite(STDOUT, sprintf("[%s] %s — %s\n", strtoupper($alert['level']), $alert['msg'], $alert['hint']));

@@ -13,6 +13,20 @@ final class Session
 {
     private const CSRF_KEY = '_csrf';
     private const USER_KEY = '_uid';
+    private const LEVEL_KEY = '_level';
+
+    /**
+     * Poziom uwierzytelnienia sesji.
+     *
+     * `password`   — użytkownik podał hasło w tej sesji. Pełne uprawnienia.
+     * `remembered` — sesja odtworzona z ciasteczka trwałego. Wystarcza do pracy,
+     *                NIE wystarcza do operacji na koncie.
+     *
+     * Rozróżnienie istnieje po to, żeby skradzione ciasteczko nie pozwoliło
+     * zmienić hasła i odciąć właściciela od własnego konta.
+     */
+    public const LEVEL_PASSWORD = 'password';
+    public const LEVEL_REMEMBERED = 'remembered';
 
     public static function start(): void
     {
@@ -43,10 +57,26 @@ final class Session
         session_regenerate_id(true);
     }
 
-    public static function login(int $userId): void
+    public static function login(int $userId, string $level = self::LEVEL_PASSWORD): void
     {
         self::regenerate();
         $_SESSION[self::USER_KEY] = $userId;
+        $_SESSION[self::LEVEL_KEY] = $level === self::LEVEL_REMEMBERED
+            ? self::LEVEL_REMEMBERED
+            : self::LEVEL_PASSWORD;
+    }
+
+    public static function level(): string
+    {
+        self::start();
+        $level = $_SESSION[self::LEVEL_KEY] ?? self::LEVEL_PASSWORD;
+        return $level === self::LEVEL_REMEMBERED ? self::LEVEL_REMEMBERED : self::LEVEL_PASSWORD;
+    }
+
+    /** Czy sesja wystarcza do operacji na koncie (zmiana hasła itp.). */
+    public static function hasFullAccess(): bool
+    {
+        return self::userId() !== null && self::level() === self::LEVEL_PASSWORD;
     }
 
     public static function userId(): ?int

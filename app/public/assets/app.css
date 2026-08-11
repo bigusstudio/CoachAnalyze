@@ -448,3 +448,20 @@ body {
 
 .panel--alert { border-color: var(--blad-tekst); }
 .panel--alert .warns__msg .hint { display: block; margin: 2px 0 0; }
+
+/* Ukrycie wizualne z zachowaniem obecności w drzewie dokumentu.
+   NIE `display:none` ani `hidden` — pole z adresem konta przy formularzu zmiany
+   hasła musi być widoczne dla menedżera haseł, inaczej nie wie, do którego
+   konta przypisać nowe hasło. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
