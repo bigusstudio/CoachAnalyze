@@ -24,7 +24,52 @@ use CoachAnalyze\Storage;
 use CoachAnalyze\Upload;
 use CoachAnalyze\View;
 
-require dirname(__DIR__) . '/src/bootstrap.php';
+/**
+ * CA_ROOT — katalog, w którym leży `app/`. WSZYSTKIE ścieżki liczymy od niego.
+ *
+ * POWÓD ISTNIENIA TEJ STAŁEJ: układ katalogów w repozytorium NIE jest układem
+ * produkcyjnym i ten plik jest jedynym, który zmienia przez to swoje położenie.
+ * `deploy.sh` robi dwa przejścia rsync — `app/` trafia do podkatalogu domeny,
+ * a zawartość `app/public/` ląduje piętro wyżej, w katalogu domeny:
+ *
+ *   repozytorium                    produkcja
+ *   app/public/index.php    ->      {domena}/index.php
+ *   app/src/bootstrap.php   ->      {domena}/app/src/bootstrap.php
+ *
+ * Dlatego `dirname(__DIR__)` daje w produkcji `~/public_html`, czyli katalog
+ * SPOZA `open_basedir`, i całość kończy się „Operation not permitted".
+ * Ten błąd wrócił dwa razy, więc nie liczymy już skoków w górę na sztywno:
+ * szukamy katalogu, w którym faktycznie leży `app/src/bootstrap.php`.
+ *
+ * W produkcji pętla kończy się na pierwszym kroku i CA_ROOT === __DIR__.
+ */
+$caDir = __DIR__;
+$caRoot = null;
+for ($i = 0; $i < 5; $i++) {
+    if (is_file($caDir . '/app/src/bootstrap.php')) {
+        $caRoot = $caDir;
+        break;
+    }
+    $parent = dirname($caDir);
+    if ($parent === $caDir) {
+        break;   // korzeń systemu plików
+    }
+    $caDir = $parent;
+}
+
+if ($caRoot === null) {
+    // Bez kodu aplikacji nie ma czego uruchomić. Mówimy o tym wprost w logu,
+    // a użytkownikowi pokazujemy zdanie bez ścieżek serwera.
+    error_log('CoachAnalyze: nie znaleziono app/src/bootstrap.php startując z ' . __DIR__);
+    http_response_code(500);
+    header('Content-Type: text/plain; charset=utf-8');
+    echo 'Aplikacja jest nieprawidłowo wdrożona.';
+    exit(1);
+}
+
+define('CA_ROOT', $caRoot);
+
+require CA_ROOT . '/app/src/bootstrap.php';
 
 $path   = rtrim(parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/', '/') ?: '/';
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';

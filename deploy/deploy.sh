@@ -40,11 +40,23 @@ mysqldump --single-transaction > "$BASE/shared/backups/pre-$(date +%Y%m%d-%H%M%S
 
 echo "==> Synchronizacja katalogu webowego"
 mkdir -p "$WEB"
+# Przejście 1: kod aplikacji do podkatalogu app/.
 rsync -a --delete \
   --exclude='.env' --exclude='storage/' --exclude='.git/' \
   "$BASE/repo/app/" "$WEB/app/"
-rsync -a --delete "$BASE/repo/app/public/" "$WEB/"
-# public/ zostaje na poziomie katalogu domeny, kod aplikacji w podkatalogu app/
+
+# Przejście 2: zawartość public/ na poziom katalogu domeny.
+#
+# WYKLUCZENIA SĄ OBOWIĄZKOWE I NIE WOLNO ICH USUWAĆ.
+# Źródłem jest `app/public/`, a celem katalog domeny, w którym leżą już `app/`,
+# `.env` i `storage/`. Bez `--exclude` `--delete` uznaje je za nadmiarowe
+# i KASUJE — razem z całym kodem aplikacji skopiowanym przed chwilą.
+#
+# Ten błąd wystąpił już dwa razy: naprawiony w 01b1dc7, cofnięty przy okazji
+# niepowiązanej zmiany w 73eecb7. Pilnuje go teraz app/tests/test_layout.php.
+rsync -a --delete \
+  --exclude='app/' --exclude='.env' --exclude='storage/' \
+  "$BASE/repo/app/public/" "$WEB/"
 
 echo "==> Dowiązania do zasobów współdzielonych"
 ln -sfn "$BASE/shared/.env"     "$WEB/.env"
