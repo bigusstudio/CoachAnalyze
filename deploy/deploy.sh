@@ -8,9 +8,15 @@
 #
 #   ~/CoachAnalyze/repo                        <- źródło (git)
 #   ~/CoachAnalyze/venv                        <- silnik Pythona
-#   ~/CoachAnalyze/shared/.env                 <- sekrety
-#   ~/CoachAnalyze/shared/storage              <- dane (uploady, raporty)
+#   ~/CoachAnalyze/shared/.env                 <- sekrety (źródło prawdy)
+#   ~/tmp/                                     <- log aplikacji (jest w open_basedir)
 #   ~/public_html/app.coachanalyze.pl/         <- SYNCHRONIZOWANY katalog webowy
+#       ├── .env                               <- KOPIA, nie dowiązanie
+#       └── storage/                           <- PRAWDZIWY katalog, nie dowiązanie
+#
+# DOWIĄZANIA POZA open_basedir SĄ DLA FPM NIEWIDOCZNE — także przy zapisie.
+# Dlatego `.env` jest kopiowany, a `storage/` jest zwykłym katalogiem w drzewie
+# domeny. Oba są wykluczone z rsync, więc przeżywają wdrożenie.
 #
 # Wycofanie: git -C ~/CoachAnalyze/repo checkout <commit> && bash deploy/deploy.sh
 set -euo pipefail
@@ -58,15 +64,92 @@ rsync -a --delete \
   --exclude='app/' --exclude='.env' --exclude='storage/' \
   "$BASE/repo/app/public/" "$WEB/"
 
-echo "==> Dowiązania do zasobów współdzielonych"
-ln -sfn "$BASE/shared/.env"     "$WEB/.env"
-ln -sfn "$BASE/shared/storage"  "$WEB/storage"
+echo "==> Zasoby współdzielone (KOPIA, nie dowiązanie)"
+#
+# ŻADNYCH DOWIĄZAŃ DO CELÓW POZA open_basedir.
+# `open_basedir` sprawdza ścieżkę PO ROZWINIĘCIU dowiązania, więc symlink
+# z katalogu domeny do `~/CoachAnalyze/shared/` jest dla PHP-FPM niewidoczny —
+# zarówno przy odczycie, jak i przy zapisie. Wersja z `ln -s` „działała"
+# wyłącznie z CLI i sypała się dopiero w przeglądarce.
+# Szczegóły: docs/OGRANICZENIA_HOSTINGU.md.
+
+# .env — zwykły plik w katalogu domeny. Źródłem prawdy zostaje shared/.env,
+# tutaj trafia jego kopia przy każdym wdrożeniu.
+cp -f "$BASE/shared/.env" "$WEB/.env"
+chmod 640 "$WEB/.env"
+
+# storage/ — prawdziwy katalog w katalogu domeny, NIE dowiązanie. FPM musi móc
+# tu zapisywać (upload eksportu), a przez dowiązanie nie może.
+# Katalog jest wykluczony z obu przejść rsync, więc dane przeżywają wdrożenie.
+mkdir -p "$WEB/storage/uploads" "$WEB/storage/reports" "$WEB/storage/crests" "$WEB/storage/jobs"
+chmod 750 "$WEB/storage"
+[ -f "$WEB/storage/.htaccess" ] || cp "$BASE/repo/storage/.htaccess" "$WEB/storage/.htaccess"
+
+# Log aplikacji musi leżeć w katalogu z listy open_basedir — inaczej aplikacja
+# nie ma gdzie zapisać przyczyny błędu i diagnostyka jest niema.
+mkdir -p "$HOME/tmp"
+
+if [ -d "$BASE/shared/storage" ] && [ -n "$(ls -A "$BASE/shared/storage" 2>/dev/null || true)" ]; then
+  echo "    UWAGA: ~/CoachAnalyze/shared/storage nie jest już używane przez aplikację."
+  echo "           Przenieś dane do $WEB/storage i obejmij ten katalog kopią zapasową."
+fi
+
+echo "==> Kontrola wdrożenia"
+FAIL=0
+
+# 1. .env musi być ZWYKŁYM PLIKIEM. Dowiązanie = FPM go nie przeczyta i aplikacja
+#    zgłosi „Logowanie jest chwilowo niedostępne" bez wskazania przyczyny.
+if [ -L "$WEB/.env" ]; then
+  echo "    !!! BŁĄD: $WEB/.env jest dowiązaniem — FPM go nie odczyta"
+  FAIL=1
+elif [ -f "$WEB/.env" ]; then
+  echo "    .env: zwykły plik                      OK"
+else
+  echo "    !!! BŁĄD: brak $WEB/.env"
+  FAIL=1
+fi
+
+# 2. storage/ musi być katalogiem, nie dowiązaniem, i musi być zapisywalny.
+if [ -L "$WEB/storage" ]; then
+  echo "    !!! BŁĄD: $WEB/storage jest dowiązaniem — FPM nie zapisze uploadu"
+  FAIL=1
+elif [ -w "$WEB/storage" ]; then
+  echo "    storage/: katalog zapisywalny          OK"
+else
+  echo "    !!! BŁĄD: $WEB/storage niezapisywalny"
+  FAIL=1
+fi
+
+# 3. LOG_PATH musi wskazywać katalog, w którym da się pisać. Bez tego przyczyna
+#    awarii nie ma gdzie trafić — dokładnie to kosztowało godzinę diagnostyki.
+LOG_PATH=$(grep -E '^LOG_PATH=' "$WEB/.env" 2>/dev/null | tail -1 | cut -d= -f2- || true)
+if [ -z "$LOG_PATH" ]; then
+  echo "    !!! BŁĄD: brak LOG_PATH w .env"
+  FAIL=1
+else
+  LOG_DIR=$(dirname "$LOG_PATH")
+  mkdir -p "$LOG_DIR" 2>/dev/null || true
+  if [ -w "$LOG_DIR" ] && touch "$LOG_PATH" 2>/dev/null; then
+    echo "    LOG_PATH zapisywalny: $LOG_DIR  OK"
+  else
+    echo "    !!! BŁĄD: LOG_PATH ($LOG_PATH) niezapisywalny albo poza open_basedir"
+    FAIL=1
+  fi
+fi
 
 echo "==> Kontrola ochrony (te adresy MUSZĄ zwrócić 403)"
-for p in app/src/bootstrap.php .env storage/; do
+for p in app/src/bootstrap.php .env storage/ storage/uploads/; do
   code=$(curl -s -o /dev/null -w "%{http_code}" "http://app.coachanalyze.pl/$p" || echo "000")
   printf "    /%-24s -> %s\n" "$p" "$code"
-  [ "$code" = "403" ] || [ "$code" = "404" ] || echo "    !!! OSTRZEŻENIE: plik dostępny publicznie"
+  if [ "$code" != "403" ] && [ "$code" != "404" ]; then
+    echo "    !!! BŁĄD: plik dostępny publicznie"
+    FAIL=1
+  fi
 done
+
+if [ "$FAIL" -ne 0 ]; then
+  echo "==> WDROŻENIE Z BŁĘDAMI ($REV) — popraw powyższe zanim uznasz je za zakończone"
+  exit 1
+fi
 
 echo "==> Gotowe: $REV"

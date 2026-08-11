@@ -305,13 +305,15 @@ if (is_file($deployPath)) {
     // Sklejamy polecenia rozbite na kilka linii odwrotnym ukośnikiem.
     $sklejony = (string) preg_replace('/\\\\\s*\R\s*/', ' ', $deploy);
 
+    // Liczymy WYWOŁANIA, czyli linie zaczynające się od nazwy polecenia.
+    // Samo `str_contains('rsync')` łapało też komentarze wspominające rsync —
+    // a te potrafią wpaść w środek listy po sklejeniu linii z odwrotnym ukośnikiem.
     $wywolania = [];
     foreach (preg_split('/\R/', $sklejony) ?: [] as $linia) {
         $linia = trim($linia);
-        if (str_starts_with($linia, '#') || !str_contains($linia, 'rsync')) {
-            continue;
+        if (str_starts_with($linia, 'rsync ')) {
+            $wywolania[] = $linia;
         }
-        $wywolania[] = $linia;
     }
 
     check('są dokładnie dwa wywołania rsync', count($wywolania) === 2,
@@ -343,6 +345,45 @@ if (is_file($deployPath)) {
             );
         }
     }
+
+    echo "\n== deploy.sh: żadnych dowiązań poza open_basedir ==\n";
+
+    /**
+     * `open_basedir` sprawdza ścieżkę po rozwinięciu dowiązania, więc symlink
+     * do `~/CoachAnalyze/shared/` jest dla FPM niewidoczny — także przy zapisie.
+     * `.env` ma być kopiowany, a `storage/` ma być prawdziwym katalogiem.
+     */
+    $liniePolecen = [];
+    foreach (preg_split('/\R/', $sklejony) ?: [] as $linia) {
+        $linia = trim($linia);
+        if ($linia !== '' && !str_starts_with($linia, '#')) {
+            $liniePolecen[] = $linia;
+        }
+    }
+    $polecenia = implode("\n", $liniePolecen);
+
+    check(
+        '.env nie jest dowiązywany (ln -s), tylko kopiowany',
+        !preg_match('/ln\s+-s\w*\s+\S*\.env/', $polecenia) && preg_match('/cp\s+\S*\s*\S*\.env/', $polecenia) === 1,
+        'dowiązanie do shared/.env jest dla FPM nieczytelne'
+    );
+    check(
+        'storage/ nie jest dowiązywane, tylko tworzone jako katalog',
+        !preg_match('/ln\s+-s\w*\s+\S*storage/', $polecenia) && str_contains($polecenia, 'mkdir -p "$WEB/storage'),
+        'przez dowiązanie FPM nie zapisze uploadu'
+    );
+
+    echo "\n== deploy.sh: kontrola po wdrożeniu ==\n";
+
+    check('sprawdza, że .env NIE jest dowiązaniem', str_contains($polecenia, '-L "$WEB/.env"'));
+    check('sprawdza, że storage/ NIE jest dowiązaniem', str_contains($polecenia, '-L "$WEB/storage"'));
+    check('sprawdza zapisywalność storage/', str_contains($polecenia, '-w "$WEB/storage"'));
+    check('sprawdza zapisywalność LOG_PATH', str_contains($polecenia, 'LOG_PATH'));
+    check(
+        'nieudana kontrola przerywa wdrożenie kodem błędu',
+        preg_match('/exit\s+1/', $polecenia) === 1,
+        'ostrzeżenie, którego nikt nie czyta, nie jest kontrolą'
+    );
 }
 
 echo "\n=== OK: {$ok}, BŁĘDÓW: {$fail} ===\n";

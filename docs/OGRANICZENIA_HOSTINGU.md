@@ -268,3 +268,52 @@ w pierwszych liniach, a włącza z powrotem tylko poza produkcją i tylko przy `
 Docelowy plik logu (`LOG_PATH`) podłącza się później, gdy konfiguracja jest już znana.
 
 Pilnuje tego `app/tests/test_layout.php`.
+
+
+## Pułapka: dowiązania poza `open_basedir` są dla FPM niewidoczne
+
+Wynika wprost z poprzedniej sekcji, ale kosztowało osobną awarię, więc dostaje własną.
+**`open_basedir` sprawdza ścieżkę PO ROZWINIĘCIU dowiązania.** Symlink leżący w katalogu
+domeny, którego cel jest poza listą, nie daje FPM żadnego dostępu — **ani do odczytu,
+ani do zapisu**. Z konsoli wszystko wygląda poprawnie, bo CLI nie ma tego ograniczenia.
+
+Pierwotny układ zakładał dwa dowiązania:
+
+```
+{domena}/.env      -> ~/CoachAnalyze/shared/.env        # FPM nie odczyta
+{domena}/storage/  -> ~/CoachAnalyze/shared/storage     # FPM nie zapisze
+```
+
+Oba zostały zastąpione:
+
+| Zasób | Było | Jest |
+|---|---|---|
+| `.env` | dowiązanie do `shared/.env` | **kopia** w katalogu domeny (`cp` przy wdrożeniu, `chmod 640`) |
+| `storage/` | dowiązanie do `shared/storage` | **prawdziwy katalog** w drzewie domeny |
+| log aplikacji | `shared/logs/app.log` | `~/tmp/coachanalyze.log` — `~/tmp` jest na liście `open_basedir` |
+
+Źródłem prawdy dla `.env` zostaje `~/CoachAnalyze/shared/.env`; do katalogu domeny trafia
+jego kopia przy każdym wdrożeniu. `storage/` i `.env` są wykluczone z obu przejść `rsync`,
+więc przeżywają wdrożenie.
+
+**Konsekwencja dla kopii zapasowych:** dane użytkownika nie leżą już w `shared/`.
+Kopia musi obejmować `{domena}/storage/`.
+
+### Cichy log to najgorszy z możliwych stanów
+
+`LOG_PATH` wskazujący katalog spoza `open_basedir` sprawia, że `error_log()` nie ma dokąd
+pisać. Aplikacja zgłasza wtedy użytkownikowi ogólny komunikat, a przyczyna nie zostaje
+nigdzie — pierwsza awaria produkcyjna zajęła przez to godzinę.
+
+Bootstrap sprawdza więc zapisywalność **próbą zapisu** (`is_writable` kłamie na tym
+hostingu tak samo jak `is_file`), a przy niepowodzeniu schodzi do katalogu tymczasowego
+i odnotowuje ten fakt. Log w nieoczywistym miejscu jest lepszy niż brak logu.
+
+### Kontrola przy wdrożeniu
+
+`deploy.sh` sprawdza po każdym wdrożeniu i **kończy się kodem 1**, gdy coś się nie zgadza:
+
+- `.env` jest zwykłym plikiem, nie dowiązaniem,
+- `storage/` jest katalogiem, nie dowiązaniem, i jest zapisywalny,
+- katalog z `LOG_PATH` istnieje i daje się do niego zapisać,
+- `/.env`, `/storage/`, `/storage/uploads/` i `/app/src/bootstrap.php` zwracają 403.

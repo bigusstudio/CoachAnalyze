@@ -77,11 +77,36 @@ if ($debug) {
  * dokąd pisać i pełny traceback silnika przepada. A ma trafiać do logu,
  * skoro nie wolno mu trafić do przeglądarki (CLAUDE.md §5).
  */
+/**
+ * Log MUSI gdzieś trafić.
+ *
+ * LOG_PATH wskazujący katalog spoza `open_basedir` sprawia, że `error_log()`
+ * nie ma dokąd pisać — a wtedy awaria nie zostawia żadnego śladu. Dokładnie to
+ * kosztowało godzinę zgadywania przy pierwszym wdrożeniu.
+ *
+ * Dlatego sprawdzamy zapisywalność PRÓBĄ ZAPISU (na tym hostingu `is_writable`
+ * na ścieżce spoza open_basedir kłamie tak samo jak `is_file`), a przy
+ * niepowodzeniu schodzimy do katalogu tymczasowego. Cicha diagnostyka
+ * jest gorsza niż log w nieoczywistym miejscu.
+ */
 $logPath = Config::get('LOG_PATH');
+$logSet = false;
+
 if ($logPath !== null) {
-    $logDir = dirname($logPath);
-    if (is_dir($logDir) || @mkdir($logDir, 0770, true) || is_dir($logDir)) {
+    @mkdir(dirname($logPath), 0770, true);
+    if (@file_put_contents($logPath, '', FILE_APPEND) !== false) {
         ini_set('error_log', $logPath);
+        $logSet = true;
+    }
+}
+
+if (!$logSet) {
+    $fallback = sys_get_temp_dir() . '/coachanalyze.log';
+    if (@file_put_contents($fallback, '', FILE_APPEND) !== false) {
+        ini_set('error_log', $fallback);
+        if ($logPath !== null) {
+            error_log("Config: LOG_PATH ({$logPath}) jest niezapisywalny — log trafia do {$fallback}");
+        }
     }
 }
 
