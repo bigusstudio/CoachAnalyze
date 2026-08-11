@@ -47,8 +47,21 @@ final class Reports
         // rywalem (mecze sparingowe między własnymi drużynami klubu), a operator
         // pytający „pokaż raporty Hutnika" chce jednego i drugiego.
         if (!empty($filters['club'])) {
-            $warunki[] = '(m.club_home_id = :club OR m.club_away_id = :club)';
-            $params['club'] = (int) $filters['club'];
+            /*
+             * DWA OSOBNE SYMBOLE NA TĘ SAMĄ WARTOŚĆ.
+             *
+             * `PDO::ATTR_EMULATE_PREPARES => false` (Db.php) oznacza natywne
+             * przygotowanie zapytania po stronie serwera. MySQL/MariaDB NIE
+             * pozwala wtedy użyć tego samego symbolu dwa razy i odrzuca zapytanie
+             * komunikatem „Invalid parameter number".
+             *
+             * SQLite powtórzenie przyjmuje — dlatego testy tego nie łapały,
+             * a ekran wywalał się wyłącznie na produkcji. Pilnuje tego teraz
+             * `app/tests/test_sql_parametry.php`.
+             */
+            $warunki[] = '(m.club_home_id = :club_h OR m.club_away_id = :club_a)';
+            $params['club_h'] = (int) $filters['club'];
+            $params['club_a'] = (int) $filters['club'];
         }
 
         if (!empty($filters['season'])) {

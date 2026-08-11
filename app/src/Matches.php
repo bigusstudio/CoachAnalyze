@@ -50,8 +50,14 @@ final class Matches
         if (!empty($filters['club'])) {
             // Klub po dowolnej stronie — operator myśli „mecze Hutnika",
             // a nie „mecze, w których Hutnik był stroną `us`".
-            $where[] = '(m.club_home_id = :club OR m.club_away_id = :club)';
-            $params['club'] = (int) $filters['club'];
+            //
+            // DWA SYMBOLE NA TĘ SAMĄ WARTOŚĆ: przy `ATTR_EMULATE_PREPARES => false`
+            // MySQL nie przyjmuje powtórzonego symbolu i odrzuca zapytanie
+            // („Invalid parameter number"). SQLite przyjmuje, więc testy tego
+            // nie łapały — pilnuje tego `app/tests/test_sql_parametry.php`.
+            $where[] = '(m.club_home_id = :club_h OR m.club_away_id = :club_a)';
+            $params['club_h'] = (int) $filters['club'];
+            $params['club_a'] = (int) $filters['club'];
         }
 
         if (!empty($filters['season'])) {

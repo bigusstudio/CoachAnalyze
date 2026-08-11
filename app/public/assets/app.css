@@ -683,3 +683,30 @@ form.chmurka__zamknij button:hover { color: var(--tekst); }
 .tag--req-new      { border-color: var(--akcent); color: var(--akcent); }
 .tag--req-accepted { border-color: var(--ok-obram); color: var(--ok-tekst); }
 .tag--req-rejected { border-color: var(--blad-tekst); color: var(--blad-tekst); }
+
+/* --- zarządzanie kontami -------------------------------------------------- */
+.tag--status-active   { border-color: var(--ok-obram); color: var(--ok-tekst); }
+.tag--status-disabled { border-style: dashed; color: var(--tekst-slaby); }
+
+/* Konto wyłączone widać na pierwszy rzut oka — inaczej łatwo je pomylić
+   z czynnym i zresetować hasło komuś, kto i tak nie ma dostępu. */
+.wiersz--wylaczony > td { opacity: 0.55; }
+
+/* Panel z hasłem jednorazowym ma się rzucać w oczy: treść znika po odświeżeniu
+   i nie da się jej odzyskać. */
+.panel--uwaga { border-color: var(--akcent); border-left-width: 4px; }
+
+.haslo code {
+  display: inline-block;
+  padding: 10px 14px;
+  border: 1px solid var(--obramowanie);
+  border-radius: var(--promien);
+  background: var(--tlo-pole);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 18px;
+  letter-spacing: 0.06em;
+  /* Hasło bywa przepisywane ręcznie — musi dać się zaznaczyć w całości. */
+  user-select: all;
+}
+
+.field__input--slim { padding: 4px 8px; font-size: 13px; width: auto; }

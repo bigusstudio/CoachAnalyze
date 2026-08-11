@@ -72,7 +72,32 @@ final class Imports
               WHERE id = :id',
             [
                 'fp'   => self::bareFingerprint($meta['format_fingerprint'] ?? null),
-                'cov'  => self::encode($meta['coverage'] ?? null),
+
+                /*
+                 * `unmapped_tags` i `unmapped_labels` DOKŁADAMY DO `coverage_json`.
+                 *
+                 * USTERKA Z PRODUKCJI: kreator mapowań nie uruchamiał się nigdy,
+                 * mimo eksportu z dwudziestoma nierozpoznanymi tagami. Powód:
+                 * w `meta.json` te pola leżą NA NAJWYŻSZYM POZIOMIE, obok
+                 * `coverage`, a nie w środku. Zapisywaliśmy tu wyłącznie
+                 * `$meta['coverage']`, więc lista nierozpoznanych tagów przepadała
+                 * przy zapisie i `needsMapping()` zawsze widziało pustkę.
+                 *
+                 * Ostrzeżenie o nich szło osobno, w `warnings_json`, i dlatego
+                 * ekran pokrycia je pokazywał — co czyniło błąd niewidocznym.
+                 *
+                 * Scalamy w jeden obiekt zamiast dodawać kolumnę: `coverage_json`
+                 * jest naszym własnym polem, a nie kopią kształtu z silnika.
+                 * Klucze `coverage` zostają na swoich miejscach, więc
+                 * `detectedTeams()` i widok pokrycia działają bez zmian.
+                 */
+                'cov'  => self::encode(array_merge(
+                    (array) ($meta['coverage'] ?? []),
+                    [
+                        'unmapped_tags'   => array_values((array) ($meta['unmapped_tags'] ?? [])),
+                        'unmapped_labels' => array_values((array) ($meta['unmapped_labels'] ?? [])),
+                    ]
+                )),
                 'warn' => self::encode($meta['warnings'] ?? null),
                 'sec'  => self::encode([
                     'available'   => $meta['sections_available'] ?? [],
@@ -168,7 +193,11 @@ final class Imports
 
         return [
             'coverage'             => $meta,
-            'warnings'             => array_values(self::decode($import['warnings_json'] ?? null)),
+            'warnings'             => self::explainWarnings(
+                array_values(self::decode($import['warnings_json'] ?? null)),
+                $meta,
+                self::mappingClubId($import)
+            ),
             'sections_available'   => array_values((array) ($sections['available'] ?? [])),
             'sections_unavailable' => array_values((array) ($sections['unavailable'] ?? [])),
             // Co NIE weszlo do analizy. Raport pokrycia, ktory tego nie pokazuje,
@@ -283,6 +312,73 @@ final class Imports
     }
 
 
+
+    /**
+     * Doprecyzowanie ostrzezen silnika o to, czego silnik wiedziec nie moze.
+     *
+     * PRZYPADEK Z PRODUKCJI: `XG_POZA_STRZALEM` brzmialo „Liczba w komentarzu
+     * przy tagu, ktory nie jest strzalem — pominieta przy xG: Strzal". Tag
+     * NAZYWAL SIE „Strzal", wiec komunikat sam sobie przeczyl i czytal sie jak
+     * awaria. Prawdziwa przyczyna byla inna: tag nie mial mapowania, bo slownik
+     * silnika zna „STRZAL" wielkimi literami.
+     *
+     * Silnik nie moze tego napisac — nie wie, ze tag da sie zmapowac, bo nie zna
+     * profilu klubu ani tego, czy ktos juz o nim decydowal. My wiemy, wiec
+     * dopisujemy zdanie o rzeczywistej przyczynie i droge wyjscia.
+     *
+     * ORYGINALNY KOMUNIKAT ZOSTAJE. Nie podmieniamy tresci od silnika, tylko
+     * ja uzupelniamy — inaczej diagnostyka z logu przestalaby sie zgadzac
+     * z tym, co widzi operator.
+     *
+     * @param list<array<string,mixed>> $warnings
+     * @param array<string,mixed> $meta zdekodowany `coverage_json`
+     * @return list<array<string,mixed>>
+     */
+    private static function explainWarnings(array $warnings, array $meta, ?int $clubId): array
+    {
+        $nierozpoznane = [];
+        foreach ((array) ($meta['unmapped_tags'] ?? []) as $poz) {
+            $nazwa = is_array($poz) ? (string) ($poz['tag'] ?? $poz['name'] ?? '') : (string) $poz;
+            if ($nazwa !== '') {
+                $nierozpoznane[$nazwa] = true;
+            }
+        }
+
+        // Tagi, o ktorych juz zdecydowano, NIE sa juz „bez mapowania".
+        // `inspect` nie zna profilu klubu, wiec jego lista bywa nieaktualna —
+        // twierdzenie „tag nie ma pojecia" po zmapowaniu byloby po prostu falszem.
+        foreach (array_keys($clubId !== null ? Mappings::decidedTags($clubId) : []) as $tag) {
+            unset($nierozpoznane[(string) $tag]);
+        }
+
+        if ($nierozpoznane === []) {
+            return $warnings;
+        }
+
+        foreach ($warnings as &$w) {
+            if ((string) ($w['code'] ?? '') !== 'XG_POZA_STRZALEM') {
+                continue;
+            }
+
+            // Tagi z ostrzezenia, ktore sa jednoczesnie niezmapowane.
+            $winne = array_values(array_filter(
+                array_map('strval', (array) ($w['tags'] ?? [])),
+                static fn(string $tag) => isset($nierozpoznane[$tag])
+            ));
+
+            if ($winne === []) {
+                continue;   // Tag jest zmapowany i naprawde nie jest strzalem.
+            }
+
+            $w['cause']       = 'unmapped';
+            $w['cause_tags']  = $winne;
+            $w['cause_url']   = $clubId !== null ? '/kluby/' . $clubId . '/mapowania' : null;
+        }
+        unset($w);
+
+        return $warnings;
+    }
+
     /**
      * Zdarzenia poza analiza: ile ich jest i z jakich tagow pochodza.
      *
@@ -326,11 +422,14 @@ final class Imports
         // Liczba zdarzen: bierzemy ja z `meta`, jesli silnik ja podaje.
         // NIE liczymy jej w PHP — parsowanie eksportu tutaj oznaczaloby drugi
         // parser i wszystkie jedenascie pulapek formatu LiveTag od nowa.
-        $ile = $meta['coverage']['unanalysed'] ?? ($meta['unanalysed_events'] ?? null);
+        // `coverage_json` JEST obiektem `coverage` — bez zagniezdzenia.
+        // Odczyt przez `$meta['coverage']['events']` zawsze dawal null i to ta
+        // sama pomylka, ktora wylaczyla caly kreator.
+        $ile = $meta['unanalysed'] ?? null;
 
         return [
             'count'        => $ile !== null ? (int) $ile : null,
-            'total'        => isset($meta['coverage']['events']) ? (int) $meta['coverage']['events'] : null,
+            'total'        => isset($meta['events']) ? (int) $meta['events'] : null,
             'unrecognised' => array_values(array_unique($nierozpoznane)),
             'ignored'      => $pominiete,
         ];

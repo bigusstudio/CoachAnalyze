@@ -130,8 +130,10 @@ final class Clubs
     public static function delete(int $id, int $userId): array
     {
         $used = (int) Db::one(
-            'SELECT COUNT(*) AS c FROM matches WHERE club_home_id = :id OR club_away_id = :id',
-            ['id' => $id]
+            // Dwa symbole na tę samą wartość — MySQL przy natywnym przygotowaniu
+            // zapytania nie przyjmuje powtórzonego symbolu („Invalid parameter number").
+            'SELECT COUNT(*) AS c FROM matches WHERE club_home_id = :id_h OR club_away_id = :id_a',
+            ['id_h' => $id, 'id_a' => $id]
         )['c'];
 
         if ($used > 0) {

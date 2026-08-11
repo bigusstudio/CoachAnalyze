@@ -50,9 +50,28 @@ if (PHP_SAPI !== 'cli') {
     exit;
 }
 
-// Jedna linia w logu, która oszczędza godzinę: który plik konfiguracji wygrał.
-// Warstwa żądań i cron startują z różnych katalogów i potrafią czytać różne `.env`.
-error_log('run_job: konfiguracja z ' . (Config::loadedFrom() ?? 'BRAK — używam wartości domyślnych'));
+/*
+ * Który plik konfiguracji wygrał — TYLKO GDY COŚ JEST NIE TAK albo pod flagą.
+ *
+ * Ta linia szła wcześniej przy KAŻDYM przejściu crona: 1440 wpisów na dobę,
+ * w których toną prawdziwe błędy. Log, którego nikt nie czyta, bo w 99%
+ * powtarza to samo, przestaje być logiem.
+ *
+ * Zostaje w dwóch sytuacjach, w których naprawdę pomaga:
+ *  - gdy `.env` nie został wczytany wcale (wtedy nic nie zadziała i trzeba
+ *    wiedzieć, gdzie szukaliśmy),
+ *  - gdy ktoś świadomie diagnozuje: `CA_DEBUG_CONFIG=1 php app/bin/run_job.php`.
+ *
+ * Awarie i tak zapisują pełny kontekst — patrz `opiszAwarie()` i `zakoncz()`.
+ */
+$zrodloKonfiguracji = Config::loadedFrom();
+
+if ($zrodloKonfiguracji === null) {
+    error_log('run_job: NIE WCZYTANO .env — sprawdzane: '
+        . implode(', ', Config::envCandidates()));
+} elseif (getenv('CA_DEBUG_CONFIG') !== false) {
+    error_log('run_job: konfiguracja z ' . $zrodloKonfiguracji);
+}
 
 $tylkoJedno = isset($argv[1]) ? (int) $argv[1] : 0;
 
@@ -579,12 +598,30 @@ function trescMailaHtml(array $powiadomienie): ?string
     }
     $adresHtml = htmlspecialchars($adres, ENT_QUOTES, 'UTF-8');
 
+    /*
+     * ETYKIETA PRZYCISKU ZALEZY OD TYPU POWIADOMIENIA.
+     *
+     * USTERKA Z PRODUKCJI: mail „import wgrany" mial przycisk „Otworz raport"
+     * prowadzacy do `/zadania/13` — czyli do strony stanu, bo raportu jeszcze
+     * nie bylo. Przycisk obiecywal cos, czego pod tym adresem nie ma.
+     *
+     * Etykieta to obietnica: ma opisywac to, co odbiorca ZOBACZY po kliknieciu,
+     * a nie to, na co czeka.
+     */
+    $etykieta = match ((string) ($powiadomienie['type'] ?? '')) {
+        'report.ready'   => View::t('mail.btn.report'),
+        'import.pending' => View::t('mail.btn.progress'),
+        'report.failed'  => View::t('mail.btn.details'),
+        default          => View::t('mail.btn.open'),
+    };
+    $etykietaHtml = htmlspecialchars($etykieta, ENT_QUOTES, 'UTF-8');
+
     $przycisk = $adres === '' ? '' : <<<PRZYCISK
         <p style="margin:24px 0;">
           <a href="{$adresHtml}"
              style="display:inline-block;padding:12px 22px;border-radius:8px;
                     background:#E8722C;color:#FFFFFF;text-decoration:none;
-                    font-weight:600;font-size:15px;">Otwórz raport</a>
+                    font-weight:600;font-size:15px;">{$etykietaHtml}</a>
         </p>
         <p style="margin:0 0 8px;font-size:12px;color:#6B7A88;">
           Jeśli przycisk nie działa, skopiuj adres:<br>

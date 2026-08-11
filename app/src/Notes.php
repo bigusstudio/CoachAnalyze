@@ -142,10 +142,16 @@ final class Notes
 
         $query = trim($query);
         if ($query !== '') {
-            $where[] = '(n.title LIKE :q OR n.body LIKE :q OR n.tags_json LIKE :q)';
+            // Trzy osobne symbole na to samo wyrażenie — MySQL przy natywnym
+            // przygotowaniu zapytania nie pozwala powtórzyć symbolu
+            // („Invalid parameter number"). Patrz `app/tests/test_sql_parametry.php`.
+            $where[] = '(n.title LIKE :q_t OR n.body LIKE :q_b OR n.tags_json LIKE :q_g)';
             // Znaki wieloznaczne LIKE muszą być zneutralizowane, inaczej `%`
             // wpisany w wyszukiwarkę zwraca wszystko.
-            $params['q'] = '%' . self::escapeLike($query) . '%';
+            $wzorzec = '%' . self::escapeLike($query) . '%';
+            $params['q_t'] = $wzorzec;
+            $params['q_b'] = $wzorzec;
+            $params['q_g'] = $wzorzec;
         }
 
         if ($scope !== null && in_array($scope, self::SCOPES, true)) {

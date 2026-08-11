@@ -438,17 +438,95 @@ return [
     'history.kind.share_revoked' => 'Odwołanie linku',
     'history.kind.failed'        => 'Przetwarzanie nie powiodło się',
 
+    // --- zarządzanie kontami ---
+    'nav.users'            => 'Użytkownicy',
+    'users.title'          => 'Użytkownicy',
+    'users.list'           => 'Konta w systemie',
+    'users.new'            => 'Nowe konto',
+    'users.email'          => 'Adres e-mail',
+    'users.name'           => 'Nazwa',
+    'users.role'           => 'Rola',
+    'users.status'         => 'Stan',
+    'users.created'        => 'Utworzone',
+    'users.last_login'     => 'Ostatnie logowanie',
+    'users.actions'        => 'Akcje',
+    'users.create'         => 'Załóż konto',
+    'users.you'            => 'to Ty',
+    'users.never'          => 'nigdy',
+    'users.by'             => 'przez %s',
+    'users.pending_change' => 'hasło do zmiany',
+
+    // Ograniczenie tej wersji podane WPROST przy zakładaniu konta, a nie
+    // schowane w dokumentacji: to decyzja o zakresie dostępu do cudzych danych.
+    'users.scope_warning'  => 'W tej wersji każde konto widzi dane wszystkich klubów. '
+                              . 'Separacja danych między klientami wymaga osobnego wdrożenia.',
+
+    'users.role.admin'     => 'administrator',
+    'users.role.operator'  => 'operator',
+    'users.role.viewer'    => 'podgląd',
+    'users.role.admin.hint'    => 'pełny dostęp, w tym zarządzanie kontami',
+    'users.role.operator.hint' => 'praca na danych, bez zarządzania kontami',
+    'users.role.viewer.hint'   => 'tylko podgląd raportów i notatek, bez wgrywania i udostępniania',
+    'users.role.save'      => 'Zmień',
+    'users.role.self_locked'      => 'własnej roli nie można zmienić',
+    'users.role.last_admin_locked' => 'ostatni administrator',
+
+    'users.status.active'   => 'czynne',
+    'users.status.disabled' => 'wyłączone',
+    'users.disable'        => 'Wyłącz konto',
+    'users.enable'         => 'Przywróć',
+    'users.reset'          => 'Resetuj hasło',
+
+    'users.account_created' => 'Konto założone.',
+    'users.role_changed'   => 'Rola zmieniona.',
+    'users.disabled'       => 'Konto wyłączone. Sesje i zapamiętane urządzenia unieważnione.',
+    'users.enabled'        => 'Konto przywrócone.',
+    'users.password_reset' => 'Hasło zresetowane.',
+
+    // Hasło pokazywane raz — komunikat mówi to wprost, zamiast pozwolić
+    // odkryć to metodą prób po odświeżeniu strony.
+    'users.password.heading'  => 'Hasło jednorazowe',
+    'users.password.for'      => 'Konto: %s',
+    'users.password.once'     => 'To hasło nie zostanie pokazane ponownie. '
+                                 . 'Przekaż je teraz — po odświeżeniu strony zniknie i trzeba będzie je zresetować.',
+    'users.password.must_change' => 'Przy pierwszym logowaniu system poprosi o zmianę tego hasła.',
+    'users.password.generated' => 'Hasło zostanie wygenerowane automatycznie (16 znaków, generator kryptograficzny) '
+                                 . 'i pokazane raz po założeniu konta.',
+
+    'users.must_change'    => 'Zanim przejdziesz dalej, ustaw własne hasło. '
+                              . 'Obecne zna także osoba, która zakładała konto.',
+
+    'users.err.email'      => 'Podaj poprawny adres e-mail.',
+    'users.err.name'       => 'Podaj nazwę użytkownika.',
+    'users.err.role'       => 'Nieznana rola.',
+    'users.err.status'     => 'Nieznany stan konta.',
+    'users.err.taken'      => 'Konto z tym adresem już istnieje.',
+    'users.err.missing'    => 'Nie znaleziono konta.',
+    'users.err.self_role'  => 'Nie można zmienić własnej roli — system zostałby bez administratora.',
+    'users.err.self_disable' => 'Nie można wyłączyć własnego konta.',
+    'users.err.last_admin' => 'To jedyny czynny administrator. Najpierw nadaj rolę administratora komuś innemu.',
+    'users.err.forbidden'  => 'Ta część panelu nie jest dostępna dla Twojej roli.',
+
     // --- poczta ---
     // Zamiast slowa zastepczego („rywal") podajemy date meczu. Slowo zastepcze
     // wyglada jak nazwa i czyta sie jak blad systemu — data jest prawdziwa.
     'mail.match.on_date'   => 'mecz z %s',
     'mail.match.unknown'   => 'mecz bez przypisanej daty',
     'mail.open_report'     => 'Otwórz raport',
+    // Etykieta przycisku opisuje to, co odbiorca ZOBACZY po kliknieciu.
+    // „Otworz raport" przy powiadomieniu o imporcie prowadzilo do strony stanu,
+    // bo raportu jeszcze nie bylo — przycisk obiecywal nieistniejaca rzecz.
+    'mail.btn.report'      => 'Otwórz raport',
+    'mail.btn.progress'    => 'Sprawdź postęp',
+    'mail.btn.details'     => 'Zobacz szczegóły',
+    'mail.btn.open'        => 'Otwórz w panelu',
     'mail.footer'          => 'Wiadomość wysłana automatycznie przez CoachAnalyze.',
     'mail.footer.settings' => 'ustawieniach konta',
 
     // --- kreator mapowań tagów ---
     'mapping.title'        => 'Nowe tagi w eksporcie',
+    'mapping.required'     => 'Ten eksport zawiera tagi bez przypisanego znaczenia. '
+                              . 'Zdecyduj, co z nimi zrobić — inaczej raport powstanie bez tych zdarzeń.',
     'mapping.why'          => 'Ten eksport zawiera tagi, których profil klubu jeszcze nie zna. '
                               . 'Dopóki nie zdecydujesz, co znaczą, zdarzenia z tymi tagami nie wejdą do metryk — '
                               . 'raport powstanie, ale będzie niepełny i nic tego nie zasygnalizuje w liczbach.',
@@ -524,6 +602,10 @@ return [
     'mapping.status.rejected' => 'odrzucone',
 
     // --- pokrycie: co nie weszło do analizy ---
+    'coverage.warn.unmapped_cause' => 'Rzeczywista przyczyna: tag %s nie ma przypisanego pojęcia, '
+                              . 'więc silnik nie wie, że to strzał. Po zmapowaniu liczba xG zostanie policzona.',
+    'coverage.warn.fix_mapping' => 'Przypisz pojęcie',
+
     'coverage.excluded'    => 'Poza analizą',
     'coverage.excluded.none' => 'Wszystkie zdarzenia z eksportu wchodzą do analizy.',
     'coverage.excluded.count' => 'Zdarzeń poza analizą: %d. Raport ich nie obejmuje.',

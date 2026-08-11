@@ -75,8 +75,9 @@ final class Seasons
         $bounds = self::boundsFor($date);
 
         $existing = Db::one(
-            'SELECT id FROM seasons WHERE date_from <= :d AND date_to >= :d ORDER BY id LIMIT 1',
-            ['d' => substr($date, 0, 10)]
+            // Dwa symbole na tę samą datę — patrz komentarz w Reports::search().
+            'SELECT id FROM seasons WHERE date_from <= :d_od AND date_to >= :d_do ORDER BY id LIMIT 1',
+            ['d_od' => substr($date, 0, 10), 'd_do' => substr($date, 0, 10)]
         );
         if ($existing !== null) {
             return (int) $existing['id'];

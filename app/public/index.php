@@ -31,6 +31,7 @@ use CoachAnalyze\Share;
 use CoachAnalyze\Stats;
 use CoachAnalyze\Storage;
 use CoachAnalyze\Upload;
+use CoachAnalyze\Users;
 use CoachAnalyze\View;
 
 /**
@@ -139,6 +140,46 @@ if ($path === '/powiadomienia/nowe') {
 // --- od tego miejsca wszystko wymaga zalogowania --------------------------
 $user = Auth::requireLogin();
 
+/*
+ * WYMUSZONA ZMIANA HASŁA.
+ *
+ * Konto założone przez administratora ma hasło, które zna DWOJE ludzi — ten,
+ * kto je wygenerował, i właściciel. Do czasu zmiany panel wpuszcza wyłącznie
+ * na ekran konta i na wylogowanie.
+ *
+ * Sprawdzane TUTAJ, a nie w widokach: warunek w szablonie omija się wpisaniem
+ * adresu z palca.
+ */
+if (!empty($user['must_change_password'])
+    && !in_array($path, ['/konto', '/konto/haslo', '/logout'], true)) {
+    Session::flash('error', View::t('users.must_change'));
+    redirect('/konto');
+}
+
+/**
+ * Bramka roli. Wołana W TRASIE, przed wykonaniem czynności.
+ *
+ * Ukrycie przycisku w widoku nie jest kontrolą dostępu — adres da się wpisać
+ * ręcznie, a POST wysłać z konsoli. Widok chowa to, czego nie wolno, żeby nie
+ * kusić; o tym, czy wolno, rozstrzyga to miejsce.
+ */
+function requireCan(array $user, string $czynnosc): void
+{
+    if (\CoachAnalyze\Users::can($user, $czynnosc)) {
+        return;
+    }
+
+    // 404, nie 403: rola bez uprawnienia nie ma powodu wiedzieć, że taka część
+    // panelu w ogóle istnieje.
+    http_response_code(404);
+    View::page('soon', [
+        'title'   => View::t('common.not_found'),
+        'heading' => View::t('common.not_found'),
+        'body'    => View::t('users.err.forbidden'),
+    ]);
+    exit;
+}
+
 switch (true) {
     case $path === '/' && $method === 'GET':
         View::page('dashboard', [
@@ -162,6 +203,9 @@ switch (true) {
         break;
 
     case $path === '/import' && $method === 'POST':
+        // Viewer OGLĄDA. Upload wprowadza dane taktyczne do systemu i jest
+        // czynnością, nie podglądem.
+        requireCan($user, 'upload');
         requireCsrf();
         handleImport((int) $user['id']);
         break;
@@ -171,6 +215,7 @@ switch (true) {
         break;
 
     case preg_match('#^/import/(\d+)/generuj$#', $path, $m) === 1 && $method === 'POST':
+        requireCan($user, 'generate');
         requireCsrf();
         queueBuild((int) $m[1], (int) $user['id']);
         break;
@@ -225,6 +270,39 @@ switch (true) {
         clearRememberCookie();
         Session::flash('notice', View::t('login.logged_out'));
         redirect('/login');
+        break;
+
+    // ------------------------------------------------- zarządzanie kontami
+    //
+    // KAŻDA z tych tras sprawdza rolę PRZED wykonaniem czynności. Ukrycie
+    // pozycji w nawigacji to wygoda, nie zabezpieczenie.
+    case $path === '/uzytkownicy' && $method === 'GET':
+        requireCan($user, 'accounts');
+        showUsers();
+        break;
+
+    case $path === '/uzytkownicy' && $method === 'POST':
+        requireCan($user, 'accounts');
+        requireCsrf();
+        createUser((int) $user['id']);
+        break;
+
+    case preg_match('#^/uzytkownicy/(\d+)/rola$#', $path, $m) === 1 && $method === 'POST':
+        requireCan($user, 'accounts');
+        requireCsrf();
+        changeUserRole((int) $m[1], (string) ($_POST['role'] ?? ''), (int) $user['id']);
+        break;
+
+    case preg_match('#^/uzytkownicy/(\d+)/status$#', $path, $m) === 1 && $method === 'POST':
+        requireCan($user, 'accounts');
+        requireCsrf();
+        changeUserStatus((int) $m[1], (string) ($_POST['status'] ?? ''), (int) $user['id']);
+        break;
+
+    case preg_match('#^/uzytkownicy/(\d+)/haslo$#', $path, $m) === 1 && $method === 'POST':
+        requireCan($user, 'accounts');
+        requireCsrf();
+        resetUserPassword((int) $m[1], (int) $user['id']);
         break;
 
     // ------------------------------------------------- konto i urządzenia
@@ -483,6 +561,8 @@ switch (true) {
         break;
 
     case preg_match('#^/raport/(\d+)/udostepnij$#', $path, $m) === 1 && $method === 'POST':
+        // Udostępnienie WYPUSZCZA RAPORT POZA PANEL — to decyzja, nie podgląd.
+        requireCan($user, 'share');
         requireCsrf();
         createShare((int) $m[1], (int) $user['id']);
         break;
@@ -980,6 +1060,24 @@ function queueBuild(int $importId, int $userId): void
         redirect('/');
     }
 
+    /*
+     * KREATOR MAPOWAŃ PILNOWANY PRZY AKCJI, nie tylko przy ekranie.
+     *
+     * Przekierowanie w `showCoverage()` chroni jedną drogę — tę przez raport
+     * pokrycia. Do generowania da się jednak dojść inaczej: przyciskiem
+     * „wygeneruj ponownie" z listy raportów albo wprost POST-em pod ten adres.
+     * Wtedy eksport z nowymi tagami przechodziłby do renderu z pominięciem
+     * decyzji operatora, a raport powstałby niepełny — bez śladu, że czegoś
+     * w nim brakuje.
+     *
+     * Kontrola przy akcji zmieniającej stan jest jedyną, której nie da się
+     * ominąć wyborem innej ścieżki w interfejsie.
+     */
+    if (Imports::needsMapping($import)) {
+        Session::flash('notice', View::t('mapping.required'));
+        redirect('/import/' . $importId . '/mapowanie');
+    }
+
     $jobId = Imports::queueBuild($importId, $userId);
 
     // Zadanie czeka na crona — z przeglądarki nie wolno uruchomić procesu.
@@ -1081,6 +1179,90 @@ function notificationsFeed(int $userId): void
         // podejmuje klient — serwer mówi tylko, czy coś się dzieje.
         'working' => Notifications::hasActiveWork($userId),
     ], JSON_UNESCAPED_UNICODE);
+}
+
+/** Lista kont wraz z rolami i stanem. */
+function showUsers(): void
+{
+    View::page('users_list', [
+        'title'   => View::t('users.title'),
+        'active'  => 'users',
+        'users'   => Users::all(),
+        'roles'   => Users::ROLE,
+        'me'      => (int) (Session::userId() ?? 0),
+        'admins'  => Users::activeAdminCount(),
+        /*
+         * HASŁO POKAZYWANE RAZ.
+         *
+         * Leci przez `flash` w sesji, a nie przez bazę ani adres. W bazie jest
+         * wyłącznie hash; w adresie zostałoby w historii przeglądarki i w logach
+         * serwera. Flash znika po jednym wyświetleniu — dokładnie tak, jak
+         * obiecuje komunikat na ekranie.
+         */
+        'freshPassword' => Session::flash('fresh_password'),
+        'freshFor'      => Session::flash('fresh_password_for'),
+        'notice'  => Session::flash('notice'),
+        'error'   => Session::flash('error'),
+    ]);
+}
+
+/** Nowe konto z hasłem wygenerowanym przez system. */
+function createUser(int $authorId): void
+{
+    try {
+        $wynik = Users::create([
+            'email'        => $_POST['email'] ?? '',
+            'display_name' => $_POST['display_name'] ?? '',
+            'role'         => $_POST['role'] ?? 'operator',
+        ], $authorId);
+    } catch (\Throwable $e) {
+        Session::flash('error', $e->getMessage());
+        redirect('/uzytkownicy');
+    }
+
+    Session::flash('fresh_password', $wynik['password']);
+    Session::flash('fresh_password_for', (string) ($_POST['email'] ?? ''));
+    Session::flash('notice', View::t('users.account_created'));
+    redirect('/uzytkownicy');
+}
+
+function changeUserRole(int $userId, string $rola, int $authorId): void
+{
+    try {
+        Users::setRole($userId, $rola, $authorId);
+        Session::flash('notice', View::t('users.role_changed'));
+    } catch (\Throwable $e) {
+        Session::flash('error', $e->getMessage());
+    }
+    redirect('/uzytkownicy');
+}
+
+function changeUserStatus(int $userId, string $status, int $authorId): void
+{
+    try {
+        Users::setStatus($userId, $status, $authorId);
+        Session::flash('notice', View::t(
+            $status === 'disabled' ? 'users.disabled' : 'users.enabled'
+        ));
+    } catch (\Throwable $e) {
+        Session::flash('error', $e->getMessage());
+    }
+    redirect('/uzytkownicy');
+}
+
+function resetUserPassword(int $userId, int $authorId): void
+{
+    try {
+        $haslo = Users::resetPassword($userId, $authorId);
+        $konto = Users::find($userId);
+
+        Session::flash('fresh_password', $haslo);
+        Session::flash('fresh_password_for', (string) ($konto['email'] ?? ''));
+        Session::flash('notice', View::t('users.password_reset'));
+    } catch (\Throwable $e) {
+        Session::flash('error', $e->getMessage());
+    }
+    redirect('/uzytkownicy');
 }
 
 /** Lista powiadomień. Wejście tutaj zeruje licznik nieodczytanych. */

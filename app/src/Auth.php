@@ -98,10 +98,19 @@ final class Auth
             return ['ok' => false, 'error' => 'rate_limited', 'retry_after' => $blockedFor];
         }
 
-        $user = Db::one(
-            'SELECT id, email, pass_hash, display_name, role FROM users WHERE email = :email',
-            ['email' => $email]
-        );
+        /*
+         * `SELECT *`, a NIE lista kolumn.
+         *
+         * `status` i `must_change_password` pochodzą z migracji 008. Wymienione
+         * z nazwy zamieniałyby wdrożenie kodu PRZED migracją w całkowitą blokadę
+         * logowania — czyli awarię gorszą niż brak nowej funkcji, i to na jedynej
+         * ścieżce, którą można by ją naprawić przez panel.
+         *
+         * Kolejność „kod, potem migracja" zdarzała się w tym projekcie już
+         * kilkakrotnie. Odczyt wszystkich kolumn i wartości domyślne niżej
+         * sprawiają, że taka kolejność jest niegroźna.
+         */
+        $user = Db::one('SELECT * FROM users WHERE email = :email', ['email' => $email]);
 
         // Przy nieistniejącym koncie i tak wykonujemy pełne porównanie — patrz DUMMY_HASH.
         $hash = $user['pass_hash'] ?? self::DUMMY_HASH;
@@ -124,6 +133,21 @@ final class Auth
                 'hash' => self::hashPassword($password),
                 'id'   => $user['id'],
             ]);
+        }
+
+        /*
+         * KONTO WYŁĄCZONE — sprawdzane PO weryfikacji hasła.
+         *
+         * Kolejność ma znaczenie: gdyby stan konta rozstrzygał przed hasłem,
+         * różnica w komunikacie zdradzałaby, które adresy istnieją w systemie.
+         * Tutaj hasło musi się zgadzać, żeby w ogóle dojść do tego miejsca,
+         * a komunikat i tak jest ten sam co przy złych danych.
+         */
+        // Brak kolumny (baza sprzed migracji 008) znaczy „konto czynne" —
+        // taka jest też wartość domyślna w migracji.
+        if ((string) ($user['status'] ?? 'active') === 'disabled') {
+            Audit::log('login.disabled', (int) $user['id'], 'user', (int) $user['id']);
+            return ['ok' => false, 'error' => 'invalid_credentials'];
         }
 
         $limiter->clear($email);
@@ -199,6 +223,12 @@ final class Auth
         // Zmiana hasła to najczęściej reakcja na podejrzenie wycieku. Każde
         // zapamiętane urządzenie musi wtedy stracić dostęp.
         Remember::forgetAll($userId, 'zmiana hasła');
+
+        // Flaga wymuszonej zmiany zdejmuje się TYLKO tutaj — czyli wtedy, gdy
+        // hasło zmienił sam właściciel konta, podając stare. Reset przez
+        // administratora flagę zakłada, a nie zdejmuje.
+        Users::clearPasswordChangeFlag($userId);
+
         Audit::log('user.password_changed', $userId, 'user', $userId);
 
         return ['ok' => true];
@@ -224,10 +254,26 @@ final class Auth
         if ($id === null) {
             return null;
         }
-        return Db::one(
-            'SELECT id, email, display_name, role, last_login_at FROM users WHERE id = :id',
-            ['id' => $id]
-        );
+        /*
+         * Konto wyłączone przestaje być zalogowane NATYCHMIAST, także w sesji
+         * otwartej przed dezaktywacją. Bez tego warunku administrator wyłączałby
+         * konto, a osoba z otwartą kartą pracowałaby dalej do wygaśnięcia sesji.
+         */
+        $user = Db::one('SELECT * FROM users WHERE id = :id', ['id' => $id]);
+
+        if ($user === null) {
+            return null;
+        }
+
+        // Warunek stanu w PHP, nie w SQL — z tego samego powodu, co wyżej:
+        // zapytanie z `status = 'active'` wywalałoby się na bazie bez tej kolumny.
+        if ((string) ($user['status'] ?? 'active') === 'disabled') {
+            return null;
+        }
+
+        // Hash hasła nie ma po co krążyć po warstwie widoku.
+        unset($user['pass_hash']);
+        return $user;
     }
 
     public static function isLoggedIn(): bool

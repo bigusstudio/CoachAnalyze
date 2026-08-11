@@ -123,6 +123,15 @@ $chmurki = $chrome && Session::userId() !== null
     <a class="side__item<?= $active === 'notes' ? ' is-active' : '' ?>" href="/notatki">
       <?= View::e(View::t('nav.notes')) ?>
     </a>
+    <?php /*
+      Pozycja widoczna WYŁĄCZNIE dla administratora. To wygoda, nie ochrona —
+      o dostępie rozstrzyga `requireCan()` w trasie (app/public/index.php).
+    */ ?>
+    <?php if (\CoachAnalyze\Users::isAdmin(\CoachAnalyze\Auth::currentUser())): ?>
+      <a class="side__item<?= $active === 'users' ? ' is-active' : '' ?>" href="/uzytkownicy">
+        <?= View::e(View::t('nav.users')) ?>
+      </a>
+    <?php endif; ?>
   </nav>
 
   <main class="main">

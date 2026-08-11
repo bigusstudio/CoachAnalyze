@@ -74,6 +74,11 @@ jobs:
       - name: Zgodność z PHP 8.3 i 8.4
         run: php app/tests/test_php_wersje.php
 
+      # Powtórzony symbol nazwany działa na SQLite (testy) i wywala się na MySQL
+      # (produkcja). Żaden przebieg testów tego nie złapie — tylko przegląd kodu.
+      - name: Zapytania nie powtarzają symboli nazwanych
+        run: php app/tests/test_sql_parametry.php
+
       # Odstępstwo od zasady „zero skryptów" jest ograniczone do powiadomień.
       # Bez tego testu granica wyjątku istnieje wyłącznie w dokumentacji.
       - name: Chmurki powiadomień — granice wyjątku i wariant bez JS
