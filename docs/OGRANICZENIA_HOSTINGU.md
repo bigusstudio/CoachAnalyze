@@ -218,3 +218,53 @@ Skrypt nadpisuje hash istniejącego konta, więc adres i rola zostają bez zmian
 php -r 'try { password_hash("x", PASSWORD_ARGON2ID, ["threads"=>2]); echo "wątki OK\n"; }
         catch (Throwable $e) { echo "brak wątków: ", $e->getMessage(), "\n"; }'
 ```
+
+
+## Pułapka: `is_file()` kłamie na ścieżkach spoza `open_basedir`
+
+Zweryfikowane przez FPM na lh.pl. **Sprawdzenie istnienia pliku podlega `open_basedir`,
+a samo otwarcie zasobu już nie.** Dla ścieżki spoza listy `is_file()` zwraca `false`
+nawet wtedy, gdy zasób jest w pełni osiągalny:
+
+```php
+is_file('/usr/local/redis/sockets/serwer400227.sock');   // false
+$r = new Redis();
+$r->connect('/usr/local/redis/sockets/serwer400227.sock'); // przechodzi
+$r->ping();                                               // 1
+```
+
+To samo dotyczy `file_exists()` i `is_readable()`.
+
+### Konsekwencja: nie pytamy o istnienie, tylko próbujemy
+
+Wstępne sprawdzenie „czy plik jest" kłamie dokładnie tam, gdzie miałoby pomóc,
+i zamienia działający zasób w niedostępny. W warstwie wejścia aplikacji nie ma
+więc takich sprawdzeń — wykonujemy operację i obsługujemy niepowodzenie:
+
+| Zasób | Zamiast | Robimy |
+|---|---|---|
+| gniazdo Redis | `is_file()` przed połączeniem | `@stream_socket_client()`, wyjątek przy porażce |
+| plik `.env` | `is_file()` / `is_readable()` | `@file_get_contents()`, `false` znaczy „nie ma" |
+
+Konkretny objaw, po którym to wyszło: ekran logowania odpowiadał „Logowanie jest
+chwilowo niedostępne". `Config` szukał `.env`, sprawdzając istnienie pliku w kolejnych
+katalogach nadrzędnych; sprawdzenia zwracały `false`, konfiguracja nie wczytywała się wcale,
+a `Config::require('REDIS_SOCKET')` rzucał wyjątkiem **zanim cokolwiek spróbowało
+połączyć się z Redisem**. Zabezpieczenie „fail closed" z limitera prób zadziałało
+na podstawie nieudanego `is_file`, a nie nieudanego połączenia.
+
+### Konsekwencja: `.env` z jawnej ścieżki
+
+Przeszukiwanie drzewa w górę oznacza, że część sprawdzanych katalogów leży poza
+`open_basedir`. Każde takie sprawdzenie to ostrzeżenie PHP — przy czterech poziomach
+trzy ostrzeżenia wypisane nad formularzem logowania. Położenie `.env` bierze się dziś
+z jednej stałej (`CA_ROOT . '/.env'`), a odczyt jest wyciszony.
+
+### Konsekwencja: `display_errors` wyłączane od pierwszej instrukcji
+
+Ostrzeżenia powstawały w trakcie wczytywania konfiguracji, czyli **zanim** kod zdążył
+ustawić `display_errors` na podstawie tej konfiguracji. Bootstrap wyłącza je teraz
+w pierwszych liniach, a włącza z powrotem tylko poza produkcją i tylko przy `APP_DEBUG`.
+Docelowy plik logu (`LOG_PATH`) podłącza się później, gdy konfiguracja jest już znana.
+
+Pilnuje tego `app/tests/test_layout.php`.

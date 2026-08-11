@@ -38,11 +38,34 @@ function check(string $name, bool $condition, string $detail = ''): void
 }
 
 /**
+ * Kod PHP bez komentarzy.
+ *
+ * Wszystkie sprawdzenia treści plików przepuszczamy przez tę funkcję. Komentarze
+ * MUSZĄ móc wymieniać z nazwy konstrukcje, których zakazujemy — inaczej za rok
+ * nikt nie będzie wiedział, czego dotyczy test i dlaczego powstał.
+ */
+function codeOnly(string $source): string
+{
+    $out = '';
+    foreach (token_get_all($source) as $token) {
+        if (is_array($token)) {
+            if ($token[0] === T_COMMENT || $token[0] === T_DOC_COMMENT) {
+                continue;
+            }
+            $out .= $token[1];
+        } else {
+            $out .= $token;
+        }
+    }
+    return $out;
+}
+
+/**
  * Buduje drzewo katalogów z prawdziwym `index.php` i atrapą bootstrapu,
  * po czym uruchamia index. Atrapa wypisuje CA_ROOT i kończy proces, więc
  * sprawdzamy samo ustalanie ścieżek — bez bazy, sesji i routingu.
  */
-function runLayout(string $indexPath, string $indexRelative): array
+function runLayout(string $indexPath, string $indexRelative, ?string $bootstrapStub = null): array
 {
     $tmp = sys_get_temp_dir() . '/ca_layout_' . bin2hex(random_bytes(6));
     $indexTarget = $tmp . '/' . $indexRelative;
@@ -51,10 +74,17 @@ function runLayout(string $indexPath, string $indexRelative): array
     @mkdir($tmp . '/app/src', 0770, true);
 
     copy($indexPath, $indexTarget);
-    file_put_contents(
-        $tmp . '/app/src/bootstrap.php',
-        "<?php echo 'CA_ROOT=' . CA_ROOT; exit;\n"
-    );
+
+    if ($bootstrapStub === null) {
+        file_put_contents($tmp . '/app/src/bootstrap.php', "<?php echo 'CA_ROOT=' . CA_ROOT; exit;\n");
+    } else {
+        // Wariant z prawdziwym Config — sprawdzamy zachowanie przy braku .env.
+        copy(dirname($indexPath, 2) . '/src/Config.php', $tmp . '/app/src/Config.php');
+        file_put_contents(
+            $tmp . '/app/src/bootstrap.php',
+            "<?php ini_set('display_errors','1'); require __DIR__ . '/Config.php';\n" . $bootstrapStub
+        );
+    }
 
     // Wyłącznie stdout — czyli to, co dostałaby przeglądarka. Log błędów idzie
     // na stderr i nie ma prawa mieszać się z odpowiedzią.
@@ -90,17 +120,7 @@ $source = (string) file_get_contents($indexPath);
  * `dirname(__DIR__)` z nazwy — inaczej za rok nikt nie będzie wiedział,
  * czego dotyczy ten test i dlaczego istnieje.
  */
-$kod = '';
-foreach (token_get_all($source) as $token) {
-    if (is_array($token)) {
-        if ($token[0] === T_COMMENT || $token[0] === T_DOC_COMMENT) {
-            continue;
-        }
-        $kod .= $token[1];
-    } else {
-        $kod .= $token;
-    }
-}
+$kod = codeOnly($source);
 
 // Sedno sprawy: skok „o jedno piętro w górę" jest poprawny w repozytorium
 // i błędny w produkcji. Właśnie dlatego nie wolno go tu użyć.
@@ -198,6 +218,73 @@ foreach (['app/bin/run_job.php', 'app/bin/create_user.php'] as $relative) {
         'ten plik nie zmienia położenia przy wdrożeniu i ma zostać jak jest'
     );
 }
+
+echo "\n== open_basedir: nie pytamy o istnienie, tylko próbujemy ==\n";
+
+/**
+ * Na lh.pl `is_file()` na ścieżce spoza `open_basedir` zwraca false także wtedy,
+ * gdy zasób jest w pełni osiągalny: sprawdzenie pliku podlega ograniczeniu,
+ * a otwarcie zasobu już nie. Zweryfikowane przez FPM — `$r->connect()` na gnieździe
+ * Redis przechodzi, a `is_file()` na tej samej ścieżce mówi „nie ma".
+ *
+ * Dlatego w warstwie wejścia nie ma wstępnych sprawdzeń istnienia. Próbujemy
+ * wykonać operację i obsługujemy niepowodzenie.
+ */
+$configSource = codeOnly((string) file_get_contents($root . '/app/src/Config.php'));
+$redisSource  = codeOnly((string) file_get_contents($root . '/app/src/RedisClient.php'));
+
+check(
+    'RedisClient łączy się bez wstępnego sprawdzania istnienia gniazda',
+    !preg_match('/(is_file|file_exists|is_readable)\s*\(/', $redisSource),
+    'na tym hostingu takie sprawdzenie zwraca false mimo działającego gniazda'
+);
+check(
+    'RedisClient obsługuje nieudane połączenie (fail closed po connect)',
+    str_contains($redisSource, 'stream_socket_client') && str_contains($redisSource, 'RuntimeException')
+);
+check(
+    'Config nie sprawdza istnienia .env, tylko próbuje odczytać',
+    !preg_match('/(is_file|file_exists|is_readable)\s*\(/', $configSource),
+    'sprawdzenie istnienia kłamie dla ścieżek spoza open_basedir'
+);
+check(
+    'Config nie przeszukuje drzewa w górę w poszukiwaniu .env',
+    !preg_match('/for\s*\(.*\)\s*\{[^}]*dirname\s*\(\s*\$/s', $configSource),
+    'każdy krok powyżej open_basedir to ostrzeżenie PHP na stronie'
+);
+
+echo "\n== ostrzeżenia PHP nie trafiają do przeglądarki ==\n";
+
+/**
+ * Uruchamiamy prawdziwy `index.php` w układzie produkcyjnym BEZ pliku `.env`
+ * i ze ścieżką konfiguracji wskazującą katalog, którego nie ma. Odpowiedź nie
+ * może zawierać ani jednego ostrzeżenia PHP — powód należy do logu.
+ */
+// Bez znacznika otwierającego — atrapa jest doklejana do gotowego nagłówka.
+$brakEnv = runLayout($indexPath, 'index.php', "CoachAnalyze\\Config::load();\necho 'BODY_OK';\nexit;\n");
+
+check(
+    'odpowiedź nie zawiera ostrzeżeń PHP',
+    !preg_match('/\b(Warning|Notice|Deprecated|Fatal error)\b/', $brakEnv['output']),
+    $brakEnv['output']
+);
+check(
+    'odpowiedź nie zawiera ścieżek serwera',
+    !str_contains($brakEnv['output'], '/app/src/'),
+    $brakEnv['output']
+);
+
+echo "\n== bootstrap: kolejność wyciszania błędów ==\n";
+
+$bootstrapSource = codeOnly((string) file_get_contents($root . '/app/src/bootstrap.php'));
+$pozycjaWyciszenia = strpos($bootstrapSource, "ini_set('display_errors', '0')");
+$pozycjaLoad = strpos($bootstrapSource, 'Config::load()');
+
+check(
+    'display_errors wyłączane PRZED wczytaniem konfiguracji',
+    $pozycjaWyciszenia !== false && $pozycjaLoad !== false && $pozycjaWyciszenia < $pozycjaLoad,
+    'ostrzeżenia z wczytywania .env trafiłyby do odpowiedzi'
+);
 
 echo "\n== deploy.sh: wykluczenia przy rsync --delete ==\n";
 

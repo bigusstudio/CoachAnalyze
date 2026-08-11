@@ -20,32 +20,52 @@ final class Config
         if (self::$loaded) {
             return;
         }
-        $path ??= self::locate();
-        if ($path !== null && is_readable($path)) {
-            self::$values = self::parse((string) file_get_contents($path));
+
+        // PRÓBUJEMY ODCZYTAĆ, zamiast najpierw pytać, czy plik istnieje.
+        //
+        // Na lh.pl `is_file()` na ścieżce spoza `open_basedir` zwraca false także
+        // wtedy, gdy zasób jest osiągalny — sprawdzenie pliku podlega ograniczeniu,
+        // a samo otwarcie już nie. Wstępne sprawdzenie kłamało więc dokładnie tam,
+        // gdzie miało pomóc: `.env` nie był wczytywany, brakowało REDIS_SOCKET,
+        // a ekran logowania mówił „chwilowo niedostępne".
+        //
+        // Ta sama zasada dotyczy gniazda Redis (RedisClient::connect) —
+        // szczegóły w docs/OGRANICZENIA_HOSTINGU.md.
+        $path ??= self::envPath();
+        $raw = @file_get_contents($path);
+
+        if ($raw !== false) {
+            self::$values = self::parse($raw);
+        } else {
+            // Bez `.env` aplikacja nie ma haseł do bazy ani ścieżki do silnika.
+            // Do logu, nigdy do przeglądarki.
+            error_log('Config: nie udało się odczytać pliku konfiguracji: ' . $path);
         }
+
         self::$loaded = true;
     }
 
     /**
-     * .env leży poza katalogiem publicznym. Na serwerze układ katalogów jest inny
-     * niż lokalnie (docs/OGRANICZENIA_HOSTINGU.md), więc szukamy w górę drzewa
-     * zamiast zakładać jedną ścieżkę.
+     * Położenie `.env` — JEDNA jawna ścieżka, bez przeszukiwania drzewa w górę.
+     *
+     * Poprzednia wersja sprawdzała po kolei cztery katalogi nadrzędne. W produkcji
+     * dwa ostatnie leżą poza `open_basedir`, więc każde sprawdzenie kończyło się
+     * ostrzeżeniem PHP — trzema na jednym żądaniu, wypisanymi nad formularzem
+     * logowania.
      */
-    private static function locate(): ?string
+    public static function envPath(): string
     {
-        $dir = dirname(__DIR__);
-        for ($i = 0; $i < 4; $i++) {
-            if (is_file($dir . '/.env')) {
-                return $dir . '/.env';
-            }
-            $parent = dirname($dir);
-            if ($parent === $dir) {
-                break;
-            }
-            $dir = $parent;
+        // Nadpisanie na potrzeby nietypowego wdrożenia albo testu.
+        $override = getenv('CA_ENV_PATH');
+        if (is_string($override) && $override !== '') {
+            return $override;
         }
-        return null;
+
+        // CA_ROOT ustala bootstrap (i niezależnie app/public/index.php).
+        // Zapasowo liczymy je stąd: `app/src/` nie zmienia położenia względem `app/`.
+        $root = defined('CA_ROOT') ? CA_ROOT : dirname(__DIR__, 2);
+
+        return $root . '/.env';
     }
 
     /** @return array<string,string> */

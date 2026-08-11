@@ -12,6 +12,33 @@ declare(strict_types=1);
 
 namespace CoachAnalyze;
 
+/**
+ * KOLEJNOŚĆ MA ZNACZENIE — te trzy linie muszą stać PRZED czymkolwiek,
+ * co dotyka dysku.
+ *
+ * Wcześniej `display_errors` ustawiało się dopiero po `Config::load()`, więc
+ * ostrzeżenia powstałe w trakcie szukania `.env` zdążyły już wylądować
+ * w odpowiedzi HTTP — na ekranie logowania, nad formularzem. W produkcji żadne
+ * ostrzeżenie PHP nie ma prawa trafić do przeglądarki (CLAUDE.md §5), więc
+ * domyślnie wyłączamy je od pierwszej instrukcji, a nie od trzydziestej.
+ *
+ * Właściwy plik logu (LOG_PATH) podłączamy niżej, gdy konfiguracja jest już znana.
+ */
+ini_set('display_errors', '0');
+ini_set('log_errors', '1');
+error_reporting(E_ALL);
+
+/**
+ * CA_ROOT — katalog, w którym leży `app/`.
+ *
+ * `app/src/` nie zmienia położenia względem `app/` w żadnym układzie, więc dwa
+ * poziomy w górę są tu deterministyczne. `app/public/index.php` ustala tę samą
+ * stałą własną drogą, bo jako jedyny plik zmienia położenie przy wdrożeniu.
+ */
+if (!defined('CA_ROOT')) {
+    define('CA_ROOT', dirname(__DIR__, 2));
+}
+
 require_once __DIR__ . '/Config.php';
 
 /**
@@ -36,10 +63,13 @@ Config::load();
  * Traceback nigdy nie trafia do przeglądarki (CLAUDE.md §5) — ta sama zasada,
  * co dla silnika Pythona. Do logu pełna treść, do użytkownika krótki komunikat.
  */
+// Wyświetlanie błędów włączamy WYŁĄCZNIE poza produkcją i tylko na życzenie.
+// Domyślnie jest już wyłączone (na górze pliku) — tutaj można je co najwyżej
+// świadomie włączyć, nigdy odwrotnie.
 $debug = Config::bool('APP_DEBUG', false) && !Config::isProduction();
-ini_set('display_errors', $debug ? '1' : '0');
-ini_set('log_errors', '1');
-error_reporting(E_ALL);
+if ($debug) {
+    ini_set('display_errors', '1');
+}
 
 /**
  * Docelowy plik logu. Proces roboczy (app/bin/run_job.php) startuje odpięty,
