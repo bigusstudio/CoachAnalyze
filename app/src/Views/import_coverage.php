@@ -56,10 +56,31 @@ $liczby = [
 
     <dt><?= View::e(View::t('cov.teams')) ?></dt>
     <dd>
-      <?php $teams = $coverage['teams'] ?? []; ?>
-      <?= $teams === []
-          ? '<span class="muted">' . View::e(View::t('cov.teams.none')) . '</span>'
-          : View::e(implode(', ', array_map('strval', (array) $teams))) ?>
+      <?php $teams = (array) ($coverage['teams'] ?? []); ?>
+      <?php if ($teams === []): ?>
+        <span class="muted"><?= View::e(View::t('cov.teams.none')) ?></span>
+      <?php else: ?>
+        <?php // Nazwa z eksportu dopasowana do klubu przez aliasy. Bez dopasowania
+              // proponujemy założenie klubu z tą nazwą — operator ją potwierdza
+              // albo poprawia, a alias zapamiętuje się na kolejne mecze. ?>
+        <ul class="teams">
+          <?php foreach ($teams as $detected): ?>
+            <?php $club = \CoachAnalyze\Clubs::matchByExportName((string) $detected); ?>
+            <li class="teams__row">
+              <span class="teams__name"><?= View::e((string) $detected) ?></span>
+              <?php if ($club !== null): ?>
+                <span class="tag tag--done"><?= View::e(View::t('cov.team.matched')) ?></span>
+                <a class="link" href="/kluby/<?= (int) $club['id'] ?>"><?= View::e((string) $club['name']) ?></a>
+              <?php else: ?>
+                <a class="link" href="/kluby/nowy?nazwa=<?= rawurlencode((string) $detected)
+                    ?>&amp;powrot=<?= rawurlencode('/import/' . (int) $import['id']) ?>">
+                  <?= View::e(View::t('cov.team.create')) ?>
+                </a>
+              <?php endif; ?>
+            </li>
+          <?php endforeach; ?>
+        </ul>
+      <?php endif; ?>
     </dd>
 
     <dt><?= View::e(View::t('cov.json')) ?></dt>

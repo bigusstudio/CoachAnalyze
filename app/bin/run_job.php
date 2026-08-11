@@ -16,6 +16,7 @@ declare(strict_types=1);
  */
 
 use CoachAnalyze\Audit;
+use CoachAnalyze\Clubs;
 use CoachAnalyze\Db;
 use CoachAnalyze\Engine;
 use CoachAnalyze\Imports;
@@ -68,14 +69,21 @@ try {
     $dir = Storage::jobDir($jobId);
     $reportPath = Storage::reportDir() . '/' . Storage::randomName('html');
 
-    // Konfiguracja dla silnika. Kluby dochodzą w Etapie 4b — dopóki ich nie ma,
-    // NIE zmyślamy nazw: silnik zwróci wykryte w danych w `coverage.teams`,
-    // a wszystkie zdarzenia trafią do „bez przypisania drużyny" (pułapka 5).
+    // Konfiguracja dla silnika. Nazwy i barwy klubów pochodzą z bazy — silnik
+    // ich nie odgaduje (docs/KONTRAKT_CLI.md). Gdy klub nie jest przypisany,
+    // NIE zmyślamy nazwy: zdarzenia trafią do „bez przypisania drużyny"
+    // (pułapka 5), co jest prawdą o tym eksporcie.
+    $match = Db::one('SELECT club_home_id, club_away_id FROM matches WHERE id = :id', ['id' => $matchId]);
+    $teams = Clubs::engineConfig(
+        $match['club_home_id'] !== null ? (int) $match['club_home_id'] : null,
+        $match['club_away_id'] !== null ? (int) $match['club_away_id'] : null
+    );
+
     $configPath = $dir . '/config.json';
     file_put_contents($configPath, json_encode([
         'match_id'        => $matchId,
         'season_label'    => null,
-        'teams'           => new stdClass(),
+        'teams'           => $teams === [] ? new stdClass() : $teams,
         'mapping_profile' => ['version' => 1, 'rules' => []],
         'options'         => ['contrast_fix' => true, 'engine_locale' => 'pl_PL'],
     ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));

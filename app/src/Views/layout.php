@@ -77,12 +77,11 @@ $next = $theme === 'dark' ? 'light' : 'dark';
     <a class="side__item<?= $active === 'import' ? ' is-active' : '' ?>" href="/import">
       <?= View::e(View::t('import.nav')) ?>
     </a>
-    <?php // Kluby i Notatki to jeszcze nie są trasy — pozycja nieaktywna mówi
-          // wprost „będzie", zamiast prowadzić w stronę, której nie ma. ?>
-    <span class="side__item is-disabled" aria-disabled="true">
+    <a class="side__item<?= $active === 'clubs' ? ' is-active' : '' ?>" href="/kluby">
       <?= View::e(View::t('nav.clubs')) ?>
-      <em class="side__soon"><?= View::e(View::t('nav.soon_hint')) ?></em>
-    </span>
+    </a>
+    <?php // Notatki to jeszcze nie jest trasa — pozycja nieaktywna mówi wprost
+          // „będzie", zamiast prowadzić w stronę, której nie ma. ?>
     <span class="side__item is-disabled" aria-disabled="true">
       <?= View::e(View::t('nav.notes')) ?>
       <em class="side__soon"><?= View::e(View::t('nav.soon_hint')) ?></em>

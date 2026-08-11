@@ -52,7 +52,10 @@ use CoachAnalyze\View;
         <thead>
           <tr>
             <th><?= View::e(View::t('match.date')) ?></th>
-            <th><?= View::e(View::t('match.teams')) ?></th>
+            <?php // Nie „Gospodarz"/„Gość": eksport LiveTag nie niesie stron boiska,
+                  // a przy meczu wyjazdowym taka kolumna po prostu kłamie. ?>
+            <th><?= View::e(View::t('match.us')) ?></th>
+            <th><?= View::e(View::t('match.them')) ?></th>
             <th><?= View::e(View::t('match.status')) ?></th>
             <th><?= View::e(View::t('match.action')) ?></th>
           </tr>
@@ -68,12 +71,17 @@ use CoachAnalyze\View;
               <?php endif; ?>
             </td>
             <td>
-              <?php if (!empty($m['home_name']) || !empty($m['away_name'])): ?>
-                <?= View::e((string) ($m['home_name'] ?? View::t('common.dash'))) ?>
-                <span class="muted">–</span>
-                <?= View::e((string) ($m['away_name'] ?? View::t('common.dash'))) ?>
+              <?php if (!empty($m['home_name'])): ?>
+                <?= View::e((string) $m['home_name']) ?>
               <?php else: ?>
-                <span class="muted"><?= View::e(View::t('match.no_teams')) ?></span>
+                <span class="muted"><?= View::e(View::t('match.no_club')) ?></span>
+              <?php endif; ?>
+            </td>
+            <td>
+              <?php if (!empty($m['away_name'])): ?>
+                <?= View::e((string) $m['away_name']) ?>
+              <?php else: ?>
+                <span class="muted"><?= View::e(View::t('match.no_club')) ?></span>
               <?php endif; ?>
             </td>
             <td><?= View::status((string) $m['status']) ?></td>

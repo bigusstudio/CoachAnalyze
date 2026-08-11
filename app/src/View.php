@@ -78,6 +78,24 @@ final class View
         );
     }
 
+    /**
+     * Barwa klubu do wstawienia w atrybut `style`.
+     *
+     * Barwy klubowe to DANE, nie tokeny motywu — dlatego trafiają do zmiennej
+     * CSS, a arkusz nadal nie zawiera żadnej wartości szesnastkowej poza
+     * definicją motywu.
+     *
+     * Sprawdzamy wzorzec, a nie tylko uciekamy znaki: wartość z bazy wpadająca
+     * do atrybutu `style` to miejsce, w którym `expression(...)` albo domknięcie
+     * cudzysłowu robią realną szkodę. Cokolwiek innego niż `#RRGGBB` zamieniamy
+     * na barwę zastępczą.
+     */
+    public static function color(mixed $value, string $fallback = '#888888'): string
+    {
+        $candidate = is_string($value) ? trim($value) : '';
+        return preg_match('/^#[0-9A-Fa-f]{6}$/', $candidate) === 1 ? $candidate : $fallback;
+    }
+
     /** Czas w sekundach na czytelny opis po polsku. */
     public static function humanSeconds(int $seconds): string
     {

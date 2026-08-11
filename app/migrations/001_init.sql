@@ -43,6 +43,13 @@ CREATE TABLE matches (
   id            INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   owner_id      INT UNSIGNED NOT NULL,
   season_id     INT UNSIGNED NULL,
+  -- UWAGA NA NAZWY: to NIE są strony boiska. Eksport LiveTag nie niesie
+  -- informacji o tym, kto był gospodarzem, a udawanie jej dałoby kolumnę
+  -- kłamiącą przy każdym meczu wyjazdowym.
+  --   club_home_id = strona `us`   („nasza drużyna" — klub oznaczony is_own_team)
+  --   club_away_id = strona `them` („rywal")
+  -- Odwzorowanie stron z docs/KONTRAKT_CLI.md. W interfejsie kolumny nazywają się
+  -- „Nasza drużyna" i „Rywal". Nazwy kolumn zostają ze względu na zgodność wstecz.
   club_home_id  INT UNSIGNED NULL,
   club_away_id  INT UNSIGNED NULL,
   played_at     DATE NULL,

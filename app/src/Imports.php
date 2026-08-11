@@ -61,6 +61,11 @@ final class Imports
             $importId = (int) $pdo->lastInsertId();
 
             $pdo->commit();
+
+            // Kluby znane z wcześniejszych meczów dopasowują się same — po to
+            // trzymamy aliasy. Operator nie wpisuje nazw przy każdym imporcie.
+            self::assignClubs($matchId, array_map('strval', (array) ($meta['coverage']['teams'] ?? [])));
+
             Audit::log('import.created', $ownerId, 'import', $importId, ['match_id' => $matchId]);
             return $importId;
         } catch (\Throwable $e) {
@@ -100,12 +105,69 @@ final class Imports
      * Zadanie renderu dla tego importu. Ten sam import można renderować wiele
      * razy — regeneracja nie wymaga ponownego wgrywania pliku.
      */
+    /**
+     * Dopasowanie nazw z eksportu do klubów i przypisanie ich do meczu.
+     *
+     * Wołane przy imporcie ORAZ tuż przed renderem — operator mógł w międzyczasie
+     * założyć brakujący klub na ekranie pokrycia i wrócić.
+     *
+     * Eksport LiveTag NIE niesie informacji o tym, kto był gospodarzem, i nie
+     * udajemy jej. Klub oznaczony „mój" trafia do `club_home_id`, drugi do
+     * `club_away_id`, ale te kolumny znaczą `us` i `them` z kontraktu silnika —
+     * nie strony boiska. W interfejsie widać „Nasza drużyna" i „Rywal”.
+     *
+     * @param list<string> $detected nazwy z `meta.coverage.teams`
+     */
+    public static function assignClubs(int $matchId, array $detected): void
+    {
+        $own = null;
+        $other = null;
+
+        foreach ($detected as $name) {
+            $club = Clubs::matchByExportName((string) $name);
+            if ($club === null) {
+                continue;
+            }
+            Clubs::rememberAlias((int) $club['id'], (string) $name);
+
+            if (!empty($club['is_own_team']) && $own === null) {
+                $own = (int) $club['id'];
+            } elseif ($other === null) {
+                $other = (int) $club['id'];
+            }
+        }
+
+        // Gdy żaden klub nie jest oznaczony jako „mój", pierwszy dopasowany
+        // idzie na pozycję gospodarza — kolejność z eksportu jest tu jedyną,
+        // jaką mamy, i lepsza niż zostawienie obu pól pustych.
+        if ($own === null && $other !== null) {
+            $own = $other;
+            $other = null;
+        }
+
+        Db::run('UPDATE matches SET club_home_id = :h, club_away_id = :a WHERE id = :id', [
+            'h'  => $own,
+            'a'  => $other,
+            'id' => $matchId,
+        ]);
+    }
+
+    /** Nazwy drużyn wykryte w danych, zapisane w raporcie pokrycia. */
+    public static function detectedTeams(array $import): array
+    {
+        $coverage = self::decode($import['coverage_json'] ?? null);
+        return array_values(array_map('strval', (array) ($coverage['teams'] ?? [])));
+    }
+
     public static function queueBuild(int $importId, int $userId): int
     {
         $import = self::find($importId);
         if ($import === null) {
             throw new \RuntimeException("Import {$importId} nie istnieje");
         }
+
+        // Kluby mogły powstać dopiero teraz, na ekranie pokrycia.
+        self::assignClubs((int) $import['match_id'], self::detectedTeams($import));
 
         Db::run(
             'INSERT INTO jobs (type, payload_json, status, attempts, created_at)

@@ -162,3 +162,59 @@ Skoro kod leży w drzewie webowym, ochronę zapewniają trzy warstwy `.htaccess`
 
 `deploy.sh` po każdym wdrożeniu **sprawdza automatycznie**, czy te ścieżki zwracają 403.
 Wdrożenie, które wystawia kod publicznie, ma być widoczne od razu, a nie odkryte przez kogoś innego.
+
+
+## Blokada: `libargon2` bez obsługi wątków
+
+Zweryfikowane na serwerze. `password_hash` z `PASSWORD_ARGON2ID` i parametrem `threads` większym
+niż 1 kończy się błędem:
+
+```
+A thread value other than 1 is not supported by this implementation
+```
+
+`libargon2` na lh.pl jest zbudowane bez wsparcia dla wielu wątków (brak `ARGON2_NO_THREADS`
+po stronie budowania biblioteki). Dotyczy to **wszystkich** wywołań: haszowania i weryfikacji.
+
+### Konsekwencja
+
+`threads` musi zostać **1**. Utratę równoległości rekompensujemy pozostałymi parametrami —
+w argon2 koszt to w przybliżeniu iloczyn pamięci i liczby przebiegów, a `p` dzieli tę pracę
+na pasma. Zmierzone na maszynie deweloperskiej (PHP 8.5):
+
+| `memory_cost` | `time_cost` | `threads` | Czas weryfikacji |
+|---|---|---|---|
+| 65536 (64 MB) | 4 | 2 | 64 ms — konfiguracja sprzed poprawki |
+| 65536 (64 MB) | 4 | 1 | 122 ms |
+| 65536 (64 MB) | 6 | 1 | 188 ms |
+| **98304 (96 MB)** | **5** | **1** | **237 ms** — wartości domyślne |
+| 131072 (128 MB) | 4 | 1 | 256 ms |
+
+Warto odnotować, że samo zejście z `p=2` na `p=1` **podnosi** koszt, a nie obniża: przy jednym
+paśmie ten sam obszar pamięci jest przetwarzany sekwencyjnie. Podniesienie pamięci i liczby
+przebiegów jest więc zapasem, a nie łataniem straty.
+
+Parametry siedzą w `.env` (`ARGON_MEMORY_COST`, `ARGON_TIME_COST`, `ARGON_THREADS`) i dają się
+podnieść bez wydania nowej wersji aplikacji. Pamięć jest liczona w KiB.
+
+### Pułapka przy migracji
+
+Hasła zapisane **przed** tą zmianą mają w zapisie hasha `p=2`. Na tym hostingu **nie dadzą się
+zweryfikować** — parametry są częścią zapisu, a biblioteka odmówi tak samo jak przy haszowaniu.
+Automatyczne przehaszowanie przy logowaniu (`password_needs_rehash`) tu nie pomoże, bo wymaga
+udanej weryfikacji.
+
+**Konto operatora założone przed poprawką trzeba utworzyć na nowo:**
+
+```bash
+php app/bin/create_user.php operator@example.com "Operator"
+```
+
+Skrypt nadpisuje hash istniejącego konta, więc adres i rola zostają bez zmian.
+
+### Sprawdzenie na serwerze
+
+```bash
+php -r 'try { password_hash("x", PASSWORD_ARGON2ID, ["threads"=>2]); echo "wątki OK\n"; }
+        catch (Throwable $e) { echo "brak wątków: ", $e->getMessage(), "\n"; }'
+```

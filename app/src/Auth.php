@@ -17,26 +17,60 @@ final class Auth
      * ponoszony raz na sesję, koszt łamania — przy każdej próbie z listy.
      */
     private const ARGON_OPTIONS = [
-        'memory_cost' => 65536,  // 64 MB
-        'time_cost'   => 4,
-        'threads'     => 2,
+        'memory_cost' => 98304,  // 96 MB
+        'time_cost'   => 5,
+        // JEDEN wątek — nie z wygody, tylko z konieczności. libargon2 na lh.pl
+        // jest zbudowane bez obsługi wątków i `password_hash` z p>1 kończy się
+        // błędem „A thread value other than 1 is not supported by this
+        // implementation". Szczegóły: docs/OGRANICZENIA_HOSTINGU.md.
+        'threads'     => 1,
     ];
 
     /**
      * Prawdziwy hash losowego napisu, którego nikt nie zna. Służy wyłącznie do
      * porównania przy NIEISTNIEJĄCYM koncie, żeby czas odpowiedzi był taki sam
-     * jak przy koncie istniejącym (~64 ms). Hash sklejony ręcznie nie zadziała:
+     * jak przy koncie istniejącym. Hash sklejony ręcznie nie zadziała:
      * `password_verify` odrzuca niepoprawny format natychmiast i właśnie ta
      * różnica czasu zdradzałaby, które adresy są zarejestrowane.
+     *
+     * Zapisany z p=1 — wariant z p=2 nie dałby się zweryfikować na lh.pl
+     * i ochrona przed sondowaniem listy kont przestałaby działać dokładnie
+     * tam, gdzie jest potrzebna.
+     *
+     * Przy mocnym podniesieniu parametrów w .env warto go przeliczyć, żeby czas
+     * porównania dla konta nieistniejącego nadal odpowiadał temu dla istniejącego.
      */
     private const DUMMY_HASH =
-        '$argon2id$v=19$m=65536,t=4,p=2$aElBZTZEbFRWSGdoWi9ocw$ASDifOnT83xTSSkrk4WsQfT566BUe8E1p2Yg7nik1oI';
+        '$argon2id$v=19$m=98304,t=5,p=1$T3lTbWVXM0FYT3cxQ0pMOA$2DZmaKwLn0qt8VJ2yNqrrATjXcjPcDAdwtJt9cDjeYA';
 
     public function __construct(private ?RateLimit $limiter = null) {}
 
+    /**
+     * Parametry argon2id z konfiguracji, z domyślnymi wartościami wyżej.
+     *
+     * W .env, a nie na sztywno: sprzęt i limity hostingu się zmieniają, a koszt
+     * haszowania powinien dać się podnieść bez wydania nowej wersji aplikacji.
+     *
+     * @return array{memory_cost:int, time_cost:int, threads:int}
+     */
+    public static function argonOptions(): array
+    {
+        return [
+            'memory_cost' => max(8192, Config::int('ARGON_MEMORY_COST', self::ARGON_OPTIONS['memory_cost'])),
+            'time_cost'   => max(1, Config::int('ARGON_TIME_COST', self::ARGON_OPTIONS['time_cost'])),
+            'threads'     => max(1, Config::int('ARGON_THREADS', self::ARGON_OPTIONS['threads'])),
+        ];
+    }
+
+    /** Minimalna długość hasła. Z .env — polityka bywa zmieniana bez zmiany kodu. */
+    public static function minPasswordLength(): int
+    {
+        return max(8, Config::int('PASSWORD_MIN_LENGTH', 8));
+    }
+
     public static function hashPassword(string $password): string
     {
-        return password_hash($password, PASSWORD_ARGON2ID, self::ARGON_OPTIONS);
+        return password_hash($password, PASSWORD_ARGON2ID, self::argonOptions());
     }
 
     /**
@@ -82,7 +116,10 @@ final class Auth
         }
 
         // Parametry haszowania mogły się zmienić od czasu założenia konta.
-        if (password_needs_rehash((string) $user['pass_hash'], PASSWORD_ARGON2ID, self::ARGON_OPTIONS)) {
+        // Konto założone na starych parametrach (m.in. p=2 sprzed zderzenia
+        // z libargon2 na lh.pl) przechodzi na bieżące przy pierwszym udanym
+        // logowaniu — o ile stary hash w ogóle daje się zweryfikować.
+        if (password_needs_rehash((string) $user['pass_hash'], PASSWORD_ARGON2ID, self::argonOptions())) {
             Db::run('UPDATE users SET pass_hash = :hash WHERE id = :id', [
                 'hash' => self::hashPassword($password),
                 'id'   => $user['id'],

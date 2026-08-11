@@ -42,8 +42,11 @@ if (!in_array($role, ['admin', 'operator', 'viewer'], true)) {
 }
 
 $password = prompt_password('Hasło: ');
-if (strlen($password) < 12) {
-    fwrite(STDERR, "Hasło musi mieć co najmniej 12 znaków.\n");
+$minLength = Auth::minPasswordLength();
+// Liczymy ZNAKI, nie bajty: „ćma" ma 3 znaki i 6 bajtów, a `strlen` liczyłby bajty
+// i przepuszczał krótsze hasła z polskimi literami niż z samych ASCII.
+if (mb_strlen($password, 'UTF-8') < $minLength) {
+    fwrite(STDERR, "Hasło musi mieć co najmniej {$minLength} znaków.\n");
     exit(2);
 }
 if ($password !== prompt_password('Powtórz hasło: ')) {

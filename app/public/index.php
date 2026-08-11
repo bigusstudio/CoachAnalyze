@@ -12,20 +12,29 @@ declare(strict_types=1);
  */
 
 use CoachAnalyze\Audit;
+use CoachAnalyze\Auth;
+use CoachAnalyze\Clubs;
+use CoachAnalyze\Crest;
 use CoachAnalyze\Engine;
 use CoachAnalyze\Imports;
-use CoachAnalyze\Storage;
-use CoachAnalyze\Upload;
-use CoachAnalyze\Auth;
 use CoachAnalyze\Jobs;
 use CoachAnalyze\Session;
 use CoachAnalyze\Stats;
+use CoachAnalyze\Storage;
+use CoachAnalyze\Upload;
 use CoachAnalyze\View;
 
 require dirname(__DIR__) . '/src/bootstrap.php';
 
 $path   = rtrim(parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/', '/') ?: '/';
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+
+// HEAD to GET bez treści odpowiedzi. Bez tego każde HEAD wpadało do gałęzi
+// domyślnej i dostawało 404 — mylące przy diagnostyce (`curl -I`) i błędne
+// dla pośredników, które sprawdzają zasób przed pobraniem.
+if ($method === 'HEAD') {
+    $method = 'GET';
+}
 
 // --- trasy bez sesji ------------------------------------------------------
 if ($path === '/login') {
@@ -103,11 +112,55 @@ switch (true) {
         redirect('/login');
         break;
 
-    // Etapy 4b/4c/5 — zapowiedź zamiast 404, żeby nawigacja nie prowadziła w pustkę.
-    // Kluby i Notatki nie mają jeszcze pozycji w menu, ale adres wpisany z ręki
-    // albo z zakładki ma powiedzieć „wkrótce", a nie „nie ma takiej strony".
-    case in_array($path, ['/mecze', '/kluby', '/notatki'], true) && $method === 'GET':
-        $nazwy = ['/mecze' => 'nav.matches', '/kluby' => 'nav.clubs', '/notatki' => 'nav.notes'];
+    // ---------------------------------------------------------------- kluby
+    case $path === '/kluby' && $method === 'GET':
+        View::page('clubs_list', [
+            'title'  => View::t('club.list'),
+            'active' => 'clubs',
+            'clubs'  => Clubs::all(),
+            'notice' => Session::flash('notice'),
+            'error'  => Session::flash('error'),
+        ]);
+        break;
+
+    case $path === '/kluby/nowy' && $method === 'GET':
+        View::page('club_form', [
+            'title'         => View::t('club.new'),
+            'active'        => 'clubs',
+            'club'          => null,
+            // Nazwa proponowana z danych eksportu — operator potwierdza lub poprawia.
+            'suggestedName' => isset($_GET['nazwa']) ? trim((string) $_GET['nazwa']) : null,
+            'backTo'        => safeReturn($_GET['powrot'] ?? null),
+            'error'         => Session::flash('error'),
+        ]);
+        break;
+
+    case $path === '/kluby' && $method === 'POST':
+        requireCsrf();
+        saveClub(null, (int) $user['id']);
+        break;
+
+    case preg_match('#^/kluby/(\d+)$#', $path, $m) === 1 && $method === 'GET':
+        showClub((int) $m[1]);
+        break;
+
+    case preg_match('#^/kluby/(\d+)$#', $path, $m) === 1 && $method === 'POST':
+        requireCsrf();
+        saveClub((int) $m[1], (int) $user['id']);
+        break;
+
+    case preg_match('#^/kluby/(\d+)/usun$#', $path, $m) === 1 && $method === 'POST':
+        requireCsrf();
+        deleteClub((int) $m[1], (int) $user['id']);
+        break;
+
+    case preg_match('#^/herb/(\d+)$#', $path, $m) === 1 && $method === 'GET':
+        serveCrest((int) $m[1]);
+        break;
+
+    // Etapy 4c/6 — zapowiedź zamiast 404, żeby nawigacja nie prowadziła w pustkę.
+    case in_array($path, ['/mecze', '/notatki'], true) && $method === 'GET':
+        $nazwy = ['/mecze' => 'nav.matches', '/notatki' => 'nav.notes'];
         View::page('soon', [
             'title'   => View::t($nazwy[$path]),
             'active'  => $path === '/mecze' ? 'matches' : '',
@@ -348,6 +401,143 @@ function queueBuild(int $importId, int $userId): void
     }
 
     redirect('/zadania/' . $jobId);
+}
+
+// ------------------------------------------------------------------ kluby
+
+function showClub(int $id): void
+{
+    $club = Clubs::find($id);
+    if ($club === null) {
+        http_response_code(404);
+        View::page('soon', [
+            'title'   => View::t('common.not_found'),
+            'heading' => View::t('common.not_found'),
+            'body'    => View::t('club.not_found'),
+        ]);
+        return;
+    }
+
+    View::page('club_form', [
+        'title'         => View::t('club.edit_title', (string) $club['name']),
+        'active'        => 'clubs',
+        'club'          => $club,
+        'suggestedName' => null,
+        'notice'        => Session::flash('notice'),
+        'error'         => Session::flash('error'),
+    ]);
+}
+
+/**
+ * Zapis klubu. `club_key` powstaje wyłącznie przy tworzeniu i nigdy nie jest
+ * tu ruszany — stoi w publicznych adresach raportów.
+ */
+function saveClub(?int $id, int $userId): void
+{
+    $name = trim((string) ($_POST['name'] ?? ''));
+    if ($name === '') {
+        Session::flash('error', View::t('club.err.name'));
+        redirect($id === null ? '/kluby/nowy' : '/kluby/' . $id);
+    }
+
+    $primary   = View::color($_POST['color_primary'] ?? null, '#E8722C');
+    $secondary = View::color($_POST['color_secondary'] ?? null, '#2C6FE8');
+
+    // Korekta kontrastu liczona przez SILNIK (Engine::contrastColor). Gdy silnik
+    // nie odpowie, zapisujemy barwę wybraną przez operatora i mówimy o tym —
+    // podstawienie własnego wyliczenia dałoby inną wartość niż paleta raportu.
+    $engineDown = false;
+    if (!empty($_POST['contrast_fix'])) {
+        $fixed1 = Engine::contrastColor($primary);
+        $fixed2 = Engine::contrastColor($secondary);
+        $engineDown = $fixed1 === null || $fixed2 === null;
+        $primary   = $fixed1 ?? $primary;
+        $secondary = $fixed2 ?? $secondary;
+    }
+
+    $data = [
+        'name'            => $name,
+        'short_name'      => trim((string) ($_POST['short_name'] ?? '')),
+        'color_primary'   => $primary,
+        'color_secondary' => $secondary,
+        'is_own_team'     => !empty($_POST['is_own_team']),
+        'aliases'         => (string) ($_POST['aliases'] ?? ''),
+    ];
+
+    $crest = Crest::accept($_FILES['crest'] ?? null);
+    if (!$crest['ok']) {
+        Session::flash('error', View::t($crest['error']));
+        redirect($id === null ? '/kluby/nowy' : '/kluby/' . $id);
+    }
+
+    if ($id === null) {
+        $data['crest_path'] = $crest['path'] ?? null;
+        $id = Clubs::create($userId, $data);
+    } else {
+        Clubs::update($id, $userId, $data);
+        if (!empty($crest['path'])) {
+            $previous = Clubs::find($id)['crest_path'] ?? null;
+            Clubs::setCrest($id, (string) $crest['path'], $userId);
+            if (is_string($previous) && $previous !== '' && Storage::isInside($previous)) {
+                @unlink($previous);
+            }
+        }
+    }
+
+    Session::flash('notice', View::t($engineDown ? 'club.saved_no_contrast' : 'club.saved'));
+    redirect(safeReturn($_POST['powrot'] ?? null) !== '/' ? safeReturn($_POST['powrot'] ?? null) : '/kluby');
+}
+
+function deleteClub(int $id, int $userId): void
+{
+    $club = Clubs::find($id);
+    if ($club === null) {
+        redirect('/kluby');
+    }
+
+    // Bez potwierdzenia pokazujemy pytanie — osobny krok, bez JavaScriptu.
+    if (empty($_POST['potwierdz'])) {
+        View::page('club_delete', [
+            'title'  => View::t('club.delete'),
+            'active' => 'clubs',
+            'club'   => $club,
+        ]);
+        return;
+    }
+
+    $result = Clubs::delete($id, $userId);
+    Session::flash(
+        $result['ok'] ? 'notice' : 'error',
+        View::t($result['ok'] ? 'club.deleted' : $result['error'])
+    );
+    redirect($result['ok'] ? '/kluby' : '/kluby/' . $id);
+}
+
+/**
+ * Herb serwowany przez PHP, nigdy bezpośrednio (CLAUDE.md §5).
+ *
+ * SVG to dokument XML, nie obrazek — dlatego oprócz sprawdzenia przy wgrywaniu
+ * dokładamy `Content-Security-Policy: default-src 'none'`. Nawet gdyby coś
+ * przeszło przez filtr, przeglądarka nie wykona skryptu ani nie pobierze
+ * niczego z zewnątrz.
+ */
+function serveCrest(int $clubId): void
+{
+    $club = Clubs::find($clubId);
+    $path = is_array($club) ? (string) ($club['crest_path'] ?? '') : '';
+
+    if ($path === '' || !Storage::isInside($path) || !is_readable($path)) {
+        http_response_code(404);
+        header('Content-Type: text/plain; charset=utf-8');
+        echo View::t('common.not_found');
+        return;
+    }
+
+    header('Content-Type: ' . Crest::mime($path));
+    header('Content-Security-Policy: default-src \'none\'; style-src \'unsafe-inline\'; sandbox');
+    header('X-Content-Type-Options: nosniff');
+    header('Cache-Control: private, max-age=300');
+    readfile($path);
 }
 
 function showLogin(): void
