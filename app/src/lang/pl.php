@@ -420,6 +420,10 @@ return [
     'notif.prefs.save'     => 'Zapisz ustawienia',
     'notif.prefs.saved'    => 'Ustawienia powiadomień zapisane.',
 
+    // --- chmurki powiadomień ---
+    'toast.open'           => 'Otwórz',
+    'toast.close'          => 'Zamknij powiadomienie',
+
     // --- historia meczu ---
     'history.title'        => 'Historia meczu',
     'history.match'        => 'Mecz',

@@ -115,6 +115,26 @@ if (!Auth::isLoggedIn() && isset($_COOKIE[Remember::COOKIE])) {
     }
 }
 
+/*
+ * Punkt końcowy chmurek powiadomień — OBSŁUGIWANY PRZED `requireLogin()`.
+ *
+ * Powód: `requireLogin()` przekierowuje na `/login`, a przeglądarka wykonałaby
+ * to przekierowanie po cichu i skrypt dostałby stronę logowania jako „odpowiedź
+ * JSON". Zamiast tego brak sesji daje **404**, a nie 401 ani 302 — 401 na
+ * istniejącej trasie potwierdza, że trasa istnieje, a tego nie ma powodu
+ * zdradzać komuś, kto nie jest zalogowany.
+ */
+if ($path === '/powiadomienia/nowe') {
+    if ($method !== 'GET' || Session::userId() === null) {
+        http_response_code(404);
+        header('Content-Type: text/plain; charset=utf-8');
+        echo 'Nie znaleziono.';
+        exit;
+    }
+    notificationsFeed((int) Session::userId());
+    exit;
+}
+
 // --- od tego miejsca wszystko wymaga zalogowania --------------------------
 $user = Auth::requireLogin();
 
@@ -405,6 +425,28 @@ switch (true) {
     // ------------------------------------------------- powiadomienia
     case $path === '/powiadomienia' && $method === 'GET':
         showNotifications((int) $user['id']);
+        break;
+
+    // Zamknięcie jednej chmurki. Działa BEZ SKRYPTU — to zwykły formularz
+    // z tokenem CSRF; skrypt wysyła dokładnie to samo żądanie przez `fetch`.
+    case preg_match('#^/powiadomienia/(\d+)/odczytane$#', $path, $m) === 1 && $method === 'POST':
+        requireCsrf();
+        $oznaczono = Notifications::markRead((int) $m[1], (int) $user['id']);
+
+        // Odpowiedź dla skryptu: bez przekierowania, z aktualnym licznikiem.
+        // Rozpoznajemy go po nagłówku, a nie po osobnej trasie — jedna trasa,
+        // jedna reguła CSRF, jedno miejsce do pomylenia mniej.
+        if (str_contains((string) ($_SERVER['HTTP_ACCEPT'] ?? ''), 'application/json')) {
+            header('Content-Type: application/json; charset=utf-8');
+            header('Cache-Control: no-store');
+            echo json_encode(
+                ['ok' => $oznaczono, 'unread' => Notifications::unreadCount((int) $user['id'])],
+                JSON_UNESCAPED_UNICODE
+            );
+            break;
+        }
+
+        redirect(safeReturn($_POST['powrot'] ?? '/'));
         break;
 
     case preg_match('#^/mecze/(\d+)/historia$#', $path, $m) === 1 && $method === 'GET':
@@ -797,6 +839,44 @@ function regenerateReport(int $reportId, int $userId): void
     $jobId = Imports::queueBuild((int) $import['id'], $userId);
     Session::flash('notice', View::t('reports.regen.queued'));
     redirect('/zadania/' . $jobId);
+}
+
+/**
+ * Punkt końcowy chmurek: JSON z nieodczytanymi powiadomieniami zalogowanego.
+ *
+ * ZWRACA WYŁĄCZNIE DANE, nigdy HTML-a do wstrzyknięcia. Skrypt buduje z tego
+ * elementy przez `textContent`, więc nawet gdyby w tytule powiadomienia
+ * znalazł się znacznik, trafi tam jako tekst — a nie jako kod do wykonania.
+ *
+ * Filtr konta jest w zapytaniu (`Notifications::unreadForToasts`), nie w PHP.
+ */
+function notificationsFeed(int $userId): void
+{
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-store');
+    header('X-Content-Type-Options: nosniff');
+
+    $items = [];
+    foreach (Notifications::unreadForToasts($userId) as $n) {
+        $items[] = [
+            'id'    => (int) $n['id'],
+            'kind'  => Notifications::kind((string) $n['type']),
+            'title' => (string) $n['title'],
+            // Odnośnik prowadzi wprost do raportu — po to, żeby chmurka
+            // „raport gotowy" była jednym kliknięciem od raportu, a nie
+            // wstępem do szukania go w bibliotece.
+            'url'   => $n['url'] !== null ? (string) $n['url'] : null,
+            'at'    => substr((string) $n['created_at'], 0, 16),
+        ];
+    }
+
+    echo json_encode([
+        'unread'  => Notifications::unreadCount($userId),
+        'items'   => $items,
+        // Podpowiedź dla skryptu, jak często pytać. Decyzję o odstępach
+        // podejmuje klient — serwer mówi tylko, czy coś się dzieje.
+        'working' => Notifications::hasActiveWork($userId),
+    ], JSON_UNESCAPED_UNICODE);
 }
 
 /** Lista powiadomień. Wejście tutaj zeruje licznik nieodczytanych. */

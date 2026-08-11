@@ -137,6 +137,47 @@ Teksty UI trzymamy w jednym miejscu (`app/src/lang/pl.php`), nie w szablonach �
 
 - Nie przepisuj Pythona na PHP/JS „dla uproszczenia stacku" (D1).
 - Nie dodawaj frameworka JS do raportu — szablon v17 jest samowystarczalny i to jest cecha, nie brak.
+- Nie dokładaj skryptów do panelu. **Jedyny zatwierdzony wyjątek to chmurki powiadomień**
+  (`app/public/assets/powiadomienia.js`) — szczegóły i granice w §9. Drugi plik `.js` wymaga
+  osobnego uzgodnienia; `app/tests/test_chmurki.php` pilnuje, żeby został jeden.
 - Nie wprowadzaj ORM-a ani frameworka PHP bez uzgodnienia; skala projektu tego nie wymaga.
 - Nie zmieniaj struktury `meta.json` ani kodów wyjścia CLI bez aktualizacji `docs/KONTRAKT_CLI.md`.
 - Nie generuj danych zastępczych, gdy pole jest puste. Brak danych ma być widoczny, nie zamaskowany.
+
+---
+
+## 9. JavaScript w panelu — jeden zatwierdzony wyjątek
+
+Panel powstał bez ani jednego skryptu i ta zasada obowiązuje dalej. **Raportu nie dotyczy
+żaden wyjątek**: szablon jest samowystarczalnym HTML-em i to jest cecha, nie brak (§8).
+
+Zatwierdzony wyjątek dotyczy **wyłącznie chmurek powiadomień**. Powód jest funkcjonalny:
+powiadomienie o gotowym raporcie, które pojawia się dopiero przy następnym przeładowaniu
+strony, nie jest powiadomieniem. Reszta panelu skryptu nie używa i nie ma używać.
+
+### Granice wyjątku — nienegocjowalne
+
+| Reguła | Powód |
+|---|---|
+| **Jeden plik**, `app/public/assets/powiadomienia.js`, ładowany na końcu z `defer` | Drugi plik znaczy, że wyjątek się rozlał i „panel bez JS" przestaje być prawdą |
+| **Zero zależności zewnętrznych** | Ta sama zasada, która wyrzuciła `pandas` z silnika i PECL-owy `redis` z PHP |
+| **Panel musi działać bez skryptu** | Chmurki renderuje serwer (`layout.php`); przy wyłączonym JS pokazują się przy przeładowaniu, licznik działa jak dotąd. Skrypt **przyspiesza**, nie warunkuje |
+| **Żadnego HTML-a z serwera do wstrzyknięcia** | Punkt końcowy zwraca dane; skrypt buduje elementy przez `createElement` i `textContent`. `innerHTML` jest zakazane — tytuł powiadomienia zawiera nazwy klubów, czyli tekst od użytkownika |
+| **Odpytywanie musi być miarkowane** | Karta w tle → zero żądań (Page Visibility); cisza → odstęp rośnie do minuty; zadanie w toku → wraca do 5 s. Bez hamulców otwarta karta to ponad 17 tys. żądań na dobę |
+| **Brak sesji → 404, nigdy 401** | 401 na istniejącej trasie potwierdza, że trasa istnieje |
+| **Barwy wyłącznie przez zmienne CSS** | Jak w całym arkuszu — ani jednej wartości szesnastkowej poza definicją motywu |
+
+Pilnuje tego `app/tests/test_chmurki.php` (32 asercje, wpięty w CI). Test sprawdza też,
+że skrypt nie pojawił się w szablonie raportu.
+
+### Punkt końcowy
+
+`GET /powiadomienia/nowe` → JSON: `unread`, `items[]` (id, kind, title, url, at), `working`.
+
+Obsługiwany **przed** `Auth::requireLogin()`, bo to przekierowuje na `/login`, a skrypt
+dostałby stronę logowania jako „odpowiedź JSON". Filtr konta jest w zapytaniu SQL, nie w PHP.
+
+Zamknięcie chmurki: `POST /powiadomienia/{id}/odczytane` z tokenem CSRF — bez skryptu
+zwykły formularz, ze skryptem to samo żądanie przez `fetch`. Zniknięcie chmurki po
+kilkunastu sekundach **nie** oznacza jej jako odczytanej: powiadomienie, którego ktoś nie
+zdążył przeczytać, ma zostać w liczniku.

@@ -33,6 +33,14 @@ $next = $theme === 'dark' ? 'light' : 'dark';
 $nieodczytane = $chrome && Session::userId() !== null
     ? \CoachAnalyze\Notifications::unreadCount((int) Session::userId())
     : 0;
+
+// Chmurki renderowane PO STRONIE SERWERA. To jest wariant podstawowy, nie
+// zapasowy: przy wyłączonym JavaScripcie powiadomienia i tak się pokazują,
+// tylko przy przeładowaniu strony zamiast natychmiast. Skrypt je PRZYSPIESZA,
+// nie warunkuje ich istnienia.
+$chmurki = $chrome && Session::userId() !== null
+    ? \CoachAnalyze\Notifications::unreadForToasts((int) Session::userId())
+    : [];
 ?>
 <!doctype html>
 <html lang="pl"<?= $theme !== null ? ' data-theme="' . View::e($theme) . '"' : '' ?>>
@@ -124,7 +132,59 @@ $nieodczytane = $chrome && Session::userId() !== null
   <footer class="foot">
     <?= View::e(View::t('common.engine', Engine::version())) ?>
   </footer>
+
+  <?php /*
+    Obszar chmurek. `aria-live="polite"` sprawia, że czytnik ekranu przeczyta
+    nowe powiadomienie, nie przerywając bieżącej wypowiedzi.
+
+    `data-csrf` to DANE, nie kod: skrypt potrzebuje tokenu, żeby zamknięcie
+    chmurki przeszło tę samą kontrolę CSRF co formularz. Serwer nie oddaje
+    tu żadnego HTML-a do wstrzyknięcia.
+  */ ?>
+  <div class="chmurki"
+       id="chmurki"
+       role="status"
+       aria-live="polite"
+       data-csrf="<?= View::e(Session::csrfToken()) ?>"
+       data-powrot="<?= View::e($_SERVER['REQUEST_URI'] ?? '/') ?>"
+       <?php /* Teksty przekazujemy z pl.php — skrypt ich nie zawiera,
+                bo wersja anglojęzyczna nie ma wymagać ruszania kodu. */ ?>
+       data-tekst-otworz="<?= View::e(View::t('toast.open')) ?>"
+       data-tekst-zamknij="<?= View::e(View::t('toast.close')) ?>"
+       data-tekst-licznik="<?= View::e(View::t('notif.unread', 0)) ?>">
+    <?php foreach ($chmurki as $ch): ?>
+      <?php $rodzaj = \CoachAnalyze\Notifications::kind((string) $ch['type']); ?>
+      <div class="chmurka chmurka--<?= View::e($rodzaj) ?>" data-id="<?= (int) $ch['id'] ?>">
+        <div class="chmurka__tresc">
+          <p class="chmurka__tytul"><?= View::e((string) $ch['title']) ?></p>
+          <?php if (!empty($ch['url'])): ?>
+            <a class="chmurka__link" href="<?= View::e((string) $ch['url']) ?>">
+              <?= View::e(View::t('toast.open')) ?>
+            </a>
+          <?php endif; ?>
+        </div>
+
+        <?php /* Bez skryptu to zwykły formularz — pełnoprawne zamknięcie. */ ?>
+        <form class="chmurka__zamknij" method="post"
+              action="/powiadomienia/<?= (int) $ch['id'] ?>/odczytane">
+          <input type="hidden" name="csrf" value="<?= View::e(Session::csrfToken()) ?>">
+          <input type="hidden" name="powrot" value="<?= View::e($_SERVER['REQUEST_URI'] ?? '/') ?>">
+          <button type="submit" aria-label="<?= View::e(View::t('toast.close')) ?>">×</button>
+        </form>
+      </div>
+    <?php endforeach; ?>
+  </div>
 </div>
+
+<?php /*
+  ODSTĘPSTWO OD ZASADY „ZERO SKRYPTÓW" — zatwierdzone, dotyczy WYŁĄCZNIE
+  powiadomień. Raport pozostaje samowystarczalnym HTML-em bez ani jednego
+  skryptu; ta zasada nie została naruszona (CLAUDE.md §8).
+
+  `defer` i miejsce na końcu dokumentu: skrypt nie blokuje renderowania,
+  a gdy się nie wczyta, panel działa dalej — chmurki są już w HTML-u.
+*/ ?>
+<script src="/assets/powiadomienia.js" defer></script>
 <?php endif; ?>
 </body>
 </html>

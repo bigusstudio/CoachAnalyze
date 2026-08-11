@@ -385,15 +385,76 @@ if (is_file($deployPath)) {
      * gdy aplikacja czytała STORAGE_PATH z `.env` i szła do `shared/storage` —
      * poza open_basedir. Upload padał, a wdrożenie meldowało „OK".
      */
+    // Sprawdzamy ZACHOWANIE, nie konkretny zapis: odczyt `.env` został wyniesiony
+    // do funkcji `wartosc_env`, wspólnej z odczytem DB_NAME przy zrzucie bazy.
+    // Asercja przywiązana do jednej linijki `grep` zapalała się na czerwono przy
+    // refaktorze, który niczego nie popsuł.
     check('czyta STORAGE_PATH z .env, a nie zakłada katalogu',
-        str_contains($polecenia, "grep -E '^STORAGE_PATH='"),
+        preg_match('/STORAGE_PATH=\$\(wartosc_env STORAGE_PATH/', $polecenia) === 1
+        || str_contains($polecenia, "grep -E '^STORAGE_PATH='"),
         'kontrola sprawdzała katalog zamiast wartości z konfiguracji');
+
+    // Odczyt `.env` w powłoce musi zdejmować cudzysłowy tak samo jak parser PHP
+    // (app/src/Config.php). Rozjazd ujawnia się wyłącznie na produkcji: hasło
+    // w cudzysłowach przechodzi w aplikacji, a `mysqldump` się nie loguje.
+    check('odczyt .env zdejmuje cudzysłowy jak parser PHP',
+        str_contains($polecenia, 'wartosc_env')
+        && preg_match('/wartosc="\$\{wartosc%\\\\"\}"/', $polecenia) === 1,
+        'cytowane wartości trafiałyby do poleceń razem z cudzysłowami');
     check('sprawdza, że STORAGE_PATH leży wewnątrz katalogu domeny',
         str_contains($polecenia, 'WEB_REAL') && str_contains($polecenia, 'STORAGE_REAL'));
     check('zapisywalność przez PRÓBĘ ZAPISU, nie test dostępu',
         str_contains($polecenia, '.probe') && !str_contains($polecenia, '-w "$WEB/storage"'),
         'testy dostępu kłamią na ścieżkach spoza open_basedir');
     check('sprawdza zapisywalność LOG_PATH', str_contains($polecenia, 'LOG_PATH'));
+    echo "\n== deploy.sh: zrzut bazy ==\n";
+
+    /*
+     * USTERKA Z PRODUKCJI: `mysqldump --single-transaction >` bez nazwy bazy.
+     * `~/.my.cnf` przechowuje dane logowania, a nie wybór bazy — wpis `database=`
+     * został z niego usunięty, bo psuł samo `mysqldump`. Skrypt meldował
+     * „pominięto — sprawdź ~/.my.cnf", choć to samo polecenie z nazwą bazy
+     * działało ręcznie bez zarzutu.
+     */
+    check('zrzut podaje nazwę bazy z DB_NAME',
+        str_contains($polecenia, 'DB_NAME=$(wartosc_env DB_NAME)')
+        && str_contains($polecenia, '"$DB_NAME"'),
+        'mysqldump bez nazwy bazy kończy się „No database selected"');
+
+    check('brak DB_NAME zatrzymuje wdrożenie',
+        preg_match('/-z "\$DB_NAME".{0,400}exit 1/s', $polecenia) === 1);
+
+    // Błąd `mysqldump` szedł do /dev/null, więc prawdziwa przyczyna przepadała,
+    // a komunikat kierował diagnostykę na `~/.my.cnf` niezależnie od powodu.
+    // Wyłącznie linie będące WYWOŁANIEM polecenia. Samo wystąpienie słowa
+    // „mysqldump" łapie też komentarze, które wyjaśniają, czemu nie wyciszamy
+    // błędu — i test zapalał się na własnym uzasadnieniu.
+    $liniaZrzutu = '';
+    foreach (explode("\n", $polecenia) as $l) {
+        if (preg_match('/^(if\s+)?mysqldump\b/', trim($l)) === 1) {
+            $liniaZrzutu .= $l . ' ';
+        }
+    }
+    check('błąd mysqldump NIE jest wyciszany do /dev/null',
+        !str_contains($liniaZrzutu, '/dev/null'),
+        'wyciszony błąd gubi przyczynę i myli diagnostykę');
+
+    check('powód awarii zrzutu trafia na wyjście',
+        str_contains($polecenia, '.blad" >&2'));
+
+    // Nieudany zrzut zostawiał urwany plik `pre-*.sql`, nieodróżnialny w katalogu
+    // od prawdziwej kopii — odkrywany dopiero przy próbie odtworzenia bazy.
+    check('zrzut powstaje w pliku tymczasowym i jest przenoszony po powodzeniu',
+        str_contains($polecenia, 'mktemp') && str_contains($polecenia, 'mv -f "$ZRZUT_TMP"'),
+        'zapis wprost pod nazwą docelową obcina plik przed uruchomieniem mysqldump');
+
+    check('nieudany zrzut przerywa wdrożenie',
+        preg_match('/nie udało się zrzucić bazy.{0,400}exit 1/s', $polecenia) === 1,
+        'wdrożenie bez kopii bazy to zmiana bez odwrotu');
+
+    check('nieudany zrzut nie zostawia pliku udającego kopię',
+        str_contains($polecenia, 'trap') && str_contains($polecenia, '$ZRZUT_TMP'));
+
     check(
         'nieudana kontrola przerywa wdrożenie kodem błędu',
         preg_match('/exit\s+1/', $polecenia) === 1,

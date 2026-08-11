@@ -548,3 +548,105 @@ body {
 /* Zakończone powodzeniem — dotąd o sukcesie trzeba było wnioskować z braku
    komunikatu o błędzie. */
 .notice--ok { border-color: var(--ok-obram); }
+
+/* --- chmurki powiadomień -------------------------------------------------
+   Trzy odmiany: gotowe, w toku, błąd. Barwy WYŁĄCZNIE ze zmiennych motywu —
+   ten plik nie zna ani jednej wartości szesnastkowej poza definicją motywu
+   na górze, i ta zasada dotyczy też chmurek. */
+.chmurki {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(360px, calc(100vw - 32px));
+  /* Obszar nie może przechwytywać kliknięć tam, gdzie jest pusty — inaczej
+     niewidzialny prostokąt blokowałby przyciski w rogu strony. */
+  pointer-events: none;
+}
+
+.chmurka {
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--obramowanie);
+  border-left-width: 4px;
+  border-radius: var(--promien);
+  background: var(--tlo-panel);
+  color: var(--tekst);
+  box-shadow: var(--cien);
+  animation: chmurka-wjazd 180ms ease-out;
+}
+
+.chmurka--ready   { border-left-color: var(--ok-obram); }
+.chmurka--pending { border-left-color: var(--info-tekst); }
+.chmurka--failed  { border-left-color: var(--blad-tekst); background: var(--blad-tlo); }
+
+.chmurka__tresc { flex: 1 1 auto; min-width: 0; }
+
+.chmurka__tytul {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.35;
+  /* Nazwy klubów bywają długie; łamiemy zamiast rozpychać chmurkę. */
+  overflow-wrap: anywhere;
+}
+
+.chmurka__link {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--akcent);
+}
+
+.chmurka__zamknij {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--tekst-slaby);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.chmurka__zamknij:hover { color: var(--tekst); }
+
+/* Wariant bez skryptu: przycisk zamknięcia jest w formularzu. */
+form.chmurka__zamknij { display: flex; align-items: center; }
+form.chmurka__zamknij button {
+  border: 0;
+  background: none;
+  color: var(--tekst-slaby);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+form.chmurka__zamknij button:hover { color: var(--tekst); }
+
+.chmurka--znika {
+  opacity: 0;
+  transform: translateX(12px);
+  transition: opacity 200ms ease, transform 200ms ease;
+}
+
+@keyframes chmurka-wjazd {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* Ruch bywa problemem, nie ozdobą. Chmurka ma się pokazać także wtedy,
+   gdy użytkownik prosi o brak animacji — po prostu bez wjazdu. */
+@media (prefers-reduced-motion: reduce) {
+  .chmurka { animation: none; }
+  .chmurka--znika { transition: none; }
+}
+
+@media (max-width: 640px) {
+  .chmurki { left: 16px; right: 16px; width: auto; }
+}

@@ -81,6 +81,19 @@ a przed samą wysyłką worker sprawdza jeszcze, czy powód nadal obowiązuje.
 
 ## Powiadomienia
 
+Chmurki w rogu ekranu, na każdej stronie panelu, w trzech odmianach: **gotowe**,
+**w toku**, **błąd**. Powiadomienie o gotowym raporcie prowadzi wprost do niego.
+Zamknięcie oznacza jako odczytane; po kilkunastu sekundach chmurka znika sama,
+ale **nie** oznacza się jako odczytana — to, czego ktoś nie zdążył przeczytać,
+ma zostać w liczniku.
+
+Renderuje je serwer, a `app/public/assets/powiadomienia.js` je **przyspiesza**:
+odpytuje `GET /powiadomienia/nowe` i dorysowuje nowe bez przeładowania.
+Przy wyłączonym JavaScripcie panel działa bez zmian, tylko chmurki pojawiają się
+przy przeładowaniu strony. To jedyny skrypt w panelu i jedyne zatwierdzone
+odstępstwo od zasady „zero skryptów" — granice opisuje **CLAUDE.md §9**,
+a pilnuje ich `app/tests/test_chmurki.php`.
+
 W aplikacji działają **zawsze**, mailem **tylko gdy SMTP jest skonfigurowany**.
 Puste `SMTP_HOST` albo `MAIL_FROM` wyłącza warstwę mailową po cichu — bez błędu,
 bez zmian w kodzie, bez wpływu na powiadomienia w panelu.

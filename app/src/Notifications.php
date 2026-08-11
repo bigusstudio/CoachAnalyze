@@ -174,6 +174,73 @@ final class Notifications
         );
     }
 
+    /**
+     * Nieodczytane powiadomienia do pokazania jako chmurki.
+     *
+     * Nieodczytane, a nie „nowe od czasu X": stan „odczytane" jest jedynym
+     * trwałym śladem tego, co użytkownik już widział, i trzyma się go serwer.
+     * Znacznik czasu po stronie klienta rozjeżdżałby się przy dwóch otwartych
+     * kartach i przy przestawionym zegarze.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public static function unreadForToasts(int $userId, int $limit = 5): array
+    {
+        return Db::all(
+            'SELECT id, type, title, body, url, created_at
+               FROM notifications
+              WHERE user_id = :uid AND read_at IS NULL
+              ORDER BY id DESC LIMIT :lim',
+            ['uid' => $userId, 'lim' => max(1, min(20, $limit))]
+        );
+    }
+
+    /**
+     * Odmiana chmurki. Trzy, nie tyle ile typów powiadomień — chmurka ma
+     * przekazać „udało się / trwa / nie wyszło" jednym spojrzeniem.
+     */
+    public static function kind(string $type): string
+    {
+        return match ($type) {
+            self::TYP_READY   => 'ready',
+            self::TYP_FAILED  => 'failed',
+            default           => 'pending',
+        };
+    }
+
+    /**
+     * Czy użytkownik ma coś w robocie.
+     *
+     * Skrypt skraca dzięki temu odstęp odpytywania: gdy silnik pracuje, warto
+     * pytać częściej, a gdy nie dzieje się nic — nie ma po co.
+     */
+    public static function hasActiveWork(int $userId): bool
+    {
+        $wiersz = Db::one(
+            "SELECT COUNT(*) AS ile
+               FROM matches
+              WHERE owner_id = :uid AND status IN ('queued', 'running')",
+            ['uid' => $userId]
+        );
+        return (int) ($wiersz['ile'] ?? 0) > 0;
+    }
+
+    /**
+     * Oznaczenie JEDNEGO powiadomienia jako odczytane.
+     *
+     * Warunek `user_id` jest w zapytaniu, nie w PHP: bez niego znajomość
+     * samego identyfikatora pozwalałaby oznaczać cudze powiadomienia.
+     * Identyfikatory są kolejnymi liczbami, więc zgadnięcie cudzego jest darmowe.
+     */
+    public static function markRead(int $id, int $userId): bool
+    {
+        return Db::run(
+            'UPDATE notifications SET read_at = :teraz
+              WHERE id = :id AND user_id = :uid AND read_at IS NULL',
+            ['teraz' => Stats::now(), 'id' => $id, 'uid' => $userId]
+        )->rowCount() === 1;
+    }
+
     /** Zerowanie licznika przy wejściu na listę. @return int ile oznaczono */
     public static function markAllRead(int $userId): int
     {

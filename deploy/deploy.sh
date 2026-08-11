@@ -36,6 +36,27 @@ if [ "${1:-}" = "--tylko-kontrola" ]; then
   BRANCH="${2:-main}"
 fi
 
+# Źródło prawdy dla sekretów. Kopia w katalogu domeny powstaje dopiero przy
+# synchronizacji, a zrzut bazy robimy PRZED nią — czytamy więc z oryginału.
+ENV_ZRODLO="$BASE/shared/.env"
+
+# Wartość pojedynczego klucza z `.env`.
+#
+# Zdejmujemy cudzysłowy, gdy otaczają CAŁĄ wartość — tak samo jak parser w PHP
+# (app/src/Config.php). Hasło do bazy bywa cytowane, a `mysqldump` z hasłem
+# w cudzysłowach po prostu nie zaloguje się, nie mówiąc dlaczego.
+#
+# `tail -1`, bo przy powtórzonym kluczu obowiązuje ostatni wpis — znowu tak,
+# jak robi to parser PHP. Rozjazd między tymi dwoma odczytami byłby błędem,
+# który ujawnia się wyłącznie na produkcji.
+wartosc_env() {
+  local klucz="$1" plik="${2:-$ENV_ZRODLO}" wartosc
+  wartosc=$(grep -E "^${klucz}=" "$plik" 2>/dev/null | tail -1 | cut -d= -f2- || true)
+  wartosc="${wartosc%\"}"; wartosc="${wartosc#\"}"
+  wartosc="${wartosc%\'}"; wartosc="${wartosc#\'}"
+  printf '%s' "$wartosc"
+}
+
 if [ "$TYLKO_KONTROLA" -eq 1 ]; then
   echo "==> Sama kontrola wdrożenia (bez synchronizacji)"
 else
@@ -56,10 +77,50 @@ echo "==> Silnik Pythona"
 echo "==> Test złoty przed publikacją (czerwony = brak wdrożenia)"
 "$BASE/venv/bin/python" -m pytest "$BASE/repo/engine/tests" -q
 
-echo "==> Zrzut bazy przed migracjami"
+echo "==> Zrzut bazy przed wdrożeniem"
 mkdir -p "$BASE/shared/backups"
-mysqldump --single-transaction > "$BASE/shared/backups/pre-$(date +%Y%m%d-%H%M%S).sql" 2>/dev/null \
-  || echo "    (pominięto — sprawdź ~/.my.cnf)"
+
+# NAZWA BAZY MUSI BYĆ PODANA JAWNIE.
+#
+# `mysqldump` bez nazwy bazy nie wie, co zrzucić: `~/.my.cnf` przechowuje
+# dane logowania, a nie wybór bazy. Wpis `database=` został z niego świadomie
+# usunięty, bo psuł samo `mysqldump` (klient traktuje go jako pierwszy argument
+# pozycyjny i myli z nazwą tabeli).
+#
+# Objaw był mylący: zrzut „pomijał się" z komunikatem o `~/.my.cnf`, choć ten
+# sam `mysqldump` z nazwą bazy działał ręcznie bez zarzutu.
+DB_NAME=$(wartosc_env DB_NAME)
+
+if [ -z "$DB_NAME" ]; then
+  echo "    !!! BŁĄD: brak DB_NAME w $ENV_ZRODLO — nie wiem, którą bazę zrzucić"
+  exit 1
+fi
+
+ZRZUT="$BASE/shared/backups/pre-$(date +%Y%m%d-%H%M%S).sql"
+
+# Błąd `mysqldump` NIE JEST tu pomijalny i nie idzie do /dev/null.
+#
+# Dotąd `2>/dev/null || echo` gubiło prawdziwą przyczynę i zostawiało plik
+# `pre-*.sql` — pusty albo urwany w połowie. Taki plik wygląda w katalogu kopii
+# dokładnie jak kopia i zostaje odkryty dopiero przy próbie odtworzenia bazy,
+# czyli w najgorszym możliwym momencie.
+# Zapis do pliku tymczasowego, przeniesienie dopiero po powodzeniu: `>` obcina
+# plik docelowy, zanim `mysqldump` cokolwiek wypisze, więc nieudany przebieg
+# zostawiałby urwany plik wyglądający jak kopia.
+ZRZUT_TMP=$(mktemp "$BASE/shared/backups/.pre-XXXXXX")
+trap 'rm -f "$ZRZUT_TMP" "$ZRZUT_TMP.blad"' EXIT
+
+if mysqldump --single-transaction --quick --default-character-set=utf8mb4 \
+     "$DB_NAME" > "$ZRZUT_TMP" 2> "$ZRZUT_TMP.blad"; then
+  mv -f "$ZRZUT_TMP" "$ZRZUT"
+  rm -f "$ZRZUT_TMP.blad"
+  trap - EXIT
+  echo "    baza $DB_NAME -> $(basename "$ZRZUT") ($(wc -c < "$ZRZUT" | tr -d ' ') B)"
+else
+  echo "    !!! BŁĄD: nie udało się zrzucić bazy $DB_NAME"
+  sed 's/^/        /' "$ZRZUT_TMP.blad" >&2 || true
+  exit 1
+fi
 
 echo "==> Synchronizacja katalogu webowego"
 mkdir -p "$WEB"
@@ -148,7 +209,9 @@ fi
 # przenośne, `cd + pwd -P` jest.
 rozwin_katalog() { ( cd "$1" 2>/dev/null && pwd -P ) || return 1; }
 
-STORAGE_PATH=$(grep -E '^STORAGE_PATH=' "$WEB/.env" 2>/dev/null | tail -1 | cut -d= -f2- || true)
+# Czytamy z KOPII w katalogu domeny, nie ze źródła: sprawdzamy stan, z którym
+# faktycznie wystartuje PHP-FPM, a nie ten, który zamierzaliśmy wdrożyć.
+STORAGE_PATH=$(wartosc_env STORAGE_PATH "$WEB/.env")
 WEB_REAL=$(rozwin_katalog "$WEB" || echo "$WEB")
 
 if [ -z "$STORAGE_PATH" ]; then
