@@ -183,29 +183,111 @@ def test_golden_render_wstrzykuje_to_samo_co_v23(case):
     assert raport["events"] == case["coverage"]["events"]
 
 
+def wymagaj_pliku(case, klucz, powod):
+    nazwa = case.get(klucz)
+    src = GOLDEN / nazwa if nazwa else None
+    if src is None or not src.exists():
+        pytest.skip(powod)
+    return src
+
+
+def config_z_manifestu(case):
+    """Konfiguracja odtwarzająca wzorzec. Ścieżki herbów względem katalogu golden."""
+    teams = json.loads(json.dumps(case["noname_teams"]))
+    for cfg in teams.values():
+        if cfg.get("crest"):
+            cfg["crest"] = str(GOLDEN / cfg["crest"])
+    return {"teams": teams}
+
+
+@pytest.mark.parametrize("case", load_cases(), ids=lambda c: c["id"])
+def test_golden_render_odtwarza_raport_produkcyjny(case):
+    """KRYTERIUM ODBIORU: render odtwarza raport produkcyjny co do bajtu.
+
+    Jedyne dopuszczone różnice to dwa zdarzenia z przycięcia ujemnego `begin`
+    (CHANGELOG 0.4.0). Wszystko inne — układ, style, teksty, herby, serializacja —
+    musi się zgadzać, inaczej klient dostaje inny raport niż ten, który zatwierdził.
+
+    Przed porównaniem cofamy jedyną zamierzoną zmianę strukturalną: nazwy zmiennych
+    CSS przestały nazywać się od klubów (`--hut` -> `--team-home`). Mapowanie leży
+    w manifeście, żeby nie dało się go po cichu rozszerzyć o kolejne „drobiazgi".
+    """
+    src = wymagaj_csv(case)
+    wzorzec = wymagaj_pliku(
+        case, "noname_html", "Brak wzorca raportu — dane meczowe poza repozytorium"
+    ).read_text(encoding="utf-8")
+
+    config = config_z_manifestu(case)
+    frame = parse.prep_frame(str(src))
+    canon_result = canon.build(frame, teams=config["teams"])
+    html, raport = render.render(
+        frame,
+        palette=parse.prep_palette(str(GOLDEN / case["json"])),
+        canon_result=canon_result,
+        config=config,
+    )
+    assert raport["unresolved_placeholders"] == []
+    assert raport["teams_defaulted"] == []
+    assert raport["crests_generated"] == []
+
+    for nowa, stara in case["noname_css_alias"].items():
+        html = html.replace(nowa, stara)
+
+    nasze, ich = html.split("\n"), wzorzec.split("\n")
+    assert len(nasze) == len(ich), "Render zmienił liczbę linii raportu"
+
+    rozne = [i for i, (x, y) in enumerate(zip(nasze, ich), 1) if x != y]
+    linia_danych = next(i for i, l in enumerate(ich, 1) if l.startswith("const DATA = "))
+    assert rozne == [linia_danych], (
+        "Raport różni się od wzorca poza linią danych, w liniach: {}".format(
+            [i for i in rozne if i != linia_danych]
+        )
+    )
+
+    a, b = json.loads(wytnij(html, "DATA")), json.loads(wytnij(wzorzec, "DATA"))
+    assert a["half_split"] == b["half_split"]
+    roznice = [
+        {"index": i, "pole": k, "v23": b["events"][i][k], "teraz": a["events"][i][k]}
+        for i in range(len(a["events"]))
+        for k in a["events"][i]
+        if a["events"][i][k] != b["events"][i][k]
+    ]
+    assert roznice == case["v23_data_roznice"], (
+        "Wyjście renderu rozjechało się z raportem produkcyjnym poza zmianami "
+        "zatwierdzonymi w CHANGELOG.md. To NIE jest powód do aktualizacji wzorca."
+    )
+
+
+def test_szablon_nie_zna_zadnego_klubu():
+    """Szablon jest wspólny dla wszystkich klientów — nazwa klubu w nim to wyciek.
+
+    Poprzednia generacja (ARCHIWUM/v17.html) miała wpisane „Hutnik Kraków",
+    „Pogoń-Sokół Lubaczów" i oba herby. Raport dla drugiego klubu byłby podpisany
+    nazwą pierwszego.
+    """
+    szablon = render.load_template()
+    for slad in ("HUTNIK", "POGOŃ", "Hutnik", "Pogoń", "DRUŻYNA A", "Drużyna A", "base64,"):
+        assert slad not in szablon, "Szablon niesie ślad konkretnego klubu: {!r}".format(slad)
+
+
+CECHY_V23 = ("QRANGES", "inSet(", "rXG(e.xg)", 'id="topbar"')
+
+
 @pytest.mark.parametrize("case", load_cases(), ids=lambda c: c["id"])
 def test_generacja_szablonu_zgodna_z_manifestem(case):
     """Bramka na podmianę szablonu: manifest ma wiedzieć, na której generacji stoimy.
 
-    v23 wprowadził wielokrotny wybór przedziałów (`inSet`) i belkę nawigacyjną
-    (`#topbar`) — szablon v17 nie ma ani jednego, ani drugiego. Po podmianie
-    szablonu na v23 trzeba zmienić `szablon_generacja` w manifeście, inaczej test
-    czerwienieje. Cel: żeby nikt nie zmienił wyglądu raportu przez przypadek.
+    Cel: żeby nikt nie zmienił wyglądu raportu przez przypadek. Podmiana szablonu
+    wymaga zmiany `szablon_generacja` w manifeście, inaczej test czerwienieje.
     """
-    v23 = wymagaj_v23(case).read_text(encoding="utf-8")
     szablon = render.load_template()
-
-    cechy_v23 = ("inSet(", 'id="topbar"')
-    assert all(cecha in v23 for cecha in cechy_v23), "plik v23 nie wygląda na v23"
-
     generacja = case["szablon_generacja"]
-    ma_cechy = all(cecha in szablon for cecha in cechy_v23)
-
-    assert ma_cechy is (generacja == "v23"), (
-        "Szablon w repozytorium nie odpowiada generacji '{}' zapisanej w manifeście".format(
-            generacja
-        )
+    assert generacja == "v23-noname", (
+        "Nieznana generacja szablonu w manifeście: {}".format(generacja)
     )
+
+    braki = [c for c in CECHY_V23 if c not in szablon]
+    assert not braki, "Szablon zgubił cechy generacji v23: {}".format(braki)
 
 
 # --------------------------------------------------- wykrywanie rozjazdu formatu

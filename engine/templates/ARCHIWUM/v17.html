@@ -3,15 +3,15 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Analiza meczu — __TEAM_HOME_LABEL__ vs __TEAM_AWAY_LABEL__</title>
+<title>Analiza meczu — Hutnik Kraków vs Pogoń-Sokół Lubaczów</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root{
   --bg:#0F1614; --panel:#161F1C; --panel2:#1B2622; --line:#26332E;
   --ink:#E9EFEA; --ink2:#9DAFA6; --ink3:#647A70;
-  --team-home:__TEAM_HOME_COLOR__; --team-home-dim:__TEAM_HOME_DIM__;
-  --team-away:__TEAM_AWAY_COLOR__; --team-away-dim:__TEAM_AWAY_DIM__;
+  --hut:#5CA8E0; --hut-dim:rgba(92,168,224,.16);
+  --pog:#E6A23C; --pog-dim:rgba(230,162,60,.16);
   --pitch:#131E19; --pitchline:#2A4237;
   --ok:#4EC98A; --bad:#E0655C; --neut:#7C8F86;
   --ctx-poz:#4EC98A; --ctx-pre:#E0655C; --ctx-kon:#E8C558; --ctx-sfg:#4FC3E8;
@@ -23,23 +23,15 @@ body{background:var(--bg);color:var(--ink);font-family:'IBM Plex Sans',system-ui
 .mono{font-family:'IBM Plex Mono',monospace}
 
 /* header */
-html{scroll-behavior:smooth}
-section{scroll-margin-top:56px}
-#topbar{position:sticky;top:0;z-index:30;background:rgba(15,22,20,.93);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);margin:0 -20px 22px;padding:8px 20px;display:flex;gap:6px;align-items:center;overflow-x:auto;white-space:nowrap;scrollbar-width:none}
-#topbar::-webkit-scrollbar{display:none}
-#topbar a{color:var(--ink2);text-decoration:none;font-size:12px;padding:5px 10px;border-radius:14px;border:1px solid transparent;flex:none}
-#topbar a:hover{color:var(--ink);border-color:var(--line)}
-#fsum{margin-left:auto;flex:none;font-family:'IBM Plex Mono',monospace;font-size:11px;background:var(--panel2);border:1px solid var(--line);color:var(--ink);padding:5px 11px;border-radius:14px;cursor:pointer}
-#fsum:hover{border-color:var(--ink3)}
 header{display:flex;flex-wrap:wrap;align-items:baseline;gap:10px 24px;border-bottom:1px solid var(--line);padding-bottom:18px;margin-bottom:26px}
 header .kicker{font-size:12px;color:var(--ink3);letter-spacing:.14em;text-transform:uppercase;width:100%}
 h1{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:40px;line-height:1.05;text-transform:uppercase;letter-spacing:.01em}
 h1 .vs{color:var(--ink3);font-weight:500;font-size:.6em;margin:0 8px;vertical-align:middle}
-h1 .h{color:var(--team-home)} h1 .p{color:var(--team-away)}
+h1 .h{color:var(--hut)} h1 .p{color:var(--pog)}
 .crest{display:inline-flex;align-items:center;justify-content:center;width:46px;height:46px;border-radius:50%;background:#FFFFFF;vertical-align:middle;margin-right:10px;flex:none}
 .crest img{width:78%;height:78%;object-fit:contain;display:block}
-.crest.hutc{border:1.5px solid var(--team-home)}
-.crest.pogc{border:1.5px solid var(--team-away)}
+.crest.hutc{border:1.5px solid var(--hut)}
+.crest.pogc{border:1.5px solid var(--pog)}
 h1 .crest{margin-bottom:5px}
 .crest.sm{width:30px;height:30px;margin-right:8px}
 .teams .t2 .crest.sm{margin-right:0;margin-left:8px}
@@ -53,7 +45,7 @@ h2{font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:20px;text
 /* head-to-head */
 .h2h{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 22px}
 .h2h .teams{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;font-family:'Barlow Condensed',sans-serif;font-size:17px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:14px}
-.h2h .teams .t1{color:var(--team-home)} .h2h .teams .t2{color:var(--team-away);text-align:right}
+.h2h .teams .t1{color:var(--hut)} .h2h .teams .t2{color:var(--pog);text-align:right}
 .h2h .teams .mid{color:var(--ink3);font-size:12px;align-self:center;letter-spacing:.12em}
 .stat{display:grid;grid-template-columns:64px 1fr 150px 1fr 64px;align-items:center;gap:12px;padding:7px 0;border-top:1px dashed var(--line)}
 .stat .v{font-family:'IBM Plex Mono',monospace;font-size:16px;font-weight:500}
@@ -61,7 +53,7 @@ h2{font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:20px;text
 .stat .lbl{text-align:center;color:var(--ink2);font-size:12px;letter-spacing:.03em}
 .bar{height:8px;border-radius:4px;background:var(--panel2);position:relative;overflow:hidden}
 .bar i{position:absolute;top:0;bottom:0;border-radius:4px}
-.bar.l i{right:0;background:var(--team-home)} .bar.r i{left:0;background:var(--team-away)}
+.bar.l i{right:0;background:var(--hut)} .bar.r i{left:0;background:var(--pog)}
 /* fragmentator (wzór: bilans.png) */
 .frag{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
 .frag>div{display:grid;gap:6px}
@@ -85,8 +77,8 @@ h2{font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:20px;text
 .chip{border:1px solid var(--line);background:var(--panel2);color:var(--ink2);font-size:12.5px;padding:5px 12px;border-radius:20px;cursor:pointer;transition:.15s;font-family:inherit}
 .chip:hover{color:var(--ink)}
 .chip.on{background:var(--ink);color:var(--bg);border-color:var(--ink);font-weight:600}
-.chip.on.hut{background:var(--team-home);border-color:var(--team-home)}
-.chip.on.pog{background:var(--team-away);border-color:var(--team-away)}
+.chip.on.hut{background:var(--hut);border-color:var(--hut)}
+.chip.on.pog{background:var(--pog);border-color:var(--pog)}
 .chip.on.cpoz{background:var(--ctx-poz);border-color:var(--ctx-poz);color:#0B100E}
 .chip.on.cpre{background:var(--ctx-pre);border-color:var(--ctx-pre);color:#0B100E}
 .chip.on.ckon{background:var(--ctx-kon);border-color:var(--ctx-kon);color:#0B100E}
@@ -114,17 +106,13 @@ svg text{font-family:'IBM Plex Mono',monospace}
 .row .b{flex:1;height:7px;background:var(--panel2);border-radius:4px;overflow:hidden}
 .row .b i{display:block;height:100%;border-radius:4px;background:var(--ink3)}
 .row .b i.ok{background:var(--ok)} .row .b i.bad{background:var(--bad)}
-.row .b i.hut{background:var(--team-home)} .row .b i.pog{background:var(--team-away)}
+.row .b i.hut{background:var(--hut)} .row .b i.pog{background:var(--pog)}
 .row .v{width:26px;text-align:right;font-family:'IBM Plex Mono',monospace;font-size:12px}
+footer{color:var(--ink3);font-size:11.5px;border-top:1px solid var(--line);padding-top:14px}
 @media(max-width:640px){
-  h1{font-size:26px}
-  .crest{width:36px;height:36px}
+  h1{font-size:28px}
   .stat{grid-template-columns:50px 1fr 110px 1fr 50px;gap:8px}
   .stat .v{font-size:14px}
-  .stat .lbl{font-size:10.5px}
-  .frag .fr3{grid-template-columns:repeat(3,1fr)}
-  .fbtn{font-size:11.5px;padding:8px 2px;letter-spacing:.03em}
-  .controls .chip{font-size:11.5px;padding:5px 9px}
 }
 @media (prefers-reduced-motion: reduce){ *{transition:none!important} }
 </style>
@@ -133,30 +121,19 @@ svg text{font-family:'IBM Plex Mono',monospace}
 <div class="wrap">
 <header>
   <div class="kicker">LiveTag.Pro · analiza meczowa</div>
-  <h1><span class="crest hutc"><img src="__LOGO_HOME__" alt="Herb __TEAM_HOME_LABEL__"></span><span class="h">__TEAM_HOME_LABEL__</span><span class="vs">vs</span><span class="crest pogc"><img src="__LOGO_AWAY__" alt="Herb __TEAM_AWAY_LABEL__"></span><span class="p">__TEAM_AWAY_LABEL__</span></h1>
+  <h1><span class="crest hutc"><img src="data:image/png;base64,__LOGO_HUT__" alt="Herb Hutnik Kraków"></span><span class="h">Hutnik Kraków</span><span class="vs">vs</span><span class="crest pogc"><img src="data:image/png;base64,__LOGO_POG__" alt="Herb Pogoń-Sokół Lubaczów"></span><span class="p">Pogoń-Sokół Lubaczów</span></h1>
   <div class="meta"><b id="m-events">—</b> akcji · <b id="m-shots">—</b> strzałów · czas kodowania <b id="m-dur">—</b></div>
 </header>
 
-<nav id="topbar" aria-label="Nawigacja sekcji">
-  <a href="#sec-bilans">Bilans</a>
-  <a href="#sec-mapy">Mapy</a>
-  <a href="#sec-tlsbz">Oś SBZ</a>
-  <a href="#sec-tl3">Oś III strefy</a>
-  <a href="#sec-tlm">Oś bilansu</a>
-  <a href="#sec-duels">Pojedynki</a>
-  <a href="#sec-noteam">Bez drużyny</a>
-  <button id="fsum" title="Aktywne filtry map — kliknij, by przejść do fragmentatorów"></button>
-</nav>
-
-<section id="sec-bilans">
+<section>
   <h2>Bilans drużyn — porównanie fragmentów</h2>
-  <div class="sub">Dwa niezależne panele: w każdym włącz dowolną kombinację przedziałów 15-minutowych (albo skróty CAŁY MECZ / POŁOWA), żeby porównać np. końcówki obu połów. Przedziały minutowe liczone w obrębie połowy (czas wideo). Metryki bez podziału na drużyny (szare) — zdarzenia tagowane bez pola „team”.</div>
+  <div class="sub">Dwa niezależne panele: wybierz fragment meczu w każdym z nich, żeby porównać np. 1. połowę z 2. albo końcówki połów. Przedziały minutowe liczone w obrębie połowy (czas wideo). Metryki bez podziału na drużyny (szare) — zdarzenia tagowane bez pola „team”.</div>
   <div id="bilans-panels"></div>
 </section>
 
-<section id="sec-mapy">
+<section>
   <h2>Mapy współczynników</h2>
-  <div class="sub">Trzy współczynniki: strzały (wynik), strzały (xG) i zdobycie SBZ — mapa po lewej, przebieg w czasie po prawej. Fragmentatory u góry sterują wszystkimi wierszami; przedziały 15-minutowe działają jak przełączniki — możesz włączyć wszystkie, jeden albo dowolną kombinację (CAŁY MECZ / POŁOWA to skróty). Szerokość wykresów stała, oś czasu obejmuje wybrany zakres. Filtr wyniku (celne/niecelne/zablokowane) dotyczy wiersza 1; wiersz 2 ma własny fragmentator typu akcji. __TEAM_HOME_LABEL__ atakuje bramkę po lewej, __TEAM_AWAY_LABEL__ po prawej.</div>
+  <div class="sub">Trzy współczynniki: strzały (wynik), strzały (xG) i zdobycie SBZ — mapa po lewej, przebieg w czasie po prawej. Fragmentatory u góry sterują wszystkimi wierszami; szerokość wykresów stała, oś czasu dopasowuje się do fragmentu. Filtr wyniku (celne/niecelne/zablokowane) dotyczy wiersza 1; wiersz 2 ma własny fragmentator typu akcji. Hutnik atakuje bramkę po lewej, Pogoń-Sokół po prawej.</div>
   <div class="pitchbox" style="margin-bottom:14px">
     <div class="frag" role="group" aria-label="Fragment meczu — mapy">
       <div class="fr1"><button class="fbtn on" data-mf="full">CAŁY MECZ</button></div>
@@ -164,8 +141,8 @@ svg text{font-family:'IBM Plex Mono',monospace}
       <div class="fr3"><button class="fbtn" data-mf="q1">1–15'</button><button class="fbtn" data-mf="q2">16–30'</button><button class="fbtn" data-mf="q3">31–45'</button><button class="fbtn" data-mf="q4">46–60'</button><button class="fbtn" data-mf="q5">61–75'</button><button class="fbtn" data-mf="q6">76–90'</button></div>
     </div>
     <div class="controls" role="group" aria-label="Filtry drużyn i wyniku">
-      <button class="chip hut on" data-mteam="__TEAM_HOME__">__TEAM_HOME_LABEL__</button>
-      <button class="chip pog on" data-mteam="__TEAM_AWAY__">__TEAM_AWAY_LABEL__</button>
+      <button class="chip hut on" data-mteam="HUTNIK KRAKÓW">Hutnik</button>
+      <button class="chip pog on" data-mteam="POGOŃ-SOKÓŁ LUBACZÓW">Pogoń-Sokół</button>
       <span style="width:14px"></span>
       <button class="chip on" data-mout="CELNY">Celne</button>
       <button class="chip on" data-mout="NIECELNY">Niecelne</button>
@@ -175,36 +152,37 @@ svg text{font-family:'IBM Plex Mono',monospace}
   <div id="metric-rows"></div>
 </section>
 
-<section id="sec-tlsbz">
+<section>
   <h2>Oś czasu — zdobycie SBZ</h2>
   <div class="sub">Dwa tory drużyn, tylko wejścia w SBZ. Kolor = typ akcji (jak na mapach), kształt = wynik strzału po wejściu, mała kropka = bez strzału. Zakres i filtry — te same fragmentatory co przy mapach.</div>
   <div class="tlbox"><svg id="tl" width="100%" role="img" aria-label="Oś czasu wejść w SBZ per drużyna"></svg></div>
 </section>
 
-<section id="sec-tl3">
+<section>
   <h2>Oś czasu — zdobycie III strefy</h2>
   <div class="sub">Dwa tory drużyn, tylko wejścia w III strefę: <span style="color:var(--ok)">udane ●</span>, <span style="color:var(--bad)">nieudane ○</span>, <span style="color:var(--neut)">brak podania ◆</span>. Te same fragmentatory co przy mapach.</div>
   <div class="tlbox"><svg id="tl3" width="100%" role="img" aria-label="Oś czasu wejść w III strefę per drużyna"></svg></div>
 </section>
 
-<section id="sec-tlm">
+<section>
   <h2>Oś czasu — bilans meczu</h2>
   <div class="sub">Wszystkie współczynniki bilansu na jednej osi. Tory drużynowe (strzały, xG, SBZ, III strefa) w kolorach drużyn; tory bez przypisania — zielony ● / czerwony ○ tam, gdzie etykiety dają wynik, szare kreski dla pozostałych. Te same fragmentatory co przy mapach.</div>
   <div class="tlbox"><svg id="tlm" width="100%" role="img" aria-label="Zbiorcza oś czasu współczynników bilansu"></svg></div>
 </section>
 
-<section id="sec-duels">
+<section>
   <h2>Pojedynki, straty, odbiory — ilościowo i %</h2>
   <div class="sub">Zdarzenia bez przypisania drużyny, w zakresie wybranego fragmentu. Straty w podziale na strony boiska i reakcję; pierwszy kontakt z rozwinięciem wygranych (drugi kontakt / strata).</div>
   <div class="grid" id="duels-grid"></div>
 </section>
 
-<section id="sec-noteam">
+<section>
   <h2>Zdarzenia bez przypisania drużyny</h2>
   <div class="sub">196 akcji (straty, odbiory, pojedynki, pierwsze kontakty) otagowano bez pola „team” — rozkład wg etykiet.</div>
   <div class="grid" id="cards"></div>
 </section>
 
+<footer>Źródło: LiveTag.Pro v1.12.11 · eksport CSV (294 wiersze) · dashboard: bigus.studio</footer>
 </div>
 <div id="tip"></div>
 
@@ -214,7 +192,7 @@ const PAL = /*__PAL__*/;
 const tagCol=t=>PAL.tags[t]||'#9DAFA6';
 const labCol=l=>PAL.labels[l]||'#9DAFA6';
 const E = DATA.events, HS = DATA.half_split;
-const HUT='__TEAM_HOME__', POG='__TEAM_AWAY__';
+const HUT='HUTNIK KRAKÓW', POG='POGOŃ-SOKÓŁ LUBACZÓW';
 const has=(e,l)=>e.labels.includes(l);
 const fmt=(n,d=0)=>n.toLocaleString('pl-PL',{minimumFractionDigits:d,maximumFractionDigits:d});
 const mmss=s=>{const m=Math.max(0,Math.floor(s/60));return m+"'";};
@@ -225,63 +203,48 @@ document.getElementById('m-events').textContent=E.length;
 document.getElementById('m-shots').textContent=shots.length;
 document.getElementById('m-dur').textContent=Math.round(Math.max(...E.map(e=>e.e))/60)+' min';
 
-/* zakresy 15-minutowe — wspólne dla bilansu i map (multi-wybór) */
-const M=60;
-const TEND0=Math.max(...E.map(e=>e.e));
-const ALLQ=['q1','q2','q3','q4','q5','q6'];
-const QRANGES={q1:[0,15*M],q2:[15*M,30*M],q3:[30*M,HS],q4:[HS,HS+15*M],q5:[HS+15*M,HS+30*M],q6:[HS+30*M,TEND0+1]};
-const inSet=(qs,e)=>{const b=Math.max(e.b,0);for(const id of qs){const r=QRANGES[id];if(b>=r[0]&&b<r[1])return true;}return false;};
-const envQ=qs=>{let a=Infinity,c=-Infinity;for(const id of qs){const r=QRANGES[id];if(r[0]<a)a=r[0];if(r[1]>c)c=r[1];}return [a,c];};
-function fragPreset(f){return f==='full'?new Set(ALLQ):f==='h1'?new Set(['q1','q2','q3']):f==='h2'?new Set(['q4','q5','q6']):null;}
-function fragToggle(qs,f){
-  const p=fragPreset(f);
-  if(p) return p;
-  const n=new Set(qs);
-  if(n.has(f)){if(n.size>1)n.delete(f);}else n.add(f);
-  return n;
-}
-function syncFragBtns(sel,qs){
-  document.querySelectorAll(sel).forEach(b=>{
-    const f=b.dataset.f||b.dataset.mf;
-    const on = f==='full' ? ALLQ.every(q=>qs.has(q))
-      : f==='h1' ? ['q1','q2','q3'].every(q=>qs.has(q)) && !['q4','q5','q6'].some(q=>qs.has(q))
-      : f==='h2' ? ['q4','q5','q6'].every(q=>qs.has(q)) && !['q1','q2','q3'].some(q=>qs.has(q))
-      : qs.has(f);
-    b.classList.toggle('on', f==='full' ? on : (on && !ALLQ.every(q=>qs.has(q)) || (f!=='h1'&&f!=='h2'&&qs.has(f))));
-  });
-}
 /* bilans — dwa panele z fragmentatorami (wzór: bilans.png) */
-const QLBL={q1:"1–15'",q2:"16–30'",q3:"31–45'",q4:"46–60'",q5:"61–75'",q6:"76–90'"};
-const PQ=[new Set(ALLQ), new Set(['q1','q2','q3'])];   // stan zakresów per panel
-const cntT=(qs,tag,team,lab)=>E.filter(e=>e.tag===tag&&e.team===team&&inSet(qs,e)&&(!lab||has(e,lab))).length;
-const cntN=(qs,tag,lab)=>E.filter(e=>e.tag===tag&&inSet(qs,e)&&(!lab||has(e,lab))).length;
+const M=60;
+const FRAGS=[
+  {id:'full', lbl:'CAŁY MECZ',  f:e=>true},
+  {id:'h1',   lbl:'I POŁOWA',   f:e=>e.b<HS},
+  {id:'h2',   lbl:'II POŁOWA',  f:e=>e.b>=HS},
+  {id:'q1',   lbl:"1–15'",      f:e=>e.b<15*M},
+  {id:'q2',   lbl:"16–30'",     f:e=>e.b>=15*M&&e.b<30*M},
+  {id:'q3',   lbl:"31–45'",     f:e=>e.b>=30*M&&e.b<HS},
+  {id:'q4',   lbl:"46–60'",     f:e=>e.b>=HS&&e.b<HS+15*M},
+  {id:'q5',   lbl:"61–75'",     f:e=>e.b>=HS+15*M&&e.b<HS+30*M},
+  {id:'q6',   lbl:"76–90'",     f:e=>e.b>=HS+30*M},
+];
+const FR=id=>FRAGS.find(f=>f.id===id);
+const cntT=(fr,tag,team,lab)=>E.filter(e=>e.tag===tag&&e.team===team&&fr.f(e)&&(!lab||has(e,lab))).length;
+const cntN=(fr,tag,lab)=>E.filter(e=>e.tag===tag&&fr.f(e)&&(!lab||has(e,lab))).length;
 function panelHTML(i){
   return `<div class="h2h" style="margin-bottom:16px">
     <div class="frag" role="group" aria-label="Fragment meczu — panel ${i+1}">
       <div class="fr1"><button class="fbtn" data-p="${i}" data-f="full">CAŁY MECZ</button></div>
       <div class="fr2"><button class="fbtn" data-p="${i}" data-f="h1">I POŁOWA</button><button class="fbtn" data-p="${i}" data-f="h2">II POŁOWA</button></div>
-      <div class="fr3">${ALLQ.map(q=>`<button class="fbtn" data-p="${i}" data-f="${q}">${QLBL[q]}</button>`).join('')}</div>
+      <div class="fr3">${['q1','q2','q3','q4','q5','q6'].map(q=>`<button class="fbtn" data-p="${i}" data-f="${q}">${FR(q).lbl}</button>`).join('')}</div>
     </div>
-    <div class="teams"><div class="t1" style="display:flex;align-items:center"><span class="crest hutc sm"><img src="__LOGO_HOME__" alt=""></span>__TEAM_HOME_LABEL__</div><div class="mid">vs</div><div class="t2" style="display:flex;align-items:center;justify-content:flex-end">__TEAM_AWAY_LABEL__<span class="crest pogc sm"><img src="__LOGO_AWAY__" alt=""></span></div></div>
+    <div class="teams"><div class="t1" style="display:flex;align-items:center"><span class="crest hutc sm"><img src="data:image/png;base64,__LOGO_HUT__" alt=""></span>Hutnik Kraków</div><div class="mid">vs</div><div class="t2" style="display:flex;align-items:center;justify-content:flex-end">Pogoń-Sokół Lubaczów<span class="crest pogc sm"><img src="data:image/png;base64,__LOGO_POG__" alt=""></span></div></div>
     <div class="pbody" id="pbody-${i}"></div>
   </div>`;
 }
 function renderPanel(i, fid){
-  if(fid!==undefined) PQ[i]=fragToggle(PQ[i], fid);
-  const qs=PQ[i];
-  const xgS=t=>shots.filter(e=>e.team===t&&inSet(qs,e)).reduce((a,e)=>a+(e.xg||0),0);
+  const fr=FR(fid);
+  const xgS=t=>shots.filter(e=>e.team===t&&fr.f(e)).reduce((a,e)=>a+(e.xg||0),0);
   const rows=[
-    ['STRZAŁY', cntT(qs,'STRZAŁ',HUT), cntT(qs,'STRZAŁ',POG), 0],
+    ['STRZAŁY', cntT(fr,'STRZAŁ',HUT), cntT(fr,'STRZAŁ',POG), 0],
     ['xG', xgS(HUT), xgS(POG), 2],
-    ['ZDOBYCIE SBZ', cntT(qs,'ZDOBYCIE SBZ',HUT), cntT(qs,'ZDOBYCIE SBZ',POG), 0],
-    ['ZDOBYCIE III STREFY', cntT(qs,'III STREFA',HUT), cntT(qs,'III STREFA',POG), 0],
+    ['ZDOBYCIE SBZ', cntT(fr,'ZDOBYCIE SBZ',HUT), cntT(fr,'ZDOBYCIE SBZ',POG), 0],
+    ['ZDOBYCIE III STREFY', cntT(fr,'III STREFA',HUT), cntT(fr,'III STREFA',POG), 0],
   ];
   const neut=[
-    ['WYGRANY I KONTAKT', cntN(qs,'PIERWSZY KONTAKT','WYGRANY')],
-    ['1x1 W OFENSYWIE', cntN(qs,'1x1 OFF')],
-    ['1x1 W DEFENSYWIE', cntN(qs,'1x1 DEF.')],
-    ['ODBIÓR', cntN(qs,'ODBIÓR')],
-    ['STRATA', cntN(qs,'STRATA')],
+    ['WYGRANY I KONTAKT', cntN(fr,'PIERWSZY KONTAKT','WYGRANY')],
+    ['1x1 W OFENSYWIE', cntN(fr,'1x1 OFF')],
+    ['1x1 W DEFENSYWIE', cntN(fr,'1x1 DEF.')],
+    ['ODBIÓR', cntN(fr,'ODBIÓR')],
+    ['STRATA', cntN(fr,'STRATA')],
   ];
   const nmx=Math.max(...neut.map(r=>r[1]),1);
   document.getElementById('pbody-'+i).innerHTML=
@@ -303,13 +266,13 @@ function renderPanel(i, fid){
         <div class="bar r"><i style="width:${n/nmx*100}%"></i></div>
         <div class="v r">${n}</div>
       </div>`).join('');
-  syncFragBtns(`.fbtn[data-p="${i}"]`, qs);
+  document.querySelectorAll(`.fbtn[data-p="${i}"]`).forEach(b=>b.classList.toggle('on', b.dataset.f===fid));
 }
 (function(){
   const wrap=document.getElementById('bilans-panels');
   wrap.innerHTML=panelHTML(0)+panelHTML(1);
   wrap.querySelectorAll('.fbtn').forEach(b=>b.addEventListener('click',()=>renderPanel(+b.dataset.p, b.dataset.f)));
-  renderPanel(0); renderPanel(1);
+  renderPanel(0,'full'); renderPanel(1,'h1');
 })();
 
 /* pitch */
@@ -343,36 +306,11 @@ function legendGlyph(kind,color){
 }
 const tip=document.getElementById('tip');
 function showTip(ev,html){tip.innerHTML=html;tip.style.opacity=1;tip.style.left=(ev.clientX+14)+'px';tip.style.top=(ev.clientY+10)+'px';}
-function hideTip(){tip.style.opacity=0;tip.dataset.showing='';}
-/* dotyk/klik: delegacja — działa dla wszystkich obecnych i przyszłych .pt */
-document.addEventListener('click',ev=>{
-  const p=ev.target.closest('.pt');
-  if(p&&p.dataset.tip){
-    if(tip.dataset.showing===p.dataset.tip){hideTip();}
-    else{showTip(ev,p.dataset.tip);tip.dataset.showing=p.dataset.tip;}
-    ev.stopPropagation();
-  } else hideTip();
-});
-/* podsumowanie aktywnych filtrów w belce */
-function updateFsum(){
-  const el=document.getElementById('fsum'); if(!el) return;
-  const qs=MC.qs;
-  let t;
-  if(ALLQ.every(q=>qs.has(q))) t='CAŁY MECZ';
-  else if(qs.size===3&&['q1','q2','q3'].every(q=>qs.has(q))) t='I POŁOWA';
-  else if(qs.size===3&&['q4','q5','q6'].every(q=>qs.has(q))) t='II POŁOWA';
-  else t=ALLQ.filter(q=>qs.has(q)).map(q=>QLBL[q]).join(' + ');
-  const tm=MC.teams.size===2?'obie drużyny':(MC.teams.has(HUT)?'__TEAM_HOME_LABEL__':'__TEAM_AWAY_LABEL__');
-  const ou=MC.outs.size===3?'':' · '+[...MC.outs].map(o=>o.toLowerCase()).join('/');
-  el.textContent=t+' · '+tm+ou;
-}
-document.getElementById('fsum')?.addEventListener('click',()=>{
-  document.querySelector('#sec-mapy .frag')?.scrollIntoView({behavior:'smooth',block:'center'});
-});
+function hideTip(){tip.style.opacity=0;}
 
 /* ===== mapy współczynników: 3 × (mapa + wykres w czasie) ===== */
 const TEND=Math.max(...E.map(e=>e.e));
-const MC={qs:new Set(ALLQ), teams:new Set([HUT,POG]), outs:new Set(['CELNY','NIECELNY','ZABLOKOWANY']), ctx:new Set(['POZYCYJNIE','PRESSING','KONTRATAK','SFG']), zctx:new Set(['POZYCYJNIE','PRESSING','KONTRATAK','SFG','INNE']), ist:new Set(['UDANA','NIEUDANA','BRAK PODANIA'])};
+const MC={frag:'full', teams:new Set([HUT,POG]), outs:new Set(['CELNY','NIECELNY','ZABLOKOWANY']), ctx:new Set(['POZYCYJNIE','PRESSING','KONTRATAK','SFG']), zctx:new Set(['POZYCYJNIE','PRESSING','KONTRATAK','SFG','INNE']), ist:new Set(['UDANA','NIEUDANA','BRAK PODANIA'])};
 const CTXCOL={POZYCYJNIE:'var(--ctx-poz)',PRESSING:'var(--ctx-pre)',KONTRATAK:'var(--ctx-kon)',SFG:'var(--ctx-sfg)',INNE:'var(--neut)'};
 const ctxOf=e=>['POZYCYJNIE','PRESSING','KONTRATAK','SFG'].find(c=>has(e,c))||null;
 const zctxOf=e=>ctxOf(e)||'INNE';
@@ -381,22 +319,30 @@ const sbzShotOf=z=>has(z,'STRZAŁ')?(shotsSorted.find(s=>s.team===z.team&&s.b>=z
 const istOf=e=>has(e,'UDANA')?'UDANA':has(e,'NIEUDANA')?'NIEUDANA':'BRAK PODANIA';
 const ISTCOL={'UDANA':'var(--ok)','NIEUDANA':'var(--bad)','BRAK PODANIA':'var(--neut)'};
 function mcIII(){
-  return E.filter(e=>e.tag==='III STREFA'&&inSet(MC.qs,e)&&MC.teams.has(e.team)&&MC.ist.has(istOf(e)));
+  const [t0,t1]=fragT(MC.frag);
+  return E.filter(e=>e.tag==='III STREFA'&&e.b>=t0-4&&e.b<t1&&MC.teams.has(e.team)&&MC.ist.has(istOf(e)));
 }
-/* zakresy: QRANGES + inSet/envQ (globalne) */
+function fragT(id){
+  const q={full:[0,TEND],h1:[0,HS],h2:[HS,TEND],q1:[0,900],q2:[900,1800],q3:[1800,HS],
+           q4:[HS,HS+900],q5:[HS+900,HS+1800],q6:[HS+1800,TEND]};
+  return q[id];
+}
 const outcomeOf=e=>has(e,'CELNY')?'CELNY':has(e,'ZABLOKOWANY')?'ZABLOKOWANY':'NIECELNY';
 const kindOf=o=>o==='CELNY'?'filled':o==='ZABLOKOWANY'?'diamond':'ring';
-const col=t=>t===HUT?'var(--team-home)':'var(--team-away)';
-const tName=t=>t===HUT?'__TEAM_HOME_LABEL__':'__TEAM_AWAY_LABEL__';
+const col=t=>t===HUT?'var(--hut)':'var(--pog)';
+const tName=t=>t===HUT?'Hutnik Kraków':'Pogoń-Sokół';
 
 function mcShots(){
-  return shots.filter(e=>e.x!=null&&inSet(MC.qs,e)&&MC.teams.has(e.team)&&MC.outs.has(outcomeOf(e)));
+  const [t0,t1]=fragT(MC.frag);
+  return shots.filter(e=>e.x!=null&&e.b>=t0-4&&e.b<t1&&MC.teams.has(e.team)&&MC.outs.has(outcomeOf(e)));
 }
 function mcShotsCtx(){
-  return shots.filter(e=>e.x!=null&&inSet(MC.qs,e)&&MC.teams.has(e.team)&&ctxOf(e)&&MC.ctx.has(ctxOf(e)));
+  const [t0,t1]=fragT(MC.frag);
+  return shots.filter(e=>e.x!=null&&e.b>=t0-4&&e.b<t1&&MC.teams.has(e.team)&&ctxOf(e)&&MC.ctx.has(ctxOf(e)));
 }
 function mcSBZ(){
-  return E.filter(e=>e.tag==='ZDOBYCIE SBZ'&&e.x!=null&&inSet(MC.qs,e)&&MC.teams.has(e.team)&&MC.zctx.has(zctxOf(e)));
+  const [t0,t1]=fragT(MC.frag);
+  return E.filter(e=>e.tag==='ZDOBYCIE SBZ'&&e.x!=null&&e.b>=t0-4&&e.b<t1&&MC.teams.has(e.team)&&MC.zctx.has(zctxOf(e)));
 }
 function shotTip(e){
   return `class="pt" data-tip="<b>STRZAŁ · ${outcomeOf(e).toLowerCase()}</b><div class='t'>${tName(e.team)} · ${mmss(e.b)} · xG ${e.xg!=null?fmt(e.xg,2):'—'}<br>${e.labels.join(', ')}</div>"`;
@@ -465,18 +411,18 @@ document.getElementById('metric-rows').innerHTML=`
   <div id="pressing-block" style="margin-top:14px"></div>`;
 
 function renderMetricMaps(){
-  const [t0,t1]=envQ(MC.qs);
+  const [t0,t1]=fragT(MC.frag);
   const S1=mcShots(), Z=mcSBZ();
   /* mapa 1: wynik — stały rozmiar */
   let s=pitchBase();
-  S1.forEach(e=>{ s+=glyph(kindOf(outcomeOf(e)), e.x*S, e.y*S, rXG(e.xg), col(e.team), shotTip(e)); });
+  S1.forEach(e=>{ s+=glyph(kindOf(outcomeOf(e)), e.x*S, e.y*S, 10, col(e.team), shotTip(e)); });
   document.getElementById('mp1').innerHTML=s;
   /* mapa 2: kolor = typ akcji, kształt = wynik (jak mapa 1) */
   const S2=mcShotsCtx();
   s=pitchBase();
   S2.forEach(e=>{
     const ctip=`class="pt" data-tip="<b>STRZAŁ · ${outcomeOf(e).toLowerCase()} · ${ctxOf(e)}</b><div class='t'>${tName(e.team)} · ${mmss(e.b)} · xG ${e.xg!=null?fmt(e.xg,2):'—'}</div>"`;
-    s+=glyph(kindOf(outcomeOf(e)), e.x*S, e.y*S, rXG(e.xg), CTXCOL[ctxOf(e)], ctip);
+    s+=glyph(kindOf(outcomeOf(e)), e.x*S, e.y*S, 10, CTXCOL[ctxOf(e)], ctip);
   });
   document.getElementById('mp2').innerHTML=s;
   /* mapa 3: SBZ — kolor = typ akcji, start = glif wyniku strzału, bez strzału = linia przerywana */
@@ -496,16 +442,14 @@ function renderMetricMaps(){
     `<span>${legendGlyph('filled','var(--ink2)')} celny</span>
      <span>${legendGlyph('ring','var(--ink2)')} niecelny</span>
      <span>${legendGlyph('diamond','var(--ink2)')} zablokowany</span>
-     <span style="border-left:1px solid var(--line);padding-left:14px"><span class="dot" style="background:var(--team-home)"></span>__TEAM_HOME_LABEL__</span>
-     <span><span class="dot" style="background:var(--team-away)"></span>__TEAM_AWAY_LABEL__</span>
-     <span style="color:var(--ink3)">powierzchnia ∝ xG</span>`;
+     <span style="border-left:1px solid var(--line);padding-left:14px"><span class="dot" style="background:var(--hut)"></span>Hutnik</span>
+     <span><span class="dot" style="background:var(--pog)"></span>Pogoń-Sokół</span>`;
   document.getElementById('lg2').innerHTML=
     `<span><span class="dot" style="background:var(--ctx-poz)"></span>Pozycyjnie</span>
      <span><span class="dot" style="background:var(--ctx-pre)"></span>Pressing</span>
      <span><span class="dot" style="background:var(--ctx-kon)"></span>Kontratak</span>
      <span><span class="dot" style="background:var(--ctx-sfg)"></span>SFG</span>
-     <span style="border-left:1px solid var(--line);padding-left:14px">kształt = wynik strzału (jak wyżej)</span>
-     <span style="color:var(--ink3)">powierzchnia ∝ xG</span>`;
+     <span style="border-left:1px solid var(--line);padding-left:14px">kształt = wynik strzału (jak wyżej)</span>`;
   document.getElementById('lg3').innerHTML=
     `<span>${legendGlyph('filled','var(--ink2)')} → strzał celny</span>
      <span>${legendGlyph('ring','var(--ink2)')} → niecelny</span>
@@ -559,8 +503,8 @@ function renderMetricMaps(){
   document.getElementById('mc3').innerHTML=c3;
   /* źródła zagrożenia — słupki w kolorach typu akcji, reagują na fragment i drużyny */
   const CTX5=['POZYCYJNIE','PRESSING','KONTRATAK','SFG','ODBIÓR'];
-  const fragShots=shots.filter(e=>inSet(MC.qs,e));
-  document.getElementById('sources').innerHTML=[[HUT,'var(--team-home)','__TEAM_HOME_LABEL__'],[POG,'var(--team-away)','__TEAM_AWAY_LABEL__']]
+  const fragShots=shots.filter(e=>{const [a,b]=fragT(MC.frag);return e.b>=a-4&&e.b<b;});
+  document.getElementById('sources').innerHTML=[[HUT,'var(--hut)','Hutnik Kraków'],[POG,'var(--pog)','Pogoń-Sokół Lubaczów']]
     .filter(([t])=>MC.teams.has(t)).map(([team,c,name])=>{
     const ts=fragShots.filter(e=>e.team===team);
     const rows=CTX5.map(ctx=>{
@@ -573,8 +517,8 @@ function renderMetricMaps(){
   }).join('');
   /* mapa 4: III strefa — kolor = drużyna, pełna linia+grot = udana, przerywana = nieudana */
   const I3=mcIII();
-  s=`<defs><marker id="ah3-hut" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--team-home)"/></marker>
-     <marker id="ah3-pog" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--team-away)"/></marker></defs>`+pitchBase();
+  s=`<defs><marker id="ah3-hut" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--hut)"/></marker>
+     <marker id="ah3-pog" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--pog)"/></marker></defs>`+pitchBase();
   I3.filter(e=>e.x!=null).forEach(e=>{
     const c=col(e.team), st=istOf(e), ok=st==='UDANA';
     const itip=`class="pt" data-tip="<b>III STREFA · ${st.toLowerCase()}</b><div class='t'>${tName(e.team)} · ${mmss(e.b)}${e.labels.length?'<br>'+e.labels.join(', '):''}</div>"`;
@@ -587,8 +531,8 @@ function renderMetricMaps(){
      <span style="border-left:1px solid var(--line);padding-left:14px">kropka startu: <span class="dot" style="background:var(--ok)"></span>udana</span>
      <span><span class="dot" style="background:var(--bad)"></span>nieudana</span>
      <span><span class="dot" style="background:var(--neut)"></span>brak podania</span>
-     <span style="border-left:1px solid var(--line);padding-left:14px">linia: <span class="dot" style="background:var(--team-home)"></span>__TEAM_HOME_LABEL__</span>
-     <span><span class="dot" style="background:var(--team-away)"></span>__TEAM_AWAY_LABEL__</span>`;
+     <span style="border-left:1px solid var(--line);padding-left:14px">linia: <span class="dot" style="background:var(--hut)"></span>Hutnik</span>
+     <span><span class="dot" style="background:var(--pog)"></span>Pogoń-Sokół</span>`;
   /* wykres 4: skumulowane wejścia w III strefę */
   const maxI=Math.max(4,...teamsArr.map(t=>I3.filter(e=>e.team===t).length));
   f=chartFrame(t0,t1,maxI,Math.max(1,Math.ceil(maxI/5)),g=>g); let c4=f.s;
@@ -606,10 +550,10 @@ function renderMetricMaps(){
   });
   document.getElementById('mc4').innerHTML=c4;
   /* skuteczność wejść w SBZ — wynik ilościowo i %, podział strzału */
-  const zframe=E.filter(e=>e.tag==='ZDOBYCIE SBZ'&&inSet(MC.qs,e));
+  const zframe=E.filter(e=>{const [a,b]=fragT(MC.frag);return e.tag==='ZDOBYCIE SBZ'&&e.b>=a-4&&e.b<b;});
   const ZCTX=['POZYCYJNIE','PRESSING','KONTRATAK','SFG','INNE'];
   const SEG=[['celny','var(--ok)',1],['niecelny','var(--ok)',.45],['zablokowany','#8FAE9D',.75],['brak strzału','var(--bad)',.85]];
-  document.getElementById('sbz-eff').innerHTML=[[HUT,'var(--team-home)','__TEAM_HOME_LABEL__'],[POG,'var(--team-away)','__TEAM_AWAY_LABEL__']]
+  document.getElementById('sbz-eff').innerHTML=[[HUT,'var(--hut)','Hutnik Kraków'],[POG,'var(--pog)','Pogoń-Sokół Lubaczów']]
     .filter(([t])=>MC.teams.has(t)).map(([team,c,name])=>{
     const zt=zframe.filter(e=>e.team===team);
     const ztS=zt.filter(e=>sbzShotOf(e));
@@ -636,8 +580,8 @@ function renderMetricMaps(){
      <span><span class="dot" style="background:var(--bad);opacity:.85"></span>brak strzału</span>
      <span style="color:var(--ink3)">wartości: wejścia ze strzałem / wszystkie · % skuteczności</span>`;
   /* skuteczność III strefy — ilościowo i %, z uwzględnieniem braku podania */
-  const iframe3=E.filter(e=>e.tag==='III STREFA'&&inSet(MC.qs,e));
-  document.getElementById('iii-eff').innerHTML=[[HUT,'var(--team-home)','__TEAM_HOME_LABEL__'],[POG,'var(--team-away)','__TEAM_AWAY_LABEL__']]
+  const iframe3=E.filter(e=>{const [a,b]=fragT(MC.frag);return e.tag==='III STREFA'&&e.b>=a-4&&e.b<b;});
+  document.getElementById('iii-eff').innerHTML=[[HUT,'var(--hut)','Hutnik Kraków'],[POG,'var(--pog)','Pogoń-Sokół Lubaczów']]
     .filter(([t])=>MC.teams.has(t)).map(([team,c,name])=>{
     const g=iframe3.filter(e=>e.team===team);
     const cnt={'UDANA':0,'NIEUDANA':0,'BRAK PODANIA':0};
@@ -651,9 +595,9 @@ function renderMetricMaps(){
       (g.length?`<div class="b" style="height:12px;margin:4px 0 10px">${segs}</div>${rows}`:'<div class="n">brak wejść we fragmencie</div>')+`</div>`;
   }).join('');
   /* wysoki pressing (SKUTECZNY / NISKUTECZNY) — donut, rozbicia, mini-oś */
-  const [pa,pb]=envQ(MC.qs);
-  const PS=E.filter(e=>e.tag==='SKUTECZNY'&&inSet(MC.qs,e));
-  const PN=E.filter(e=>e.tag==='NISKUTECZNY'&&inSet(MC.qs,e));
+  const [pa,pb]=fragT(MC.frag);
+  const PS=E.filter(e=>e.tag==='SKUTECZNY'&&e.b>=pa-4&&e.b<pb);
+  const PN=E.filter(e=>e.tag==='NISKUTECZNY'&&e.b>=pa-4&&e.b<pb);
   const ptot=PS.length+PN.length;
   const pPct=n=>ptot?Math.round(n/ptot*1000)/10:0;
   const R=46, CIRC=2*Math.PI*R, fS=ptot?PS.length/ptot:0;
@@ -704,18 +648,15 @@ function renderMetricMaps(){
     p.addEventListener('mousemove',ev=>showTip(ev,p.dataset.tip));
     p.addEventListener('mouseleave',hideTip);
   });
-  updateFsum();
   if(typeof renderSBZTimeline==='function') renderSBZTimeline();
   if(typeof renderIIITimeline==='function') renderIIITimeline();
   if(typeof renderMasterTimeline==='function') renderMasterTimeline();
   if(typeof renderDuels==='function') renderDuels();
 }
 document.querySelectorAll('[data-mf]').forEach(b=>b.addEventListener('click',()=>{
-  MC.qs=fragToggle(MC.qs, b.dataset.mf);
-  syncFragBtns('[data-mf]', MC.qs);
-  renderMetricMaps();
+  document.querySelectorAll('[data-mf]').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on'); MC.frag=b.dataset.mf; renderMetricMaps();
 }));
-syncFragBtns('[data-mf]', MC.qs);
 document.querySelectorAll('[data-mteam]').forEach(b=>b.addEventListener('click',()=>{
   const t=b.dataset.mteam;
   if(MC.teams.has(t)&&MC.teams.size>1){MC.teams.delete(t);b.classList.remove('on');}
@@ -751,9 +692,9 @@ renderMetricMaps();
 /* oś czasu — SBZ per drużyna, sterowana fragmentatorami map */
 function renderSBZTimeline(){
   const tl=document.getElementById('tl');
-  const [t0,t1]=envQ(MC.qs);
+  const [t0,t1]=fragT(MC.frag);
   const W=1000,LH=46,PAD=150;
-  const lanes=[[HUT,'__TEAM_HOME_LABEL__'],[POG,'__TEAM_AWAY_LABEL__']].filter(([t])=>MC.teams.has(t));
+  const lanes=[[HUT,'Hutnik Kraków'],[POG,'Pogoń-Sokół Lubaczów']].filter(([t])=>MC.teams.has(t));
   const H=lanes.length*LH+34;
   tl.setAttribute('viewBox',`0 0 ${W+PAD} ${H}`);
   tl.style.minWidth='760px'; tl.style.height=H+'px';
@@ -762,9 +703,9 @@ function renderSBZTimeline(){
   lanes.forEach(([team,name],i)=>{
     const y=i*LH+26;
     if(i%2===0) s+=`<rect x="0" y="${y-LH/2}" width="${PAD+W}" height="${LH}" fill="#FFFFFF" fill-opacity="0.022"/>`;
-    s+=`<text x="0" y="${y+4}" fill="${col(team)}" font-size="12" font-weight="600">${team===HUT?'__TEAM_HOME_SHORT__':'__TEAM_AWAY_SHORT__'}</text>`;
+    s+=`<text x="0" y="${y+4}" fill="${col(team)}" font-size="12" font-weight="600">${team===HUT?'HUTNIK':'POGOŃ-SOKÓŁ'}</text>`;
     s+=`<line x1="${PAD}" y1="${y}" x2="${PAD+W}" y2="${y}" stroke="var(--line)" stroke-width="1"/>`;
-    E.filter(e=>e.tag==='ZDOBYCIE SBZ'&&e.team===team&&inSet(MC.qs,e)&&MC.zctx.has(zctxOf(e))).forEach(e=>{
+    E.filter(e=>e.tag==='ZDOBYCIE SBZ'&&e.team===team&&e.b>=t0-4&&e.b<t1&&MC.zctx.has(zctxOf(e))).forEach(e=>{
       const x=X(Math.max(e.b,t0));
       const shot=sbzShotOf(e), c=CTXCOL[zctxOf(e)];
       const ztip=`class="pt" data-tip="<b>ZDOBYCIE SBZ · ${zctxOf(e)}${shot?' → strzał '+outcomeOf(shot).toLowerCase():''}</b><div class='t'>${name} · ${mmss(e.b)}${shot&&shot.xg!=null?' · xG '+fmt(shot.xg,2):''}</div>"`;
@@ -786,7 +727,7 @@ function renderSBZTimeline(){
 }
 function renderIIITimeline(){
   const tl=document.getElementById('tl3');
-  const [t0,t1]=envQ(MC.qs);
+  const [t0,t1]=fragT(MC.frag);
   const W=1000,LH=46,PAD=150;
   const lanes=[HUT,POG].filter(t=>MC.teams.has(t));
   const H=lanes.length*LH+34;
@@ -797,9 +738,9 @@ function renderIIITimeline(){
   lanes.forEach((team,i)=>{
     const y=i*LH+26;
     if(i%2===0) s+=`<rect x="0" y="${y-LH/2}" width="${PAD+W}" height="${LH}" fill="#FFFFFF" fill-opacity="0.022"/>`;
-    s+=`<text x="0" y="${y+4}" fill="${col(team)}" font-size="12" font-weight="600">${team===HUT?'__TEAM_HOME_SHORT__':'__TEAM_AWAY_SHORT__'}</text>`;
+    s+=`<text x="0" y="${y+4}" fill="${col(team)}" font-size="12" font-weight="600">${team===HUT?'HUTNIK':'POGOŃ-SOKÓŁ'}</text>`;
     s+=`<line x1="${PAD}" y1="${y}" x2="${PAD+W}" y2="${y}" stroke="var(--line)" stroke-width="1"/>`;
-    E.filter(e=>e.tag==='III STREFA'&&e.team===team&&inSet(MC.qs,e)&&MC.ist.has(istOf(e))).forEach(e=>{
+    E.filter(e=>e.tag==='III STREFA'&&e.team===team&&e.b>=t0-4&&e.b<t1&&MC.ist.has(istOf(e))).forEach(e=>{
       const x=X(Math.max(e.b,t0)), st=istOf(e), c=ISTCOL[st];
       const itip=`class="pt" data-tip="<b>III STREFA · ${st.toLowerCase()}</b><div class='t'>${tName(e.team)} · ${mmss(e.b)}</div>"`;
       s+= st==='UDANA' ? glyph('filled', x, y, 7, c, itip)
@@ -821,9 +762,9 @@ function renderIIITimeline(){
 }
 function renderMasterTimeline(){
   const tl=document.getElementById('tlm');
-  const [t0,t1]=envQ(MC.qs);
+  const [t0,t1]=fragT(MC.frag);
   const W=1000,LH=32,PAD=170;
-  const inT=e=>inSet(MC.qs,e);
+  const inT=e=>e.b>=t0-4&&e.b<t1;
   const X=t=>PAD+(Math.max(t,t0)-t0)/(t1-t0)*W;
   const okbad=(e,wl,pl)=>has(e,wl)?glyphMark('filled','var(--ok)',e):has(e,pl)?glyphMark('ring','var(--bad)',e):tick('var(--neut)',e);
   let y=0;
@@ -865,7 +806,8 @@ function renderMasterTimeline(){
   tl.querySelectorAll('.pt').forEach(p=>{p.addEventListener('mousemove',ev=>showTip(ev,p.dataset.tip));p.addEventListener('mouseleave',hideTip);});
 }
 function renderDuels(){
-  const inT=e=>inSet(MC.qs,e);
+  const [t0,t1]=fragT(MC.frag);
+  const inT=e=>e.b>=t0-4&&e.b<t1;
   const G=tag=>E.filter(e=>e.tag===tag&&inT(e));
   const pct=(n,tot)=>tot?Math.round(n/tot*100):0;
   const stack=(pairs,tot)=>`<div class="b" style="height:12px;margin:4px 0 8px">${pairs.filter(([,n])=>n>0).map(([c,n,ti])=>`<i title="${ti}: ${n}" style="display:block;height:100%;float:left;width:${n/tot*100}%;background:${c};opacity:.9"></i>`).join('')}</div>`;
@@ -894,7 +836,7 @@ function renderDuels(){
   }
   { const g=G('ODBIÓR'), ich=g.filter(e=>has(e,'ICH POŁOWA')).length, nas=g.filter(e=>has(e,'NASZA POŁOWA')).length;
     cards.push(`<div class="card"><h3>ODBIORY — strony boiska</h3><div class="n">${g.length} odbiorów · na ich połowie ${pct(ich,g.length)}%</div>`+
-      (g.length?stack([['var(--team-home)',ich,'ich połowa'],['var(--neut)',nas,'nasza połowa']],g.length)+wrow('ICH POŁOWA',ich,g.length,'var(--team-home)')+wrow('NASZA POŁOWA',nas,g.length,'var(--neut)'):'<div class="n">brak we fragmencie</div>')+`</div>`);
+      (g.length?stack([['var(--hut)',ich,'ich połowa'],['var(--neut)',nas,'nasza połowa']],g.length)+wrow('ICH POŁOWA',ich,g.length,'var(--hut)')+wrow('NASZA POŁOWA',nas,g.length,'var(--neut)'):'<div class="n">brak we fragmencie</div>')+`</div>`);
   }
   document.getElementById('duels-grid').innerHTML=cards.join('');
   document.querySelectorAll('#tlm .pt, #duels-grid .pt').forEach(p=>{p.addEventListener('mousemove',ev=>showTip(ev,p.dataset.tip));p.addEventListener('mouseleave',hideTip);});
@@ -912,8 +854,9 @@ const cards=[
   {title:'Pojedynki 1x1 OFF', tag:'1x1 OFF', rows:[['WYGRANY','ok'],['PRZEGRANY','bad']]},
   {title:'Pojedynki 1x1 DEF.', tag:'1x1 DEF.', rows:[['WYGRANY','ok'],['PRZEGRANY','bad']]},
   {title:'Pierwszy kontakt', tag:'PIERWSZY KONTAKT', rows:[['WYGRANY','ok'],['PRZEGRANY','bad'],['STRATA','bad'],['POSIADANIE','ok']]},
+  {title:'Wyprowadzenie: skuteczne / nie', tags:['SKUTECZNY','NISKUTECZNY'], rows:null},
 ];
-const SEM={'REAKCJA':'var(--ok)','WYGRANY':'var(--ok)','UDANA':'var(--ok)','POSIADANIE':'var(--ok)','ICH POŁOWA':'var(--team-home)','NASZA POŁOWA':'var(--neut)','BRAK REAKCJI':'var(--bad)','PRZEGRANY':'var(--bad)','STRATA':'var(--bad)','NIEUDANA':'var(--bad)'};
+const SEM={'REAKCJA':'var(--ok)','WYGRANY':'var(--ok)','UDANA':'var(--ok)','POSIADANIE':'var(--ok)','ICH POŁOWA':'var(--hut)','NASZA POŁOWA':'var(--neut)','BRAK REAKCJI':'var(--bad)','PRZEGRANY':'var(--bad)','STRATA':'var(--bad)','NIEUDANA':'var(--bad)'};
 document.getElementById('cards').innerHTML=cards.map(c=>{
   if(c.rows===null){
     const a=E.filter(e=>e.tag==='SKUTECZNY').length, b=E.filter(e=>e.tag==='NISKUTECZNY').length, mx=Math.max(a,b);

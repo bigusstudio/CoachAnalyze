@@ -102,15 +102,23 @@ def _norm_team(value):
 
 
 def build_team_lookup(teams):
-    """{'us': {'name': ..., 'short': ...}, ...} -> {znormalizowana nazwa: strona}.
+    """{'us': {'name': ..., 'short': ..., 'source_names': [...]}, ...} -> {nazwa: strona}.
 
     Silnik nie odgaduje nazw klubów — dostaje je w konfiguracji (KONTRAKT_CLI.md).
+
+    `source_names` to nazwy tak, jak zapisał je LiveTag. Są osobnym polem, bo nazwa
+    wyświetlana w raporcie nie musi być tą z eksportu: klub bywa otagowany skrótem,
+    z literówką albo pod starą nazwą, a raport ma pokazywać nazwę bieżącą. Bez tego
+    pola każda zmiana zapisu w LiveTag wymagałaby zmiany nazwy klubu w aplikacji.
     """
     lookup = {}
     for side in ("us", "them"):
         cfg = (teams or {}).get(side) or {}
         for key in ("name", "short"):
             value = cfg.get(key)
+            if value:
+                lookup[_norm_team(value)] = side
+        for value in cfg.get("source_names") or ():
             if value:
                 lookup[_norm_team(value)] = side
     return lookup

@@ -84,10 +84,13 @@ def write_json(path, payload, indent=1):
 def log_render(report):
     """Raport renderu na stderr. Stdout jest zarezerwowany na `meta.json`.
 
-    Dwie rzeczy, których nie widać po samym kodzie wyjścia:
-    - `unresolved_placeholders` — szablon v17 ma wstawione na sztywno herby klubu
-      referencyjnego jako `__LOGO_HUT__` / `__LOGO_POG__`. Raport wysłany z nimi
-      pokazuje puste obrazki.
+    Cztery rzeczy, których nie widać po samym kodzie wyjścia:
+    - `unresolved_placeholders` — znacznik szablonu, którego render nie wypełnił.
+      Po poprawnym renderze pusto; niepusto znaczy uszkodzony szablon.
+    - `teams_defaulted` — nazwa drużyny podstawiona zapasowo, bo nie było jej ani
+      w konfiguracji, ani w danych. Raport wychodzi z „Drużyna A/B" w nagłówku.
+    - `crests_generated` — herb wygenerowany (biały krążek z literą) zamiast wczytanego
+      z pliku. Raport dla klubu powinien nieść jego herb.
     - `tag_mismatch` — szablon liczy po nazwie tagu, archiwum po pojęciu kanonicznym.
       Rozjazd znaczy, że coach i porównanie sezonowe zobaczą inne liczby.
     """
@@ -95,6 +98,17 @@ def log_render(report):
         print(
             "UWAGA: szablon zawiera nierozwiązane znaczniki: "
             + ", ".join(report["unresolved_placeholders"]),
+            file=sys.stderr,
+        )
+    for side in report["teams_defaulted"]:
+        print(
+            "UWAGA: brak nazwy drużyny '{}' w konfiguracji i w danych — "
+            "podstawiono '{}'".format(side, report["teams"][side]),
+            file=sys.stderr,
+        )
+    for side in report["crests_generated"]:
+        print(
+            "UWAGA: brak herbu drużyny '{}' w konfiguracji — wstawiono zastępczy".format(side),
             file=sys.stderr,
         )
     for mismatch in report["tag_mismatch"]:
@@ -132,7 +146,10 @@ def cmd_build(args) -> int:
     if args.out_metrics:
         write_json(args.out_metrics, metrics_pack)
 
-    html, report = render.render(frame, palette=palette, metrics=metrics_pack)
+    html, report = render.render(
+        frame, palette=palette, metrics=metrics_pack,
+        canon_result=canon_result, config=config,
+    )
     render.write(args.out_html, html)
     log_render(report)
 

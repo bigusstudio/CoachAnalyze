@@ -19,8 +19,18 @@
         { "index": 1, "pole": "b", "v23": -0.4, "teraz": 0.0 }
       ],
       "_v23_data_roznice": "Jedyne dopuszczone różnice wobec v23 — przycięcie ujemnego `begin` (CHANGELOG 0.4.0). Każda inna różnica w DATA jest błędem, nie powodem do aktualizacji wzorca.",
-      "szablon_generacja": "v17",
-      "_szablon_generacja": "engine/templates/dashboard_template.html stoi na szablonie v17 (tym, który dostarczono z build_dashboard.py), a v23 to nowsza generacja UI. DANE wstrzykiwane w oba są identyczne, różni się sam szablon. Po podmianie szablonu na v23 zmienić tę wartość na 'v23' — test to wymusza.",
+      "szablon_generacja": "v23-noname",
+      "_szablon_generacja": "engine/templates/dashboard_template.html powstał z livetag_dashboard_noname_1.html (generacja v23, już zanonimizowana). Poprzednia generacja leży w engine/templates/ARCHIWUM/v17.html — miała nazwy i herby Hutnika wpisane na sztywno. Po każdej podmianie szablonu zmienić tę wartość; test to wymusza.",
+
+      "noname_html": "livetag_dashboard_noname_1.html",
+      "_noname_html": "Raport v23 po anonimizacji: DRUŻYNA A/B zamiast nazw klubów, herby zastępcze. Wzorzec odbioru dla renderu. Poza repozytorium (.gitignore) — niesie dane meczowe inline.",
+      "noname_teams": {
+        "us":   { "name": "Drużyna A", "color": "#E6A23C", "crest": "crest_home.svg", "source_names": ["HUTNIK KRAKÓW"] },
+        "them": { "name": "Drużyna B", "color": "#5CA8E0", "crest": "crest_away.svg", "source_names": ["POGOŃ-SOKÓŁ LUBACZÓW"] }
+      },
+      "_noname_teams": "Konfiguracja odtwarzająca wzorzec. `source_names` to nazwy z eksportu, `name` to nazwa wyświetlana — rozdzielone, bo raport ma pokazywać nazwę bieżącą, a nie tę, którą klub wpisał w LiveTag.",
+      "noname_css_alias": { "--team-home": "--hut", "--team-away": "--pog" },
+      "_noname_css_alias": "Jedyna zamierzona różnica strukturalna wobec wzorca: zmienne CSS przestały nazywać się od klubów. Test cofa tę zmianę przed porównaniem, żeby kryterium 'różni się wyłącznie dwoma zdarzeniami' dało się sprawdzić bajtowo.",
       "_zmiana_wzorca": "0.4.0 — ujemny `begin` przycinany do zera w parserze. Zmieniły się DWA zdarzenia (b: -3.2 -> 0.0 oraz -0.4 -> 0.0), nic poza tym; half_split bez zmian (2733.6). Poprzedni skrót: sha256:75083d3e…",
       "sha256_data": "sha256:57fe103a20486036e33611753dded17248ea51740c4a3b8619a3dc2a19e06381",
       "sha256_pal": "sha256:3fd5e995347936c5508386d70f680c125be3ebad22fe90b0a0695580523e6d62",

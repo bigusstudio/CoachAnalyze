@@ -63,18 +63,30 @@ def test_data_kompaktowo_pal_ze_spacjami():
 
 
 def test_render_nie_zmienia_niczego_poza_placeholderami():
-    """Najmocniejszy niezmiennik tego modułu: HTML to szablon plus dwie podmiany.
+    """Najmocniejszy niezmiennik tego modułu: HTML to szablon plus same podmiany.
 
     Odwracamy wstrzyknięcie i porównujemy z szablonem bajt w bajt. Gdyby render
     dopisywał cokolwiek od siebie — nagłówek, znacznik czasu, wersję silnika —
-    porównanie raportu z wzorcem v23 przestałoby cokolwiek znaczyć.
+    porównanie raportu z raportem produkcyjnym przestałoby cokolwiek znaczyć.
     """
+    # Nazwy dobrane tak, żeby każda wstawiona wartość była w dokumencie unikalna
+    # i dała się jednoznacznie cofnąć. Przy zwykłych nazwach („A") odwrócenie
+    # sprawdzałoby siebie samo, a nie render.
+    config = {"teams": {
+        "us": {"name": "ZzAlfa", "short": "ZzAlfaSkrot", "color": "#010203"},
+        "them": {"name": "ZzBeta", "short": "ZzBetaSkrot", "color": "#040506"},
+    }}
     szablon = render.load_template()
-    html, _ = render.render(RAMKA, palette={"tags": {}, "labels": {}})
+    html, _ = render.render(RAMKA, palette={"tags": {}, "labels": {}}, config=config)
 
     dane = json.dumps(render.view_data(RAMKA), ensure_ascii=False, separators=(",", ":"))
     paleta = json.dumps({"tags": {}, "labels": {}}, ensure_ascii=False)
     odwrocone = html.replace(dane + ";", "/*__DATA__*/;").replace(paleta + ";", "/*__PAL__*/;")
+
+    slots, _ = render.team_slots(RAMKA, config["teams"])
+    # Malejąco po długości wstawionej wartości — krótsza nie może zjeść fragmentu dłuższej.
+    for placeholder in sorted(slots, key=lambda p: len(slots[p]), reverse=True):
+        odwrocone = odwrocone.replace(slots[placeholder], placeholder)
 
     assert odwrocone == szablon
 
@@ -101,10 +113,20 @@ def test_bez_json_paleta_jest_pusta_a_nie_zmyslona():
 
 
 # ------------------------------------------------------------------ raport renderu
-def test_raport_wskazuje_nierozwiazane_znaczniki():
-    """Szablon v17 ma herby klubu referencyjnego wstawione na sztywno."""
+def test_poprawny_render_nie_zostawia_znacznikow():
+    """Szablon nie zna klubu — po renderze nie ma prawa zostać ani jeden `__COŚ__`."""
     _, raport = render.render(RAMKA)
-    assert raport["unresolved_placeholders"] == ["__LOGO_HUT__", "__LOGO_POG__"]
+    assert raport["unresolved_placeholders"] == []
+
+
+def test_znacznik_usuniety_z_szablonu_przerywa_render(monkeypatch):
+    """Edycja szablonu, która zjada znacznik drużyny, ma być błędem, nie cichą stratą."""
+    okrojony = render.load_template().replace("__TEAM_AWAY_LABEL__", "Rywal")
+    monkeypatch.setattr(render, "load_template", lambda path=None: okrojony)
+
+    with pytest.raises(EngineError) as exc:
+        render.render(RAMKA)
+    assert "__TEAM_AWAY_LABEL__" in str(exc.value)
 
 
 def test_crosscheck_wykrywa_rozjazd_szablonu_z_modelem():

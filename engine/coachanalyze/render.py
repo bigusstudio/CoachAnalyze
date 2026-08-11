@@ -1,26 +1,32 @@
-"""canonical_events + metryki -> HTML raportu (szablon v17+).
+"""canonical_events + metryki -> HTML raportu (szablon v23-noname).
 
 Szablon jest samowystarczalny i nie ma zależności zewnętrznych poza fontami. To cecha, nie brak.
 
-Wstrzykiwanie danych działa jak w oryginalnym `build_dashboard.py`: dwa placeholdery
-w komentarzu JS, podmiana razem ze średnikiem, DATA serializowane kompaktowo, PAL
-domyślnie. Serializacja jest częścią wyjścia — zmiana separatorów zmienia bajty pliku
-i unieważnia porównanie z v23.
+Wstrzykiwanie danych działa jak w oryginalnym `build_dashboard.py`: placeholdery w komentarzu
+JS, podmiana razem ze średnikiem, DATA serializowane kompaktowo, PAL domyślnie. Serializacja
+jest częścią wyjścia — zmiana separatorów zmienia bajty pliku.
+
+Szablon nie zna żadnego klubu. Nazwy, barwy i herby przychodzą z `config.teams` i wchodzą
+w miejsce znaczników `__TEAM_*__` / `__LOGO_*__`. Poprzednia generacja szablonu (v17) miała
+nazwy i herby Hutnika wpisane na sztywno — leży w `templates/ARCHIWUM/v17.html`.
 
 ASERCJA LICZBY WYSTĄPIEŃ, NIE SAMEJ OBECNOŚCI. Powód jest historyczny i kosztował
 odtwarzanie szablonu z kopii: przy v13 skrypt podmiany trafił w komentarz `/* timeline */`
-w CSS i zniszczył plik. Podmiana wzorca, który występuje zero razy albo więcej niż raz,
-jest błędem — nigdy „prawie dobrze".
+w CSS i zniszczył plik. Podmiana wzorca, który występuje zero razy, jest błędem — nigdy
+„prawie dobrze". `/*__DATA__*/` i `/*__PAL__*/` muszą wystąpić DOKŁADNIE raz (to `const X = …;`,
+drugie wystąpienie znaczy uszkodzony szablon); znaczniki drużyn co najmniej raz, bo z natury
+powtarzają się w wielu miejscach.
 
-Sprawdzamy dwa razy: PRZED podmianą, że każdy placeholder jest dokładnie raz, i PO niej,
-że żaden nie został. Sam warunek `'/*__DATA__*/' in html` przepuściłby szablon bez
-średnika — `str.replace` nie trafiłby w nic, nie zgłosiłby błędu, a przeglądarka
-dostałaby `const DATA = ;`. Raport wyszedłby pusty, wdrożenie zielone.
+Sprawdzamy dwa razy: przed podmianą — że wzorce są tam, gdzie mają być, i po niej — że żaden
+nie został. Sam warunek `'/*__DATA__*/' in html` przepuściłby szablon bez średnika:
+`str.replace` nie trafiłby w nic, nie zgłosiłby błędu, a przeglądarka dostałaby `const DATA = ;`.
+Raport wyszedłby pusty, wdrożenie zielone.
 
 Nie używamy `assert` — `python -O` wycina instrukcje `assert` z bajtkodu, a to jest
 kontrola poprawności wyjścia, nie sprawdzenie założeń w testach.
 """
 
+import base64
 import json
 import os
 import re
@@ -29,20 +35,44 @@ from .errors import EngineError
 
 TEMPLATE_FILENAME = "dashboard_template.html"
 
-# Placeholdery szablonu. Podmieniamy RAZEM ZE ŚREDNIKIEM — inaczej `const DATA = ;`.
+# Placeholdery danych. Podmieniamy RAZEM ZE ŚREDNIKIEM — inaczej `const DATA = ;`.
 DATA_PLACEHOLDER = "/*__DATA__*/"
 PAL_PLACEHOLDER = "/*__PAL__*/"
 
+# Znaczniki drużyn. `us` to gospodarz raportu (klub, dla którego powstaje), `them` to rywal.
+TEAM_SLOTS = (("us", "HOME"), ("them", "AWAY"))
+
+# Barwy zapasowe, gdy konfiguracja ich nie niesie. Prezentacja, nie dane — raport bez
+# jakiejkolwiek barwy jest nieczytelny, a wykres bez danych zostaje pusty tak czy tak.
+DEFAULT_COLORS = {"us": "#E6A23C", "them": "#5CA8E0"}
+
+# Nazwa zapasowa, gdy nie ma jej ani w konfiguracji, ani w danych. Neutralna i widocznie
+# zastępcza — nie da się jej pomylić z nazwą klubu. Render nie przerywa z tego powodu:
+# jest ostatnim krokiem i wywrócenie się tutaj kasowałoby całe przetworzenie, a brak
+# nazwy widać w raporcie od razu. Fakt podstawienia wraca w `teams_defaulted`.
+FALLBACK_LABELS = {"us": "Drużyna A", "them": "Drużyna B"}
+
+# Przygaszenie barwy drużyny. Zapis musi być identyczny jak w szablonie źródłowym.
+DIM_ALPHA = ".16"
+
+# Typ MIME herbu idzie za rozszerzeniem pliku. Wpisany na sztywno w szablonie
+# wyświetlałby PNG jako SVG i odwrotnie — przeglądarka pokazuje wtedy pusty kwadrat.
+CREST_MIME = {
+    ".svg": "image/svg+xml",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
+    ".gif": "image/gif",
+}
+
 # Paleta zastępcza, gdy wywołano bez `--json`. Puste słowniki, nie zmyślone kolory:
-# szablon ma zapasową barwę (`||'#9DAFA6'`), a `meta.warnings` niesie NO_JSON.
+# szablon ma barwę zapasową (`||'#9DAFA6'`), a `meta.warnings` niesie NO_JSON.
 EMPTY_PALETTE = {"tags": {}, "labels": {}}
 
-# Pozostałe znaczniki szablonu (`__LOGO_HUT__`, `__LOGO_POG__`). Nie podmieniamy ich
-# tutaj — herby przychodzą z konfiguracji klubu i nie są częścią kontraktu z silnikiem.
-# Raportujemy je, żeby nikt nie wysłał klientowi raportu z pustym herbem.
 LEFTOVER_RE = re.compile(r"__[A-Z][A-Z0-9_]*__")
 
-# Tagi, po których szablon v17 liczy samodzielnie w JS. Służą wyłącznie kontroli
+# Tagi, po których szablon liczy samodzielnie w JS. Służą wyłącznie kontroli
 # rozjazdu — patrz `crosscheck`.
 TEMPLATE_TAGS = (
     ("shot", "STRZAŁ"),
@@ -66,58 +96,196 @@ def load_template(path=None):
         raise EngineError("Nie udało się wczytać szablonu raportu: {}".format(path)) from exc
 
 
-def view_data(frame):
+# ------------------------------------------------------------------ drużyny
+def _detected_teams(frame):
+    """Nazwy drużyn wykryte w danych, w kolejności pierwszego wystąpienia.
+
+    Wyjście awaryjne, gdy render wywołano bez konfiguracji (np. podgląd przed
+    dopasowaniem klubów). Silnik nie odgaduje, KTÓRA drużyna jest gospodarzem —
+    bierze kolejność z pliku i tyle. Przy `--config` decyduje konfiguracja.
+    """
+    kolejnosc = []
+    for event in frame.get("events") or []:
+        team = event.get("team")
+        if team is not None and team not in kolejnosc:
+            kolejnosc.append(team)
+    return kolejnosc
+
+
+def hex_to_dim(color):
+    """`#E6A23C` -> `rgba(230,162,60,.16)`. Zapis bez spacji, jak w szablonie."""
+    value = (color or "").lstrip("#")
+    if len(value) != 6:
+        raise EngineError("Barwa drużyny musi być zapisem #RRGGBB, jest: {!r}".format(color))
+    try:
+        r, g, b = (int(value[i:i + 2], 16) for i in (0, 2, 4))
+    except ValueError:
+        raise EngineError("Barwa drużyny nie jest liczbą szesnastkową: {!r}".format(color))
+    return "rgba({},{},{},{})".format(r, g, b, DIM_ALPHA)
+
+
+def crest_data_uri(path):
+    """Plik herbu -> adres `data:`. Typ MIME z rozszerzenia, nigdy zgadywany z treści."""
+    rozszerzenie = os.path.splitext(path)[1].lower()
+    mime = CREST_MIME.get(rozszerzenie)
+    if mime is None:
+        raise EngineError(
+            "Nieobsługiwany format herbu ({}): {}. Dozwolone: {}".format(
+                rozszerzenie or "brak rozszerzenia", path, ", ".join(sorted(CREST_MIME))
+            )
+        )
+    try:
+        with open(path, "rb") as fh:
+            payload = base64.b64encode(fh.read()).decode("ascii")
+    except OSError as exc:
+        raise EngineError("Nie udało się wczytać herbu: {}".format(path)) from exc
+    return "data:{};base64,{}".format(mime, payload)
+
+
+def placeholder_crest(label, color):
+    """Herb zastępczy: biały krążek, obwódka w barwie klubu, pierwsza litera nazwy.
+
+    Świadomie wygląda na zastępnik i nikt go nie pomyli z herbem klubu. Alternatywą
+    jest `<img src="">`, czyli ikona zepsutego obrazka w raporcie wysłanym klientowi.
+    """
+    litera = (label or "?").strip()[:1].upper() or "?"
+    svg = (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">'
+        '<circle cx="50" cy="50" r="46" fill="#FFFFFF"/>'
+        '<circle cx="50" cy="50" r="40" fill="none" stroke="{c}" stroke-width="4"/>'
+        '<text x="50" y="66" text-anchor="middle" font-family="Arial,sans-serif" '
+        'font-size="46" font-weight="700" fill="{c}">{l}</text></svg>'
+    ).format(c=color, l=litera)
+    return "data:image/svg+xml;base64," + base64.b64encode(svg.encode("utf-8")).decode("ascii")
+
+
+def team_slots(frame, teams=None):
+    """{'__TEAM_HOME__': …, …} — wartości do wstawienia w miejsce znaczników drużyn.
+
+    Trzy formy nazwy, bo szablon używa ich w trzech różnych rolach:
+
+    - `__TEAM_*__`      klucz dopasowania, ta sama wartość co w `DATA[].team`.
+      Wersja wielkimi literami, bo tak zapisuje nazwy LiveTag i tak wyglądały oba
+      raporty referencyjne. Wielkość liter nie ma tu znaczenia funkcjonalnego —
+      render wpisuje ten sam napis po obu stronach porównania.
+    - `__TEAM_*_LABEL__` nazwa wyświetlana (nagłówek, legendy, karty).
+    - `__TEAM_*_SHORT__` etykieta toru na osi czasu, gdzie miejsca jest mało.
+    """
+    wykryte = _detected_teams(frame)
+    slots = {}
+    podstawione = []
+
+    for indeks, (side, slot) in enumerate(TEAM_SLOTS):
+        cfg = (teams or {}).get(side) or {}
+        label = cfg.get("name") or (wykryte[indeks] if indeks < len(wykryte) else "")
+        if not label:
+            label = FALLBACK_LABELS[side]
+            podstawione.append(side)
+
+        color = cfg.get("color") or DEFAULT_COLORS[side]
+        crest = cfg.get("crest")
+
+        slots["__TEAM_{}__".format(slot)] = label.upper()
+        slots["__TEAM_{}_LABEL__".format(slot)] = label
+        slots["__TEAM_{}_SHORT__".format(slot)] = cfg.get("short") or label.upper()
+        slots["__TEAM_{}_COLOR__".format(slot)] = color
+        slots["__TEAM_{}_DIM__".format(slot)] = hex_to_dim(color)
+        slots["__LOGO_{}__".format(slot)] = (
+            crest_data_uri(crest) if crest else placeholder_crest(label, color)
+        )
+
+    return slots, podstawione
+
+
+def view_data(frame, canon_result=None, teams=None):
     """Wycinek ramki, który trafia do przeglądarki.
 
     Wyłącznie `events` i `half_split`. Pozostałe klucze `prep_frame` (nagłówki
     eksportu, odcisk formatu, nazwa kolumny zawodnika) opisują plik wejściowy
     i nie mają czego szukać w raporcie pod publicznym adresem `/r/{club_key}/{token}`.
 
-    Kolejność kluczy jest kolejnością z v23 — `json.dumps` zachowuje kolejność
-    wstawiania, a plik wynikowy porównujemy bajtowo.
+    Gdy konfiguracja niesie drużyny, `team` w zdarzeniu zastępujemy nazwą z konfiguracji,
+    wybraną po `team_side` z modelu kanonicznego. Dwa powody:
+
+    - Szablon porównuje `e.team` z nazwą klubu przez RÓWNOŚĆ. Klub, który w kolejnym
+      eksporcie zapisze nazwę inaczej (inna wielkość liter, literówka, zmiana nazwy
+      w LiveTag), dostałby raport z zerem zdarzeń dla własnej drużyny i bez ostrzeżenia.
+      Po tej podmianie dopasowanie robi model kanoniczny, a nie napis w JS.
+    - Surowy napis z eksportu przestaje wyciekać do raportu pod publicznym adresem.
+
+    Nazwa, której model nie rozpoznał (`team_side: none` przy niepustym `team`),
+    ZOSTAJE bez zmian. Skasowanie jej przeniosłoby zdarzenie do sekcji „bez przypisania
+    drużyny" i zmieniło liczby; ostrzeżenie `UNKNOWN_TEAM` już o tym mówi.
     """
-    return {
-        "events": frame.get("events") or [],
-        "half_split": frame.get("half_split"),
-    }
+    events = frame.get("events") or []
+    dane = {"events": events, "half_split": frame.get("half_split")}
 
+    if not teams or canon_result is None:
+        return dane
 
-def assert_placeholders(template):
-    """Każdy placeholder dokładnie raz — razem ze średnikiem.
-
-    Zwraca liczby wystąpień; podnosi `EngineError` przy zerze i przy powtórzeniu.
-    Powód asercji na LICZBIE, a nie na obecności: patrz nagłówek modułu (incydent v13).
-    """
-    counts = {}
-    problems = []
-    for placeholder in (DATA_PLACEHOLDER, PAL_PLACEHOLDER):
-        target = placeholder + ";"
-        count = template.count(target)
-        counts[placeholder] = count
-        if count == 0:
-            bare = template.count(placeholder)
-            problems.append(
-                "{} — brak wzorca do podmiany{}".format(
-                    target,
-                    " (placeholder jest, ale bez średnika)" if bare else "",
-                )
+    canon_events = canon_result.get("events") or []
+    if len(canon_events) != len(events):
+        raise EngineError(
+            "Model kanoniczny ma {} zdarzeń, ramka {} — nie da się przypisać drużyn".format(
+                len(canon_events), len(events)
             )
-        elif count > 1:
-            problems.append("{} — {} wystąpienia, oczekiwano jednego".format(target, count))
+        )
 
-    if problems:
-        raise EngineError("Szablon raportu jest niezgodny: " + "; ".join(problems))
-    return counts
+    nazwy = {}
+    for side, _slot in TEAM_SLOTS:
+        cfg = (teams or {}).get(side) or {}
+        if cfg.get("name"):
+            nazwy[side] = cfg["name"].upper()
+
+    dane["events"] = [
+        dict(raw, team=nazwy.get(canonical["team_side"], raw.get("team")))
+        for raw, canonical in zip(events, canon_events)
+    ]
+    return dane
 
 
-def inject(template, data, palette):
-    """Podmiana placeholderów na dane. Serializacja jak w `build_dashboard.py`.
+# ------------------------------------------------------------------ podmiana
+def assert_placeholders(template, slots=None):
+    """Kontrola szablonu PRZED podmianą. Podnosi `EngineError` przy każdym braku.
+
+    `/*__DATA__*/` i `/*__PAL__*/` — dokładnie raz, razem ze średnikiem.
+    Znaczniki drużyn — co najmniej raz; z natury powtarzają się w wielu miejscach,
+    więc sztywna liczba psułaby się przy każdej edycji szablonu.
+    """
+    liczby = {}
+    problemy = []
+
+    for placeholder in (DATA_PLACEHOLDER, PAL_PLACEHOLDER):
+        wzorzec = placeholder + ";"
+        ile = template.count(wzorzec)
+        liczby[placeholder] = ile
+        if ile == 0:
+            golo = template.count(placeholder)
+            problemy.append("{} — brak wzorca do podmiany{}".format(
+                wzorzec, " (placeholder jest, ale bez średnika)" if golo else ""))
+        elif ile > 1:
+            problemy.append("{} — {} wystąpienia, oczekiwano jednego".format(wzorzec, ile))
+
+    for placeholder in sorted(slots or {}):
+        ile = template.count(placeholder)
+        liczby[placeholder] = ile
+        if ile == 0:
+            problemy.append("{} — znacznik zniknął z szablonu".format(placeholder))
+
+    if problemy:
+        raise EngineError("Szablon raportu jest niezgodny: " + "; ".join(problemy))
+    return liczby
+
+
+def inject(template, data, palette, slots=None):
+    """Podmiana znaczników na dane. Serializacja jak w `build_dashboard.py`.
 
     DATA kompaktowo (`separators=(',', ':')`) — 294 zdarzenia w jednej linii.
     PAL domyślnie (ze spacjami) — kilkadziesiąt kolorów, czytelne przy podglądzie.
     Ta asymetria jest w oryginale i zostaje: zmiana separatorów zmienia bajty pliku.
     """
-    assert_placeholders(template)
+    slots = slots or {}
+    assert_placeholders(template, slots)
 
     html = template.replace(
         DATA_PLACEHOLDER + ";",
@@ -127,25 +295,30 @@ def inject(template, data, palette):
         PAL_PLACEHOLDER + ";",
         json.dumps(palette, ensure_ascii=False) + ";",
     )
+    # Malejąco po długości. Domykające `__` sprawia, że `__TEAM_HOME__` nie jest
+    # fragmentem `__TEAM_HOME_LABEL__` i kolejność nie ma dziś znaczenia — ale
+    # znacznik dodany kiedyś bez domknięcia rozbiłby podmianę po cichu.
+    for placeholder in sorted(slots, key=len, reverse=True):
+        html = html.replace(placeholder, slots[placeholder])
 
-    remaining = [p for p in (DATA_PLACEHOLDER, PAL_PLACEHOLDER) if p in html]
-    if remaining:
+    zostalo = [p for p in (DATA_PLACEHOLDER, PAL_PLACEHOLDER) if p in html]
+    if zostalo:
         raise EngineError(
             "Podmiana danych w szablonie nie zadziałała — placeholdery zostały: "
-            + ", ".join(remaining)
+            + ", ".join(zostalo)
         )
     return html
 
 
 def unresolved_placeholders(html):
-    """Znaczniki `__COŚ__`, które przetrwały render (herby klubów w szablonie v17)."""
+    """Znaczniki `__COŚ__`, które przetrwały render. Po poprawnym renderze pusto."""
     return sorted(set(LEFTOVER_RE.findall(html)))
 
 
 def crosscheck(data, metrics):
     """Czy raport w przeglądarce pokaże to samo, co pójdzie do archiwum.
 
-    Szablon v17 liczy w JS po SUROWEJ nazwie tagu (`e.tag==='STRZAŁ'`), a model
+    Szablon liczy w JS po SUROWEJ nazwie tagu (`e.tag==='STRZAŁ'`), a model
     kanoniczny i archiwum liczą po pojęciu (`concept == 'shot'`). Przy domyślnym
     profilu to te same liczby. Profil klubu, który mapuje np. `STRZAŁ NASZA` na
     `shot`, rozjeżdża je natychmiast: coach widzi w raporcie zero strzałów, a
@@ -160,38 +333,50 @@ def crosscheck(data, metrics):
     events = data.get("events") or []
     sides = metrics.get("sides") or {}
 
-    mismatches = []
+    rozjazdy = []
     for concept, tag in TEMPLATE_TAGS:
-        in_template = sum(1 for e in events if e.get("tag") == tag)
-        key = "shots" if concept == "shot" else concept
-        in_metrics = sum((sides.get(side) or {}).get(key, {}).get("total", 0) for side in sides)
-        if in_template != in_metrics:
-            mismatches.append({
+        w_szablonie = sum(1 for e in events if e.get("tag") == tag)
+        klucz = "shots" if concept == "shot" else concept
+        w_modelu = sum((sides.get(side) or {}).get(klucz, {}).get("total", 0) for side in sides)
+        if w_szablonie != w_modelu:
+            rozjazdy.append({
                 "concept": concept,
                 "template_tag": tag,
-                "template_count": in_template,
-                "metrics_count": in_metrics,
+                "template_count": w_szablonie,
+                "metrics_count": w_modelu,
             })
-    return mismatches
+    return rozjazdy
 
 
-def render(frame, palette=None, metrics=None, template_path=None):
+def render(frame, palette=None, metrics=None, canon_result=None, config=None, template_path=None):
     """(html, raport). Raport idzie do logu wykonawcy, nigdy do przeglądarki.
 
-    `metrics` nie jest wstrzykiwane do szablonu: szablon v17 liczy wszystko sam,
+    `metrics` nie jest wstrzykiwane do szablonu: szablon liczy wszystko sam,
     w przeglądarce, ze zdarzeń w `DATA`. Pakiet metryk służy warstwie AI (D5)
     i archiwum — a tutaj wyłącznie kontroli rozjazdu (`crosscheck`).
-    Wstrzyknięcie go zmieniłoby bajty pliku i zerwało porównanie z v23.
     """
+    teams = (config or {}).get("teams")
+
     template = load_template(template_path)
-    data = view_data(frame)
-    html = inject(template, data, palette if palette is not None else EMPTY_PALETTE)
+    slots, teams_defaulted = team_slots(frame, teams)
+    data = view_data(frame, canon_result=canon_result, teams=teams)
+    html = inject(template, data, palette if palette is not None else EMPTY_PALETTE, slots)
 
     return html, {
         "template": template_path or default_template_path(),
         "events": len(data["events"]),
         "bytes": len(html.encode("utf-8")),
         "has_palette": palette is not None,
+        "teams": {
+            side: slots["__TEAM_{}_LABEL__".format(slot)] for side, slot in TEAM_SLOTS
+        },
+        # Nazwa podstawiona zapasowo i herb wygenerowany zamiast wczytanego z pliku.
+        # Jedno i drugie widać w raporcie, ale operator ma się dowiedzieć wcześniej.
+        "teams_defaulted": teams_defaulted,
+        "crests_generated": [
+            side for side, _slot in TEAM_SLOTS
+            if not ((teams or {}).get(side) or {}).get("crest")
+        ],
         "unresolved_placeholders": unresolved_placeholders(html),
         "tag_mismatch": crosscheck(data, metrics),
     }
