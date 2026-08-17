@@ -30,11 +30,13 @@ use CoachAnalyze\Config;
 use CoachAnalyze\Db;
 use CoachAnalyze\EngineRunner;
 use CoachAnalyze\Imports;
+use CoachAnalyze\IndexTerms;
 use CoachAnalyze\Jobs;
 use CoachAnalyze\Mailer;
 use CoachAnalyze\Mappings;
 use CoachAnalyze\Matches;
 use CoachAnalyze\Notifications;
+use CoachAnalyze\PasswordReset;
 use CoachAnalyze\RedisClient;
 use CoachAnalyze\Stats;
 use CoachAnalyze\Storage;
@@ -167,6 +169,16 @@ function przetworz(int $jobId): void
         return;
     }
 
+    if ((string) $job['type'] === PasswordReset::JOB_TYPE) {
+        try {
+            wyslijReset($jobId, (string) ($payload['email'] ?? ''), (int) $job['attempts']);
+        } catch (\Throwable $e) {
+            error_log("run_job {$jobId} (reset hasła): " . $e->getMessage() . "\n" . $e->getTraceAsString());
+            zakoncz($jobId, 4, $e->getMessage());
+        }
+        return;
+    }
+
     $importId = (int) ($payload['import_id'] ?? 0);
     $import = $importId > 0 ? Imports::find($importId) : null;
 
@@ -224,6 +236,26 @@ function wykonajRender(int $jobId, int $importId, array $import): void
         $match['club_away_id'] !== null ? (int) $match['club_away_id'] : null
     );
 
+    /*
+     * Odsyłacze do indeksu współczynników (M1) — TYLKO gdy znamy klub.
+     *
+     * Adres bazowy jest PUBLICZNY (/r/{club_key}/i/…): ten sam wyrenderowany
+     * plik HTML jest serwowany i w panelu, i pod adresem publicznym, więc
+     * odsyłacz musi działać w obu kontekstach bez logowania. Klucz klubu jest
+     * losowy i jest już obecny w każdym publicznym adresie raportu.
+     *
+     * Bez klubu render nie dostaje `index_base` i NICZEGO nie dokleja —
+     * wyjście jest wtedy bajt w bajt takie jak przed M1 (test złoty).
+     */
+    $klubIndeksu = $match['club_home_id'] !== null ? Clubs::find((int) $match['club_home_id']) : null;
+    $opcjeIndeksu = [];
+    if ($klubIndeksu !== null && !empty($klubIndeksu['club_key'])) {
+        $opcjeIndeksu = [
+            'index_base'  => '/r/' . $klubIndeksu['club_key'] . '/i/',
+            'index_links' => IndexTerms::linksFor((int) $klubIndeksu['id']),
+        ];
+    }
+
     $configPath = $dir . '/config.json';
     file_put_contents($configPath, json_encode([
         'match_id'        => $matchId,
@@ -242,7 +274,14 @@ function wykonajRender(int $jobId, int $importId, array $import): void
         ),
         // Korekta kontrastu barw klubu należy do silnika: PHP nie może uruchomić
         // Pythona z warstwy żądań, a arytmetyki koloru nie przepisujemy.
-        'options'         => ['contrast_fix' => true, 'engine_locale' => 'pl_PL'],
+        //
+        // `xg_model` (M3): strzały BEZ xG od analityka dostają wartość z modelu
+        // (`xg_source: model`); wartości ręczne mają bezwzględne pierwszeństwo.
+        // Świadome włączenie: ponowny render meczu, w którym analityk zostawił
+        // luki, pokaże wyższą sumę xG niż poprzedni — meta niesie wtedy
+        // ostrzeżenie XG_MODEL, widoczne na ekranie pokrycia.
+        'options'         => ['contrast_fix' => true, 'engine_locale' => 'pl_PL', 'xg_model' => true]
+            + $opcjeIndeksu,
     ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
 
     $wynik = EngineRunner::build([
@@ -504,6 +543,78 @@ function wyslijMail(int $jobId, int $notificationId): void
 }
 
 /**
+ * Mail z odnośnikiem do resetu hasła.
+ *
+ * TUTAJ, a nie w warstwie żądań, rozstrzyga się, czy konto istnieje —
+ * warstwa żądań kolejkuje każdą prośbę, żeby odpowiedź HTTP była identyczna
+ * dla adresu istniejącego i nieistniejącego (PasswordReset, CLAUDE.md §5).
+ *
+ * SUROWY TOKEN istnieje wyłącznie tu i w treści maila. Do bazy trafia skrót;
+ * `jobs.payload_json` niesie sam adres. Dlatego nieudaną wysyłkę ponawiamy
+ * z NOWYM tokenem — poprzedniego nie ma już skąd wziąć, a `issue()` i tak
+ * unieważnia wcześniejsze nieużyte.
+ */
+function wyslijReset(int $jobId, string $email, int $proba): void
+{
+    $email = trim($email);
+    $user = $email !== '' ? Db::one('SELECT * FROM users WHERE email = :e', ['e' => $email]) : null;
+
+    if ($user === null || (string) ($user['status'] ?? 'active') === 'disabled') {
+        // Adres spoza systemu albo konto wyłączone — prośba obsłużona: ciszą.
+        // Status `done`, nie `failed`: to nie jest awaria, a treść błędu
+        // zdradzałaby na liście zadań, które adresy istnieją.
+        zakoncz($jobId, 0, null);
+        return;
+    }
+
+    if (!Mailer::isConfigured()) {
+        // Bez SMTP nie ma jak dostarczyć odnośnika. Głośno w logu — właściciel
+        // konta czeka na mail, który nie wyjdzie, i ktoś musi o tym wiedzieć.
+        error_log("reset hasła: SMTP nieskonfigurowany — mail dla konta {$user['id']} nie wyjdzie");
+        zakoncz($jobId, 0, null);
+        return;
+    }
+
+    $token = PasswordReset::issue((int) $user['id']);
+
+    $wiadomosc = [
+        'type'  => 'auth.reset',
+        'title' => View::t('reset.mail.title'),
+        'body'  => View::t('reset.mail.body'),
+        'url'   => '/haslo/reset/' . $token,
+    ];
+
+    try {
+        $mailer = Mailer::fromConfig();
+        $mailer->send(
+            (string) $user['email'],
+            (string) $wiadomosc['title'],
+            trescMaila($wiadomosc),
+            trescMailaHtml($wiadomosc)
+        );
+    } catch (\Throwable $e) {
+        error_log("reset hasła {$jobId}: " . $e->getMessage());
+
+        $odstep = Notifications::retryDelay($proba - 1);
+        if ($odstep === null) {
+            zakoncz($jobId, 4, 'Nie udało się wysłać maila resetu hasła po '
+                . Notifications::MAX_PROB_MAILA . ' próbach.');
+            return;
+        }
+        Jobs::requeueLater($jobId, $odstep, sprintf(
+            "Próba %d z %d nie powiodła się, kolejna za %s.",
+            $proba,
+            Notifications::MAX_PROB_MAILA,
+            $odstep >= 60 ? intdiv($odstep, 60) . ' min' : $odstep . ' s'
+        ));
+        return;
+    }
+
+    Audit::log('password.reset_mail_sent', null, 'user', (int) $user['id']);
+    zakoncz($jobId, 0, null);
+}
+
+/**
  * Nieudana wysyłka: zadanie WRACA DO KOLEJKI, a nie kończy się błędem.
  *
  * Raport jest już wygenerowany i zapisany — jego zadanie ma status `done`
@@ -612,6 +723,7 @@ function trescMailaHtml(array $powiadomienie): ?string
         'report.ready'   => View::t('mail.btn.report'),
         'import.pending' => View::t('mail.btn.progress'),
         'report.failed'  => View::t('mail.btn.details'),
+        'auth.reset'     => View::t('mail.btn.reset'),
         default          => View::t('mail.btn.open'),
     };
     $etykietaHtml = htmlspecialchars($etykieta, ENT_QUOTES, 'UTF-8');

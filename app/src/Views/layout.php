@@ -120,6 +120,12 @@ $chmurki = $chrome && Session::userId() !== null
     <a class="side__item<?= $active === 'clubs' ? ' is-active' : '' ?>" href="/kluby">
       <?= View::e(View::t('nav.clubs')) ?>
     </a>
+    <a class="side__item<?= $active === 'index' ? ' is-active' : '' ?>" href="/indeks">
+      <?= View::e(View::t('nav.index')) ?>
+    </a>
+    <a class="side__item<?= $active === 'xg' ? ' is-active' : '' ?>" href="/xg">
+      <?= View::e(View::t('nav.xg')) ?>
+    </a>
     <a class="side__item<?= $active === 'notes' ? ' is-active' : '' ?>" href="/notatki">
       <?= View::e(View::t('nav.notes')) ?>
     </a>

@@ -97,6 +97,31 @@ if ($path === '/login') {
     exit;
 }
 
+/*
+ * RESET HASŁA — trasy przedlogowe, POZA przełącznikiem tras i poza bramkami
+ * ról (skaner test_bramki_rol obejmuje wyłącznie przełącznik). Pilnują ich
+ * limity prób w Redisie i CSRF; odpowiedź jest IDENTYCZNA niezależnie od tego,
+ * czy adres istnieje — rozstrzyga to dopiero proces roboczy (PasswordReset).
+ */
+if ($path === '/haslo/zapomniane') {
+    $method === 'POST' ? handleForgotPassword() : showForgotPassword();
+    exit;
+}
+
+if (preg_match('#^/haslo/reset/([a-f0-9]{64})$#', $path, $m) === 1) {
+    $method === 'POST' ? handlePasswordReset($m[1]) : showPasswordReset($m[1]);
+    exit;
+}
+
+// Hasło indeksu współczynników — PUBLICZNE, bez sesji (M1). Czytelnik raportu
+// publicznego (prezes, sztab) klika odsyłacz przy wskaźniku i ma trafić na
+// definicję, nie na formularz logowania. Zły klucz klubu i złe hasło dają
+// IDENTYCZNE 404 — jak przy raporcie.
+if (preg_match('#^/r/([^/]+)/i/([a-z0-9-]{1,60})$#', $path, $m) === 1 && $method === 'GET') {
+    servePublicIndexTerm(rawurldecode($m[1]), $m[2]);
+    exit;
+}
+
 // Raport publiczny. BEZ SESJI — nie dotykamy tu `Session`, więc przeglądarka
 // czytelnika nie dostaje ciasteczka panelu. Jedyną ochroną jest token w adresie.
 if (preg_match('#^/r/([^/]+)/([^/]+)$#', $path, $m) === 1 && $method === 'GET') {
@@ -226,6 +251,9 @@ switch (true) {
         break;
 
     case preg_match('#^/import/(\d+)/mapowanie$#', $path, $m) === 1 && $method === 'POST':
+        // Profil mapowań decyduje, które zdarzenia wchodzą do metryk — zmiana
+        // tej samej wagi co generowanie raportu, więc i bramka ta sama klasa.
+        requireCan($user, 'mappings');
         requireCsrf();
         saveMapping((int) $m[1], (int) $user['id']);
         break;
@@ -235,6 +263,7 @@ switch (true) {
         break;
 
     case preg_match('#^/kluby/(\d+)/mapowania$#', $path, $m) === 1 && $method === 'POST':
+        requireCan($user, 'mappings');
         requireCsrf();
         updateClubMappings((int) $m[1], (int) $user['id']);
         break;
@@ -244,6 +273,8 @@ switch (true) {
         break;
 
     case preg_match('#^/zadania/(\d+)/ponow$#', $path, $m) === 1 && $method === 'POST':
+        // Ponowienie uruchamia silnik albo wysyłkę poczty — czynność, nie podgląd.
+        requireCan($user, 'generate');
         requireCsrf();
         $id = (int) $m[1];
         // Jedno wywołanie — `retry()` zmienia stan, więc nie wolno go użyć
@@ -393,6 +424,7 @@ switch (true) {
         break;
 
     case $path === '/kluby' && $method === 'POST':
+        requireCan($user, 'clubs');
         requireCsrf();
         saveClub(null, (int) $user['id']);
         break;
@@ -402,11 +434,13 @@ switch (true) {
         break;
 
     case preg_match('#^/kluby/(\d+)$#', $path, $m) === 1 && $method === 'POST':
+        requireCan($user, 'clubs');
         requireCsrf();
         saveClub((int) $m[1], (int) $user['id']);
         break;
 
     case preg_match('#^/kluby/(\d+)/usun$#', $path, $m) === 1 && $method === 'POST':
+        requireCan($user, 'clubs');
         requireCsrf();
         deleteClub((int) $m[1], (int) $user['id']);
         break;
@@ -452,11 +486,13 @@ switch (true) {
         break;
 
     case $path === '/sezony' && $method === 'POST':
+        requireCan($user, 'seasons');
         requireCsrf();
         saveSeason((int) $user['id']);
         break;
 
     case preg_match('#^/sezony/(\d+)/biezacy$#', $path, $m) === 1 && $method === 'POST':
+        requireCan($user, 'seasons');
         requireCsrf();
         Seasons::markCurrent((int) $m[1], (int) $user['id']);
         Session::flash('notice', View::t('season.current_set'));
@@ -464,6 +500,7 @@ switch (true) {
         break;
 
     case preg_match('#^/sezony/(\d+)/usun$#', $path, $m) === 1 && $method === 'POST':
+        requireCan($user, 'seasons');
         requireCsrf();
         $wynik = Seasons::delete((int) $m[1], (int) $user['id']);
         Session::flash(
@@ -499,15 +536,70 @@ switch (true) {
         break;
 
     case $path === '/notatki' && $method === 'POST':
+        // `notes` ma także viewer — notatnik jest jego warsztatem pracy.
+        // Bramka istnieje po to, żeby ta decyzja była JAWNA, a nie domyślna.
+        requireCan($user, 'notes');
         requireCsrf();
         saveNote((int) $user['id']);
         break;
 
     case preg_match('#^/notatki/(\d+)/usun$#', $path, $m) === 1 && $method === 'POST':
+        requireCan($user, 'notes');
         requireCsrf();
         Notes::delete((int) $m[1], (int) $user['id']);
         Session::flash('notice', View::t('note.deleted'));
         redirect('/notatki');
+        break;
+
+    // ------------------------------------------------- indeks współczynników (M1)
+    case $path === '/indeks' && $method === 'GET':
+        showIndexList();
+        break;
+
+    case preg_match('#^/indeks/([a-z0-9-]{1,60})$#', $path, $m) === 1 && $method === 'GET':
+        showIndexTerm($m[1]);
+        break;
+
+    case preg_match('#^/indeks/([a-z0-9-]{1,60})/edytuj$#', $path, $m) === 1 && $method === 'GET':
+        // Formularz też za bramką: ekran edycji dla roli bez prawa zapisu
+        // to zaproszenie do pracy, która pójdzie do kosza.
+        requireCan($user, 'index');
+        showIndexEdit($m[1]);
+        break;
+
+    case preg_match('#^/indeks/([a-z0-9-]{1,60})$#', $path, $m) === 1 && $method === 'POST':
+        // Hasło opisuje metodykę liczenia — edycja to decyzja metodyczna,
+        // nie podgląd. Viewer czyta, admin i operator piszą.
+        requireCan($user, 'index');
+        requireCsrf();
+        saveIndexTerm($m[1], (int) $user['id']);
+        break;
+
+    // ------------------------------------------------- kalkulator xG (M3)
+    case $path === '/xg' && $method === 'GET':
+        showXgCalc((int) $user['id']);
+        break;
+
+    case $path === '/xg' && $method === 'POST':
+        // Narzędzie robocze analityka — dodawanie strzałów to praca na danych,
+        // nie podgląd. Viewer ogląda listę, nie dopisuje.
+        requireCan($user, 'generate');
+        requireCsrf();
+        addXgShot((int) $user['id']);
+        break;
+
+    case preg_match('#^/xg/(\d+)$#', $path, $m) === 1 && $method === 'POST':
+        requireCan($user, 'generate');
+        requireCsrf();
+        updateXgShot((int) $m[1], (int) $user['id']);
+        break;
+
+    case preg_match('#^/xg/(\d+)/usun$#', $path, $m) === 1 && $method === 'POST':
+        requireCan($user, 'generate');
+        requireCsrf();
+        \CoachAnalyze\XgCalc::delete((int) $m[1], (int) $user['id']);
+        Session::flash('notice', View::t('xg.deleted'));
+        redirect('/xg');
         break;
 
     // ------------------------------------------------- raporty (lista zbiorcza)
@@ -516,6 +608,7 @@ switch (true) {
         break;
 
     case preg_match('#^/raport/(\d+)/ponow$#', $path, $m) === 1 && $method === 'POST':
+        requireCan($user, 'generate');
         requireCsrf();
         regenerateReport((int) $m[1], (int) $user['id']);
         break;
@@ -568,6 +661,8 @@ switch (true) {
         break;
 
     case preg_match('#^/link/(\d+)/odwolaj$#', $path, $m) === 1 && $method === 'POST':
+        // Odwołanie linku to druga strona tej samej decyzji co jego wydanie.
+        requireCan($user, 'share');
         requireCsrf();
         $id = (int) $m[1];
         $link = \CoachAnalyze\Db::one('SELECT report_id FROM share_links WHERE id = :id', ['id' => $id]);
@@ -668,7 +763,8 @@ function setTheme(string $theme): void
 
 function requireCsrf(): void
 {
-    if (Session::checkCsrf($_POST['csrf'] ?? null)) {
+    $powod = Session::csrfProblem($_POST['csrf'] ?? null);
+    if ($powod === Session::CSRF_OK) {
         return;
     }
     Audit::log(Audit::CSRF_FAIL, Session::userId(), 'session');
@@ -676,9 +772,66 @@ function requireCsrf(): void
     View::page('soon', [
         'title'   => View::t('common.error'),
         'heading' => View::t('common.error'),
-        'body'    => View::t('login.err.csrf'),
+        'body'    => csrfMessage($powod),
     ]);
     exit;
+}
+
+/**
+ * Komunikat DOPASOWANY DO PRZYCZYNY odrzucenia tokenu CSRF.
+ *
+ * Powód istnienia: „Formularz stracił ważność. Spróbuj jeszcze raz." obiecuje,
+ * że powtórzenie pomoże. Gdy przyczyną jest brak sesji — a nie stary formularz —
+ * powtórzenie da dokładnie ten sam wynik, a użytkownik klika w nieskończoność,
+ * bo komunikat go do tego zachęca. Zgłoszone z produkcji: Firefox na Windowsie
+ * przy ostrzeżeniu o certyfikacie nie zapisywał ciasteczka `Secure`, więc sesja
+ * nie powstawała, token nie miał się gdzie zapisać i pętla się zapętlała.
+ *
+ * Kolejność rozstrzygania: najpierw pytamy, czy wina nie leży PO NASZEJ STRONIE.
+ * Serwer, który nie umie zapisać sesji, wygląda z przeglądarki identycznie jak
+ * zablokowane ciasteczka, a obwinienie użytkownika za własną awarię wysyła
+ * go w kilkugodzinne szukanie ustawień, których nie ma po co zmieniać.
+ */
+function csrfMessage(string $powod): string
+{
+    if ($powod === Session::CSRF_MISMATCH) {
+        return View::t('login.err.csrf');
+    }
+
+    $awaria = Session::storageProblem();
+    if ($awaria !== null) {
+        error_log('sesja: ' . $awaria);
+        return View::t('login.err.session_storage');
+    }
+
+    if ($powod === Session::CSRF_NO_TOKEN) {
+        // Ciasteczko wróciło, sesja pusta, zapis działa — sesja po prostu wygasła.
+        return View::t('login.err.session_lost');
+    }
+
+    if (Session::cookieUnreachable()) {
+        error_log('sesja: ciasteczko ma flagę Secure (APP_URL to https), a żądanie przyszło bez '
+            . 'szyfrowania — przeglądarka odrzuca ciasteczko i sesja nie powstanie');
+        return View::t('login.err.cookie_insecure');
+    }
+
+    return View::t('login.err.cookie_blocked');
+}
+
+/**
+ * Ostrzeżenie pokazywane PRZED pierwszą próbą logowania, gdy już wiadomo,
+ * że ciasteczko sesji nie ma jak wrócić.
+ *
+ * Warunek `!cookieReturned()` nie jest ozdobnikiem: jeśli przeglądarka odesłała
+ * ciasteczko sesji, to je zapisała i ostrzeganie jej użytkownika byłoby
+ * fałszywym alarmem — niezależnie od tego, co mówią nagłówki schematu.
+ */
+function loginCookieWarning(): ?string
+{
+    if (Session::cookieReturned() || !Session::cookieUnreachable()) {
+        return null;
+    }
+    return View::t('login.err.cookie_insecure');
 }
 
 function showJob(int $id): void
@@ -1492,6 +1645,231 @@ function publicNotFound(float $start): never
     exit;
 }
 
+// ------------------------------------------------- indeks współczynników (M1)
+
+/**
+ * Klub, którego metodykę pokazuje indeks.
+ *
+ * `?klub=` wybiera wprost; bez parametru bierzemy klub „nasz" — `Clubs::all()`
+ * sortuje `is_own_team DESC`, więc to pierwszy wiersz. Bez żadnego klubu
+ * indeks działa dalej: pokazuje hasła domyślne (club_id null).
+ */
+function indeksKlub(): ?array
+{
+    $kluby = Clubs::all();
+    if (isset($_GET['klub']) && $_GET['klub'] !== '') {
+        foreach ($kluby as $klub) {
+            if ((int) $klub['id'] === (int) $_GET['klub']) {
+                return $klub;
+            }
+        }
+    }
+    return $kluby[0] ?? null;
+}
+
+function showIndexList(): void
+{
+    $klub = indeksKlub();
+    $q = trim((string) ($_GET['q'] ?? ''));
+
+    View::page('index_list', [
+        'title'  => View::t('index.title'),
+        'active' => 'index',
+        'terms'  => \CoachAnalyze\IndexTerms::search($klub !== null ? (int) $klub['id'] : null, $q),
+        'q'      => $q,
+        'club'   => $klub,
+        'clubs'  => Clubs::all(),
+        'notice' => Session::flash('notice'),
+        'error'  => Session::flash('error'),
+    ]);
+}
+
+function showIndexTerm(string $slug): void
+{
+    $klub = indeksKlub();
+    $haslo = \CoachAnalyze\IndexTerms::find($klub !== null ? (int) $klub['id'] : null, $slug);
+
+    if ($haslo === null) {
+        http_response_code(404);
+        View::page('soon', [
+            'title'   => View::t('common.not_found'),
+            'heading' => View::t('common.not_found'),
+            'body'    => View::t('index.err.missing'),
+        ]);
+        return;
+    }
+
+    View::page('index_term', [
+        'title'  => (string) $haslo['name'],
+        'active' => 'index',
+        'term'   => $haslo,
+        'club'   => $klub,
+        'notice' => Session::flash('notice'),
+    ]);
+}
+
+function showIndexEdit(string $slug): void
+{
+    $klub = indeksKlub();
+    if ($klub === null) {
+        // Bez klubu nie ma gdzie zapisać wersji — hasła domyślne są w kodzie.
+        Session::flash('error', View::t('index.err.no_club'));
+        redirect('/indeks');
+    }
+
+    $haslo = \CoachAnalyze\IndexTerms::find((int) $klub['id'], $slug);
+    if ($haslo === null) {
+        http_response_code(404);
+        View::page('soon', [
+            'title'   => View::t('common.not_found'),
+            'heading' => View::t('common.not_found'),
+            'body'    => View::t('index.err.missing'),
+        ]);
+        return;
+    }
+
+    View::page('index_form', [
+        'title'  => View::t('index.edit.title', (string) $haslo['name']),
+        'active' => 'index',
+        'term'   => $haslo,
+        'club'   => $klub,
+        'error'  => Session::flash('error'),
+    ]);
+}
+
+function saveIndexTerm(string $slug, int $userId): void
+{
+    $klub = indeksKlub();
+    if ($klub === null) {
+        Session::flash('error', View::t('index.err.no_club'));
+        redirect('/indeks');
+    }
+
+    try {
+        \CoachAnalyze\IndexTerms::saveVersion((int) $klub['id'], $slug, [
+            'name'           => (string) ($_POST['name'] ?? ''),
+            'definition'     => (string) ($_POST['definition'] ?? ''),
+            'formula'        => (string) ($_POST['formula'] ?? ''),
+            'example'        => (string) ($_POST['example'] ?? ''),
+            'interpretation' => (string) ($_POST['interpretation'] ?? ''),
+            'source'         => (string) ($_POST['source'] ?? ''),
+            'estimated_note' => (string) ($_POST['estimated_note'] ?? ''),
+        ], $userId);
+    } catch (\Throwable $e) {
+        error_log('indeks: ' . $e->getMessage());
+        Session::flash('error', View::t('index.err.save'));
+        redirect('/indeks/' . $slug . '/edytuj' . '?klub=' . (int) $klub['id']);
+    }
+
+    Session::flash('notice', View::t('index.saved'));
+    redirect('/indeks/' . $slug . '?klub=' . (int) $klub['id']);
+}
+
+/**
+ * Hasło indeksu dla czytelnika raportu publicznego — BEZ SESJI.
+ *
+ * Klucz klubu jest jedyną „przepustką": jest losowy, stały i obecny w każdym
+ * publicznym adresie raportu, więc czytelnik raportu już go ma. Zły klucz
+ * i złe hasło dają identyczne 404 z wyrównanym czasem — jak przy raporcie.
+ */
+function servePublicIndexTerm(string $clubKey, string $slug): void
+{
+    $start = microtime(true);
+
+    $klub = \CoachAnalyze\Db::one(
+        'SELECT id, name FROM clubs WHERE club_key = :key',
+        ['key' => $clubKey]
+    );
+    if ($klub === null) {
+        publicNotFound($start);
+    }
+
+    $haslo = \CoachAnalyze\IndexTerms::find((int) $klub['id'], $slug);
+    if ($haslo === null) {
+        publicNotFound($start);
+    }
+
+    header('X-Robots-Tag: noindex, nofollow, noarchive');
+    header('Referrer-Policy: no-referrer');
+    header('Cache-Control: private, no-store');
+
+    View::page('index_public', [
+        'title'  => (string) $haslo['name'],
+        'chrome' => false,
+        'term'   => $haslo,
+    ]);
+}
+
+// ------------------------------------------------------- kalkulator xG (M3)
+
+function showXgCalc(int $userId): void
+{
+    $edytowany = null;
+    if (isset($_GET['edytuj'])) {
+        $edytowany = \CoachAnalyze\XgCalc::find((int) $_GET['edytuj'], $userId);
+    }
+
+    View::page('xg_calc', [
+        'title'     => View::t('xg.title'),
+        'active'    => 'xg',
+        'shots'     => \CoachAnalyze\XgCalc::shots($userId),
+        'sum'       => \CoachAnalyze\XgCalc::sum($userId),
+        'gridReady' => \CoachAnalyze\XgCalc::grid() !== null,
+        'edited'    => $edytowany,
+        'last'      => Session::flash('xg_last'),
+        'notice'    => Session::flash('notice'),
+        'error'     => Session::flash('error'),
+    ]);
+}
+
+/**
+ * Kliknięcie w boisko: `input type=image` wysyła `punkt_x`/`punkt_y`
+ * w pikselach obrazka. PHP przelicza piksele na metry i ODCZYTUJE wartość
+ * z siatki policzonej przez silnik — niczego nie liczy (CLAUDE.md §4).
+ */
+function addXgShot(int $userId): void
+{
+    // `input type=image name="punkt"` daje pola `punkt_x` i `punkt_y`.
+    if (!isset($_POST['punkt_x'], $_POST['punkt_y'])) {
+        Session::flash('error', View::t('xg.err.no_point'));
+        redirect('/xg');
+    }
+
+    [$x, $y] = \CoachAnalyze\XgCalc::pxToMeters((int) $_POST['punkt_x'], (int) $_POST['punkt_y']);
+
+    $id = \CoachAnalyze\XgCalc::add(
+        $userId,
+        $x,
+        $y,
+        (string) ($_POST['body_part'] ?? 'foot'),
+        (string) ($_POST['situation'] ?? 'open')
+    );
+
+    if ($id === null) {
+        Session::flash('error', View::t('xg.err.grid'));
+        redirect('/xg');
+    }
+
+    $strzal = \CoachAnalyze\XgCalc::find($id, $userId);
+    Session::flash('xg_last', $strzal);
+    redirect('/xg');
+}
+
+function updateXgShot(int $id, int $userId): void
+{
+    $ok = \CoachAnalyze\XgCalc::update(
+        $id,
+        $userId,
+        (float) str_replace(',', '.', (string) ($_POST['x'] ?? '-1')),
+        (float) str_replace(',', '.', (string) ($_POST['y'] ?? '-1')),
+        (string) ($_POST['body_part'] ?? 'foot'),
+        (string) ($_POST['situation'] ?? 'open')
+    );
+
+    Session::flash($ok ? 'notice' : 'error', View::t($ok ? 'xg.updated' : 'xg.err.update'));
+    redirect('/xg');
+}
+
 // ----------------------------------------------------------------- sezony
 
 function saveSeason(int $userId): void
@@ -1661,13 +2039,173 @@ function showLogin(): void
         redirect('/');
     }
     View::page('login', [
-        'title'  => View::t('login.title'),
+        'title'   => View::t('login.title'),
+        'chrome'  => false,
+        'csrf'    => Session::csrfToken(),
+        'notice'  => Session::flash('notice'),
+        'error'   => Session::flash('error'),
+        // Uprzedzamy o niemożliwym logowaniu ZANIM ktoś wpisze hasło, jeśli
+        // przyczynę widać już przy pokazywaniu formularza.
+        'warning' => loginCookieWarning(),
+        'email'   => '',
+    ]);
+}
+
+// ------------------------------------------------------------- reset hasła
+
+function showForgotPassword(): void
+{
+    if (Auth::isLoggedIn()) {
+        redirect('/konto');
+    }
+    View::page('password_forgot', [
+        'title'   => View::t('reset.title'),
+        'chrome'  => false,
+        'csrf'    => Session::csrfToken(),
+        'notice'  => Session::flash('notice'),
+        'error'   => Session::flash('error'),
+        'warning' => loginCookieWarning(),
+    ]);
+}
+
+/**
+ * Formularz prośby o reset z komunikatem W TEJ SAMEJ ODPOWIEDZI.
+ *
+ * Osobno od `showForgotPassword()`, bo tamten niesie komunikat przez `flash`,
+ * czyli PRZEZ SESJĘ. Przy braku sesji — a to jedyny przypadek, w którym tu
+ * trafiamy — komunikat przepadłby po drodze i użytkownik zobaczyłby czysty
+ * formularz bez słowa wyjaśnienia. Cicha pętla zamiast błędu.
+ */
+function renderForgotPassword(string $error): void
+{
+    http_response_code(400);
+    View::page('password_forgot', [
+        'title'  => View::t('reset.title'),
         'chrome' => false,
         'csrf'   => Session::csrfToken(),
-        'notice' => Session::flash('notice'),
-        'error'  => Session::flash('error'),
-        'email'  => '',
+        'error'  => $error,
     ]);
+}
+
+/**
+ * Prośba o reset. ODPOWIEDŹ IDENTYCZNA dla adresu istniejącego
+ * i nieistniejącego — ten sam komunikat, to samo przekierowanie, ta sama
+ * praca po drodze (zawsze limit + zawsze zadanie w kolejce). Czy konto
+ * istnieje, rozstrzyga dopiero proces roboczy, poza pomiarem czasu.
+ */
+function handleForgotPassword(): void
+{
+    $powod = Session::csrfProblem($_POST['csrf'] ?? null);
+    if ($powod !== Session::CSRF_OK) {
+        Audit::log(Audit::CSRF_FAIL, null, 'user');
+        if ($powod === Session::CSRF_MISMATCH) {
+            // Sesja żyje, więc komunikat przetrwa przekierowanie.
+            Session::flash('error', csrfMessage($powod));
+            redirect('/haslo/zapomniane');
+        }
+        renderForgotPassword(csrfMessage($powod));
+        return;
+    }
+
+    $email = trim((string) ($_POST['email'] ?? ''));
+    if ($email === '' || filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
+        // Błąd FORMATU wolno pokazać — nie mówi nic o istnieniu konta.
+        Session::flash('error', View::t('reset.err.email'));
+        redirect('/haslo/zapomniane');
+    }
+
+    $limiter = new \CoachAnalyze\RateLimit();
+    try {
+        // Limit liczony od KAŻDEJ prośby, także dla adresu spoza systemu —
+        // inaczej licznik zdradzałby istnienie konta.
+        if ($limiter->checkReset($email) > 0) {
+            Session::flash('error', View::t('reset.err.rate'));
+            redirect('/haslo/zapomniane');
+        }
+        $limiter->registerReset($email);
+    } catch (\RuntimeException $e) {
+        // Fail closed jak logowanie: bez licznika nie przyjmujemy prośby.
+        error_log('reset hasła: limit niedostępny — ' . $e->getMessage());
+        Session::flash('error', View::t('reset.err.unavailable'));
+        redirect('/haslo/zapomniane');
+    }
+
+    \CoachAnalyze\PasswordReset::queueRequest($email);
+
+    Session::flash('notice', View::t('reset.sent'));
+    redirect('/login');
+}
+
+function showPasswordReset(string $token): void
+{
+    $reset = \CoachAnalyze\PasswordReset::findValid($token);
+    if ($reset === null) {
+        // Zły, zużyty i wygasły token wyglądają IDENTYCZNIE.
+        http_response_code(404);
+        View::page('soon', [
+            'title'   => View::t('reset.title'),
+            'heading' => View::t('reset.err.invalid.heading'),
+            'body'    => View::t('reset.err.invalid'),
+        ]);
+        return;
+    }
+
+    renderPasswordReset($token, (string) $reset['email'], Session::flash('error'), 200);
+}
+
+/** @param string|null $error gotowy komunikat albo null */
+function renderPasswordReset(string $token, string $email, $error, int $status): void
+{
+    http_response_code($status);
+    View::page('password_reset', [
+        'title'     => View::t('reset.new.title'),
+        'chrome'    => false,
+        'csrf'      => Session::csrfToken(),
+        'token'     => $token,
+        'email'     => $email,
+        'minLength' => Auth::minPasswordLength(),
+        'error'     => is_string($error) ? $error : null,
+    ]);
+}
+
+function handlePasswordReset(string $token): void
+{
+    // Token weryfikowany PONOWNIE przy zapisie — między pokazaniem formularza
+    // a wysłaniem mógł zostać użyty albo wygasnąć.
+    $reset = \CoachAnalyze\PasswordReset::findValid($token);
+    if ($reset === null) {
+        http_response_code(404);
+        View::page('soon', [
+            'title'   => View::t('reset.title'),
+            'heading' => View::t('reset.err.invalid.heading'),
+            'body'    => View::t('reset.err.invalid'),
+        ]);
+        return;
+    }
+
+    $powod = Session::csrfProblem($_POST['csrf'] ?? null);
+    if ($powod !== Session::CSRF_OK) {
+        Audit::log(Audit::CSRF_FAIL, null, 'user');
+        if ($powod === Session::CSRF_MISMATCH) {
+            Session::flash('error', csrfMessage($powod));
+            redirect('/haslo/reset/' . $token);
+        }
+        // Bez sesji `flash` nie przeniesie komunikatu przez przekierowanie —
+        // rysujemy formularz od razu. Token jest już zweryfikowany wyżej.
+        renderPasswordReset($token, (string) $reset['email'], csrfMessage($powod), 400);
+        return;
+    }
+
+    $nowe = (string) ($_POST['nowe'] ?? '');
+    if (mb_strlen($nowe, 'UTF-8') < Auth::minPasswordLength()) {
+        Session::flash('error', View::t('reset.err.short', Auth::minPasswordLength()));
+        redirect('/haslo/reset/' . $token);
+    }
+
+    \CoachAnalyze\PasswordReset::complete($reset, $nowe);
+
+    Session::flash('notice', View::t('reset.done'));
+    redirect('/login');
 }
 
 function handleLogin(): void
@@ -1675,9 +2213,10 @@ function handleLogin(): void
     $email    = trim((string) ($_POST['email'] ?? ''));
     $password = (string) ($_POST['password'] ?? '');
 
-    if (!Session::checkCsrf($_POST['csrf'] ?? null)) {
+    $powod = Session::csrfProblem($_POST['csrf'] ?? null);
+    if ($powod !== Session::CSRF_OK) {
         Audit::log(Audit::CSRF_FAIL, null, 'user');
-        renderLogin($email, View::t('login.err.csrf'));
+        renderLogin($email, csrfMessage($powod));
         return;
     }
 

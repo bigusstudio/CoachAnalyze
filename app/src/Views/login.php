@@ -8,6 +8,7 @@ use CoachAnalyze\View;
  *
  * @var string|null $error   gotowy komunikat po polsku
  * @var string|null $notice
+ * @var string|null $warning przeszkoda znana ZANIM ktokolwiek kliknął „Zaloguj"
  * @var string      $csrf
  * @var string      $email   wpisany adres — nie każemy wpisywać go drugi raz
  */
@@ -23,6 +24,13 @@ use CoachAnalyze\View;
 
     <?php if (!empty($error)): ?>
       <p class="alert" role="alert"><?= View::e($error) ?></p>
+    <?php endif; ?>
+
+    <?php // Ostrzeżenie o przeszkodzie, przez którą logowanie NIE MA PRAWA się
+          // udać (np. odrzucone ciasteczko sesji). Pokazywane od razu, żeby nikt
+          // nie sprawdzał hasła literka po literce, szukając winy u siebie. ?>
+    <?php if (!empty($warning)): ?>
+      <p class="alert" role="alert"><?= View::e($warning) ?></p>
     <?php endif; ?>
 
     <?php // Etykieta wiązana przez `for`/`id`, nie samym zawinięciem. Zawinięcie
@@ -50,5 +58,7 @@ use CoachAnalyze\View;
 
     <input type="hidden" name="csrf" value="<?= View::e($csrf) ?>">
     <button class="btn" type="submit"><?= View::e(View::t('login.submit')) ?></button>
+
+    <p class="hint"><a class="link" href="/haslo/zapomniane"><?= View::e(View::t('login.forgot')) ?></a></p>
   </form>
 </main>

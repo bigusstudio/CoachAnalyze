@@ -31,6 +31,10 @@ def build_parser() -> argparse.ArgumentParser:
     i.add_argument("--json", dest="json_path")
     i.add_argument("--out-meta")
 
+    g = sub.add_parser("xg-grid", help="Siatka xG dla warstwy PHP (interaktywne boisko)")
+    g.add_argument("--out", required=True)
+    g.add_argument("--step", type=float, default=1.0)
+
     return p
 
 
@@ -132,6 +136,9 @@ def cmd_build(args) -> int:
         frame,
         mapping_profile=config.get("mapping_profile"),
         teams=config.get("teams"),
+        # Model xG — OPT-IN z konfiguracji (M3). Domyślnie wyłączony: sam fakt
+        # istnienia modelu nie może zmienić liczby w żadnym raporcie.
+        xg_model=bool((config.get("options") or {}).get("xg_model")),
     )
     meta = coverage.build_meta(
         frame, canon_result, config=config,
@@ -180,6 +187,22 @@ def cmd_inspect(args) -> int:
     return 0
 
 
+def cmd_xg_grid(args) -> int:
+    """Siatka xG (M3) — artefakt odczytywany przez PHP przy interaktywnym boisku.
+
+    PHP nie liczy metryk (CLAUDE.md §4) i nie może uruchomić Pythona z warstwy
+    żądań (disable_functions) — dostaje więc wartości POLICZONE TU, raz,
+    dla środka każdej komórki siatki. Plik trafia do repo (app/src/data/)
+    i jest odtwarzalny tą komendą przy każdej zmianie współczynników.
+    """
+    from . import xg as xg_mod
+
+    payload = {"engine_version": __version__} | xg_mod.grid(step=args.step)
+    write_json(args.out, payload, indent=None)
+    print("zapisano {} (krok {} m)".format(args.out, args.step), file=sys.stderr)
+    return 0
+
+
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
     try:
@@ -187,6 +210,8 @@ def main(argv=None) -> int:
             return cmd_build(args)
         if args.command == "inspect":
             return cmd_inspect(args)
+        if args.command == "xg-grid":
+            return cmd_xg_grid(args)
     except EngineError as exc:
         payload = {"ok": False, "code": exc.code, "msg": str(exc), "engine_version": __version__}
         if isinstance(exc, MissingColumns):

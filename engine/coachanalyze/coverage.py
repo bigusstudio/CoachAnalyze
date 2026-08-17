@@ -180,6 +180,21 @@ def build_warnings(frame, canon_result, has_json=False, palette=None):
             "tags": poza_strzalem["tags"],
         })
 
+    model = report.get("xg_model") or {"filled": 0, "assumed": 0}
+    if model["filled"]:
+        # Wartość z modelu ma być WIDOCZNA, nie wtopiona w liczby analityka —
+        # zastrzeżenie o kalibracji: engine/coachanalyze/xg.py (nagłówek).
+        msg = ("xG uzupełnione modelem dla {} strzałów bez wartości od analityka — "
+               "wartości szacowane, czytać porównawczo").format(model["filled"])
+        if model["assumed"]:
+            msg += "; przy {} przyjęto założenie gry otwartej nogą".format(model["assumed"])
+        warnings.append({
+            "code": "XG_MODEL",
+            "msg": msg,
+            "count": model["filled"],
+            "assumed": model["assumed"],
+        })
+
     if report["unknown_teams"]:
         warnings.append({
             "code": "UNKNOWN_TEAM",

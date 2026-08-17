@@ -93,6 +93,10 @@ body {
   padding: 32px;
 }
 
+/* Publiczne hasło indeksu współczynników (M1): treść jest dłuższa niż
+   formularz logowania, więc pudełko dostaje szerszy wariant. */
+.auth__box--wide { max-width: 640px; }
+
 .auth__title { margin: 0; font-size: 24px; letter-spacing: -0.01em; }
 .auth__subtitle { margin: 4px 0 24px; color: var(--tekst-slaby); font-size: 14px; }
 

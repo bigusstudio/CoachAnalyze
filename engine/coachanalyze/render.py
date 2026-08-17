@@ -357,6 +357,51 @@ def crosscheck(data, metrics):
     return rozjazdy
 
 
+def index_block(index_base, links):
+    """Blok odsyłaczy do indeksu współczynników (M1), doklejany przed </body>.
+
+    Render NIE zna słownika ani bazy — dostaje gotową listę z `config.options`
+    (docs/KONTRAKT_CLI.md): adres bazowy i pozycje {slug, label, estimated}.
+    Adres bazowy jest publiczny (/r/{club_key}/i/…), więc odsyłacze działają
+    i w panelu, i w raporcie udostępnionym bez logowania.
+
+    Wskaźniki SZACOWANE dostają znacznik i wspólną adnotację — szczegóły
+    i ograniczenia metody są w haśle, nie w raporcie.
+
+    Styl wpisany w atrybuty, nie w arkusz: szablon jest samowystarczalnym
+    plikiem HTML i doklejka nie może zależeć od jego klas ani go modyfikować.
+    """
+    import html as html_mod
+
+    pozycje = []
+    for link in links:
+        slug = str(link.get("slug") or "")
+        label = str(link.get("label") or "")
+        if not slug or not label or not slug.replace("-", "").isalnum():
+            continue
+        znacznik = " *" if link.get("estimated") else ""
+        pozycje.append(
+            '<a href="{}{}" style="color:#9dc3e6;text-decoration:underline;">{}</a>{}'.format(
+                html_mod.escape(index_base, quote=True), html_mod.escape(slug, quote=True),
+                html_mod.escape(label), znacznik,
+            )
+        )
+
+    if not pozycje:
+        return ""
+
+    return (
+        '<section id="ca-indeks" style="margin:24px auto;max-width:1200px;'
+        'padding:16px 24px;font-family:inherit;font-size:13px;color:#c9d4de;">'
+        '<strong>Indeks współczynników:</strong> '
+        + " &middot; ".join(pozycje)
+        + '<br><span style="color:#8a97a3;">* wskaźnik szacowany — wartość może '
+        'pochodzić z modelu, nie wprost z danych meczu; ograniczenia metody '
+        'opisuje hasło indeksu.</span>'
+        "</section>"
+    )
+
+
 def render(frame, palette=None, metrics=None, canon_result=None, config=None, template_path=None):
     """(html, raport). Raport idzie do logu wykonawcy, nigdy do przeglądarki.
 
@@ -370,6 +415,15 @@ def render(frame, palette=None, metrics=None, canon_result=None, config=None, te
     slots, teams_defaulted = team_slots(frame, teams)
     data = view_data(frame, canon_result=canon_result, teams=teams)
     html = inject(template, data, palette if palette is not None else EMPTY_PALETTE, slots)
+
+    # Odsyłacze do indeksu współczynników — WYŁĄCZNIE gdy konfiguracja niesie
+    # adres bazowy. Bez niego wyjście jest bajt w bajt takie jak dotąd; na tym
+    # stoi złoty test odtworzenia raportu produkcyjnego.
+    options = (config or {}).get("options") or {}
+    if options.get("index_base") and options.get("index_links"):
+        blok = index_block(str(options["index_base"]), list(options["index_links"]))
+        if blok and "</body>" in html:
+            html = html.replace("</body>", blok + "\n</body>", 1)
 
     return html, {
         "template": template_path or default_template_path(),

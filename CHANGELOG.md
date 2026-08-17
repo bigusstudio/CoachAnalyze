@@ -23,6 +23,23 @@ przy każdym renderze, jakby decyzji nie było — `label_rules.get(label)` nie 
 zostaje w `source_labels` zdarzenia, nie wchodzi do metryk. Słownik domyślny nie ma reguł
 `null`, więc zmiana dotyka wyłącznie profili klubów — wyjście testu złotego bez zmian.
 
+**Moduł M3 — model xG** (`engine/coachanalyze/xg.py`, wyłącznie `math`): regresja
+logistyczna ze współczynnikami referencyjnymi z literatury (distance −0,3135,
+angle +0,0910, bodypart_head −1,2946, start_x −0,1290; wyrazy wolne dokalibrowane
+do skuteczności ~10,8%). Osobne modele: gra otwarta nogą / główką, wolny bezpośredni,
+karny = stała 0,76. OPT-IN przez `config.options.xg_model`: uzupełnia WYŁĄCZNIE
+strzały bez xG od analityka (`xg_source: "model"`, ostrzeżenie `XG_MODEL`);
+wartości ręczne nigdy nie są nadpisywane. **Domyślnie wyłączone — bez flagi ani
+jedna liczba się nie zmienia (bramka odbioru, test złoty).** Nowa komenda
+`xg-grid` generuje siatkę wartości dla warstwy PHP (interaktywne boisko bez JS).
+Zastrzeżenie o kalibracji: nagłówek `xg.py`, `docs/MODEL_KANONICZNY.md`, hasło M1.
+
+**Moduł M1 — odsyłacze do indeksu współczynników w renderze.** `config.options.index_base`
++ `index_links` włączają doklejany przed `</body>` blok odsyłaczy do słownika metodycznego
+(`render.index_block`). OPT-IN: bez tych pól wyjście jest bajt w bajt niezmienione —
+złoty test odtworzenia raportu produkcyjnego przechodzi bez aktualizacji wzorca.
+Kontrakt: `docs/KONTRAKT_CLI.md`, sekcja „Odsyłacze do indeksu współczynników".
+
 `canon.build()["report"]` zachowuje `unmapped_tags`/`unmapped_labels` jako same nazwy
 (konsumują je teksty ostrzeżeń i `metrics`); kształt z liczbami idzie osobno
 (`*_detail`). **Render i metryki bez zmian — test złoty nietknięty.** Warstwa PHP czyta

@@ -12,6 +12,8 @@ na treści etykiety — to jedyne realne źródło cichych błędów w liczbach.
 
 import json
 
+from . import xg as xg_mod
+
 # Pojęcia bazowe z docs/MODEL_KANONICZNY.md. Nowa etykieta w eksporcie to
 # KWALIFIKATOR, nie nowe pojęcie — rozrost tej listy oznaczałby, że model
 # zaczyna kopiować format LiveTag zamiast go tłumaczyć.
@@ -180,7 +182,7 @@ def to_records(events, match_id=None):
     return records
 
 
-def build(frame, mapping_profile=None, teams=None):
+def build(frame, mapping_profile=None, teams=None, xg_model=False):
     """raw_frame -> {'events': canonical_events[], 'report': {...}}.
 
     Zdarzenia z nierozpoznanym tagiem NIE ZNIKAJĄ: trafiają do wyniku z
@@ -204,6 +206,8 @@ def build(frame, mapping_profile=None, teams=None):
     unmapped_tag_labels = {}
     xg_outside = {}
     typo_hits = 0
+    xg_model_filled = 0
+    xg_model_assumed = 0
 
     # Parser przycina ujemny `begin` do zera i podaje licznik osobno. Ramka zbudowana
     # ze wzorca (testy) licznika nie ma — wtedy liczymy z wartości, co po przycięciu
@@ -279,6 +283,22 @@ def build(frame, mapping_profile=None, teams=None):
             xg_outside[tag] = xg_outside.get(tag, 0) + 1
             xg = None
 
+        xg_source = "analyst" if xg is not None else None
+
+        # UZUPEŁNIANIE MODELEM — WYŁĄCZNIE OPT-IN (`options.xg_model` w config,
+        # moduł M3). Wartość od analityka ma BEZWZGLĘDNE pierwszeństwo i nigdy
+        # nie jest nadpisywana; model wchodzi tylko tam, gdzie xG nie ma wcale.
+        # Domyślnie wyłączone: wprowadzenie modelu nie może zmienić żadnej
+        # liczby w istniejących raportach — to bramka odbioru (test złoty).
+        if xg is None and xg_model and (rule or {}).get("concept") == "shot":
+            szacunek = xg_mod.estimate(raw.get("x"), raw.get("y"), qualifiers)
+            if szacunek is not None:
+                xg = szacunek["xg"]
+                xg_source = "model"
+                xg_model_filled += 1
+                if szacunek["assumed"]:
+                    xg_model_assumed += 1
+
         events.append({
             # `max(0, ...)` zostaje jako zabezpieczenie: parser już przycina (pułapka 10),
             # ale model kanoniczny bywa budowany też z ramek spoza parsera.
@@ -294,7 +314,7 @@ def build(frame, mapping_profile=None, teams=None):
             "x_end": raw.get("tx"),
             "y_end": raw.get("ty"),
             "xg": xg,
-            "xg_source": "analyst" if xg is not None else None,
+            "xg_source": xg_source,
             # Silnik nie zna identyfikatorów z bazy (D4 — kontrakt to pliki, nie baza).
             # Warstwa indywidualna powstanie, gdy dane zawodnika w ogóle istnieją.
             "player_id": None,
@@ -328,6 +348,9 @@ def build(frame, mapping_profile=None, teams=None):
             "teams_detected": sorted(teams_detected),
             "unknown_teams": sorted(unknown_teams),
             "xg_outside_shot": {"count": sum(xg_outside.values()), "tags": sorted(xg_outside)},
+            # Ile strzałów dostało xG z modelu (M3) i przy ilu przyjęto
+            # założenie o rodzaju strzału. Zero przy wyłączonym modelu.
+            "xg_model": {"filled": xg_model_filled, "assumed": xg_model_assumed},
             "typo_hits": typo_hits,
             "negative_begin": negative_begin,
             "profile_version": (mapping_profile or {}).get("version"),

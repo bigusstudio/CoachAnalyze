@@ -1,6 +1,6 @@
 <?php
 declare(strict_types=1);
-/** Baza testowa dla panelu 4a: SQLite o kształcie 001_init.sql + dane przykładowe. */
+/** Baza testowa: SQLite o kształcie migracji 001–009 + dane przykładowe. */
 
 use CoachAnalyze\Auth;
 use CoachAnalyze\Db;
@@ -75,6 +75,18 @@ function ca_test_db(string $file, bool $withData = true): PDO
     $pdo->exec('CREATE TABLE audit_log (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INT NULL,
         action TEXT, entity TEXT NULL, entity_id INT NULL, meta_json TEXT NULL, ip BLOB NULL,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP)');
+    $pdo->exec('CREATE TABLE password_resets (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INT NOT NULL,
+        token_hash TEXT UNIQUE NOT NULL, expires_at TEXT NOT NULL, used_at TEXT NULL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP)');
+    $pdo->exec('CREATE TABLE xg_manual_shots (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INT NOT NULL,
+        match_id INT NULL, x REAL NOT NULL, y REAL NOT NULL,
+        body_part TEXT NOT NULL DEFAULT "foot", situation TEXT NOT NULL DEFAULT "open",
+        xg REAL NOT NULL, note TEXT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP)');
+    $pdo->exec('CREATE TABLE index_terms (id INTEGER PRIMARY KEY AUTOINCREMENT, club_id INT NOT NULL,
+        slug TEXT NOT NULL, concept TEXT NOT NULL, name TEXT NOT NULL, definition TEXT NOT NULL,
+        formula TEXT NULL, example TEXT NULL, interpretation TEXT NULL, source TEXT NULL,
+        estimated_note TEXT NULL, version INT NOT NULL DEFAULT 1, created_by INT NULL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP, UNIQUE (club_id, slug, version))');
 
     Db::run('INSERT INTO users (email, pass_hash, display_name, role) VALUES (?,?,?,?)',
         ['operator@example.com', Auth::hashPassword('bardzo-dlugie-haslo-testowe'), 'Operator', 'operator']);

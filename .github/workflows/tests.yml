@@ -84,6 +84,18 @@ jobs:
       - name: Chmurki powiadomień — granice wyjątku i wariant bez JS
         run: php app/tests/test_chmurki.php
 
+      # Trasa POST bez requireCan() przechodziła każdy test funkcjonalny —
+      # viewer mógł zapisać profil mapowań. Skaner wymusza bramkę albo jawny
+      # wpis na białej liście czynności własnego konta.
+      - name: Trasy zmieniające stan mają bramki ról i CSRF
+        run: php app/tests/test_bramki_rol.php
+
+      # „Formularz stracił ważność. Spróbuj jeszcze raz." przy KAŻDEJ próbie
+      # logowania: formularz był świeży, brakowało sesji. Komunikat obiecywał,
+      # że powtórzenie pomoże, więc użytkownik klikał w kółko.
+      - name: Odrzucenie tokenu CSRF nazywa przyczynę
+        run: php app/tests/test_komunikaty_sesji.php
+
       # Deprecacje muszą być widoczne: na cronie lądują w logu i zagłuszają
       # rzeczywiste błędy, a w PHP 9 staną się awarią.
       - name: Brak ostrzeżeń o deprecacji przy ładowaniu klas

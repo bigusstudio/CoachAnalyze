@@ -22,6 +22,16 @@ final class RateLimit
     public const LOGIN_LIMIT  = 5;
     public const WINDOW_SEC   = 900;  // 15 minut
 
+    /**
+     * Prośby o reset hasła — luźniejsze okno, ale liczona jest KAŻDA prośba,
+     * nie tylko nieudana: każda kosztuje mail i każda nadaje się do nękania
+     * cudzej skrzynki. Limit na adres jest niski (właściciel potrzebuje
+     * jednej), na IP wyższy — zza NAT-u klubu może prosić kilka osób.
+     */
+    public const RESET_ACC_LIMIT  = 3;
+    public const RESET_IP_LIMIT   = 10;
+    public const RESET_WINDOW_SEC = 3600;   // 1 godzina
+
     public function __construct(private ?RedisClient $redis = null) {}
 
     private function redis(): RedisClient
@@ -73,6 +83,46 @@ final class RateLimit
         $ip = Audit::clientIp() ?? 'brak-ip';
         $this->redis()->del('login:ip:' . $ip);
         $this->redis()->del('login:acc:' . $this->hash($email));
+    }
+
+    /**
+     * Czy wolno przyjąć prośbę o reset hasła. Zwraca sekundy do odblokowania
+     * (0 = wolno). Fail closed jak logowanie — wyjątek obsługuje wywołujący.
+     *
+     * Liczone od adresu ORAZ od IP; sam limit na adres przepuściłby nękanie
+     * wielu skrzynek z jednego miejsca, sam na IP — rozproszone nękanie jednej.
+     *
+     * @throws \RuntimeException gdy Redis jest niedostępny
+     */
+    public function checkReset(string $email): int
+    {
+        $ip = Audit::clientIp() ?? 'brak-ip';
+        $keys = [
+            'reset:ip:' . $ip                  => self::RESET_IP_LIMIT,
+            'reset:acc:' . $this->hash($email) => self::RESET_ACC_LIMIT,
+        ];
+
+        $blockedFor = 0;
+        foreach ($keys as $key => $limit) {
+            $value = $this->redis()->get($key);
+            if ($value !== null && (int) $value >= $limit) {
+                $ttl = $this->redis()->ttl($key);
+                $blockedFor = max($blockedFor, $ttl > 0 ? $ttl : self::RESET_WINDOW_SEC);
+            }
+        }
+        return $blockedFor;
+    }
+
+    /** Każda przyjęta prośba podbija oba liczniki — także dla adresu spoza systemu. */
+    public function registerReset(string $email): void
+    {
+        $ip = Audit::clientIp() ?? 'brak-ip';
+        foreach (['reset:ip:' . $ip, 'reset:acc:' . $this->hash($email)] as $key) {
+            $count = $this->redis()->incr($key);
+            if ($count === 1) {
+                $this->redis()->expire($key, self::RESET_WINDOW_SEC);
+            }
+        }
     }
 
     /**

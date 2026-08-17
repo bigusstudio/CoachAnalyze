@@ -197,9 +197,46 @@ wykryte w danych, a wszystkie zdarzenia mają `team_side: "none"`.
   },
   "mapping_profile": { "version": 4, "rules": [] },
   "sections": ["bilans", "mapy", "tl_sbz", "tl_iii", "tl_bilans", "duels", "noteam"],
-  "options": { "contrast_fix": true, "engine_locale": "pl_PL" }
+  "options": {
+    "contrast_fix": true,
+    "engine_locale": "pl_PL",
+    "xg_model": true,
+    "index_base": "/r/HUT7K2QX/i/",
+    "index_links": [
+      { "slug": "xg", "label": "xG (gole oczekiwane)", "estimated": true }
+    ]
+  }
 }
 ```
+
+### Model xG (`options.xg_model`, moduł M3)
+
+`true` włącza uzupełnianie xG modelem (`engine/coachanalyze/xg.py`) dla strzałów
+**bez wartości od analityka** — wartości ręczne mają bezwzględne pierwszeństwo
+i nigdy nie są nadpisywane. Zdarzenie uzupełnione dostaje `xg_source: "model"`,
+a `meta.warnings` niesie wtedy kod `XG_MODEL` z licznikiem. **Domyślnie
+wyłączone** — samo istnienie modelu nie zmienia żadnej liczby (test złoty).
+Rozpoznanie rodzaju strzału z kwalifikatorów; nieznany → model gry otwartej
+nogą z odnotowanym założeniem. Zastrzeżenie o kalibracji: nagłówek `xg.py`
+i `docs/MODEL_KANONICZNY.md`.
+
+Komenda `xg-grid --out <plik> [--step m]` zapisuje siatkę wartości xG dla
+całego boiska — artefakt odczytywany przez PHP przy interaktywnym boisku
+(`app/src/data/xg_grid.json`). PHP wyłącznie ODCZYTUJE wartości; liczy silnik,
+tutaj, raz. Po każdej zmianie współczynników artefakt trzeba wygenerować od nowa.
+
+### Odsyłacze do indeksu współczynników (`options.index_base`, `options.index_links`)
+
+Render dokleja przed `</body>` blok odsyłaczy do słownika metodycznego (moduł M1)
+— **wyłącznie, gdy oba pola są obecne i niepuste**. Bez nich wyjście jest bajt
+w bajt takie jak przed M1; pilnuje tego złoty test odtworzenia raportu.
+
+`index_base` to PUBLICZNY adres bazowy (`/r/{club_key}/i/`): ten sam plik HTML
+jest serwowany w panelu i pod adresem publicznym, więc odsyłacz musi działać bez
+logowania. `index_links` to gotowa lista `{slug, label, estimated}` — silnik nie
+zna słownika ani bazy, dostaje listę od PHP. Pozycje ze slugiem spoza
+`[a-z0-9-]` są pomijane; `estimated: true` dodaje znacznik wskaźnika szacowanego
+ze wspólną adnotacją (szczegóły ograniczeń metody są w haśle indeksu).
 
 Silnik nie odgaduje nazw ani barw klubów — dostaje je w konfiguracji. Wykryte w danych nazwy
 zwraca w `meta.coverage.teams`, żeby PHP mógł zaproponować dopasowanie przy pierwszym imporcie.
@@ -299,10 +336,13 @@ nie znika po cichu, tylko trafia do raportu pokrycia.
 | `UNKNOWN_TEAM` | Nazwa drużyny w danych nie pasuje do żadnej z konfiguracji |
 | `UNMAPPED_TAGS` | Tagi bez mapowania na pojęcie kanoniczne — zdarzenia zachowane, poza metrykami |
 | `XG_POZA_STRZALEM` | Liczba w komentarzu przy tagu, który nie jest strzałem — pominięta przy xG |
+| `XG_MODEL` | xG uzupełnione modelem (`options.xg_model`) — wartości szacowane, czytać porównawczo |
 
 Każde ostrzeżenie ma zawsze trzy pola: `code`, `msg` (po polsku), `count`.
 Część niesie dodatkowe pola diagnostyczne — `XG_POZA_STRZALEM` dokłada `tags`
-z listą tagów, których to dotyczyło. PHP ma czytać po nazwach, nie po zestawie kluczy.
+z listą tagów, których to dotyczyło, a `XG_MODEL` pole `assumed` z liczbą
+strzałów, przy których przyjęto założenie gry otwartej nogą.
+PHP ma czytać po nazwach, nie po zestawie kluczy.
 
 **`sections_unavailable` zawsze niesie powód po polsku.** Trafia bezpośrednio do interfejsu —
 analityk ma zobaczyć, czego brakuje i dlaczego, a nie pustą sekcję.

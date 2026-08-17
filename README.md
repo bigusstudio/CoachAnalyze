@@ -119,6 +119,32 @@ Nieudana wysyłka **ponawia zadanie**, nie kończy go błędem — odstępy 1, 5
 i 60 minut, do pięciu prób. Awarie SMTP są w przewadze chwilowe, a raport jest
 w tym momencie już wygenerowany i zapisany; jego zadanie pozostaje `done`.
 
+## Sesja i logowanie
+
+Ciasteczko sesji: `HttpOnly`, `SameSite=Lax`, `Secure` gdy APP_URL zaczyna się od
+`https://` — **decyduje APP_URL, nigdy nagłówek żądania**, bo z nagłówka dałoby się
+flagę zdjąć samym żądaniem po HTTP.
+
+Token CSRF mieszka w sesji, a sesja w ciasteczku. Gdy ciasteczko nie wraca, nie ma
+sesji, nie ma tokenu i **żadna liczba powtórzeń tego nie zmieni** — dlatego odrzucenie
+tokenu niesie NAZWANĄ przyczynę, a nie jeden komunikat na wszystkie przypadki:
+
+| Przyczyna | Komunikat |
+|---|---|
+| sesja żyje, token się nie zgadza | „Formularz stracił ważność. Spróbuj jeszcze raz." — jedyny przypadek, w którym powtórzenie pomaga |
+| ciasteczko wróciło, sesja pusta | „Sesja wygasła — zaloguj się ponownie." |
+| ciasteczko nie wróciło | wprost o ciasteczkach, z zaznaczeniem, że powtórzenie nic nie da |
+| ciasteczko `Secure`, żądanie bez szyfrowania | wprost o HTTPS — i ostrzeżenie widać **przed** pierwszą próbą |
+| serwer nie umie zapisać sesji | komunikat o usterce po naszej stronie, przyczyna do logu |
+
+Zanim komunikat obwini przeglądarkę, aplikacja sprawdza siebie: próbuje zapisu
+w katalogu sesji. Awaria zapisu wygląda z przeglądarki identycznie jak zablokowane
+ciasteczka, a wysłanie użytkownika w ustawienia przeglądarki przy własnej awarii
+kosztuje go dzień.
+
+Pilnują tego `app/tests/test_komunikaty_sesji.php` (w CI) i przelot przez prawdziwy
+HTTP `app/tests/integracja/test_sesja_http.php`.
+
 ## Gałęzie
 
 `main` = produkcja · `dev` = staging · `feat/*` = robocze.

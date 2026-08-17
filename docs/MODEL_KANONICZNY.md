@@ -108,6 +108,30 @@ Reguły obowiązujące kreator:
   (`mapping_profiles.created_by`, `.note` — migracja 007). Mapowanie decyduje o tym, które
   zdarzenia wchodzą do metryk, więc jest zmianą tej samej wagi co zmiana kodu silnika.
 
+## xG z modelu (moduł M3)
+
+Strzał bez xG od analityka może dostać wartość z modelu
+(`engine/coachanalyze/xg.py`, regresja logistyczna, wyłącznie `math`) —
+pod warunkiem jawnego włączenia (`config.options.xg_model`). Wartości wpisane
+ręcznie mają **bezwzględne pierwszeństwo** i nigdy nie są nadpisywane;
+zdarzenie uzupełnione niesie `xg_source: "model"`.
+
+Osobne modele: gra otwarta nogą, gra otwarta główką, rzut wolny bezpośredni,
+rzut karny (stała 0,76 — cechy każdego karnego są identyczne). Rodzaj strzału
+rozpoznawany z kwalifikatorów; nieznany → gra otwarta nogą, z odnotowanym
+założeniem (ostrzeżenie `XG_MODEL` w `meta.warnings`).
+
+**Zastrzeżenie o kalibracji (obowiązkowe przy prezentacji):** model jest
+kalibrowany na danych z lig zachodnich (StatsBomb, Big 5, ~43 tys. strzałów,
+skuteczność ~10,8%), a nie na poziomie rozgrywkowym klienta. Wartości należy
+czytać **porównawczo**, nie bezwzględnie. To samo zastrzeżenie niesie hasło
+„xG" w indeksie współczynników (M1) i adnotacja w raporcie.
+
+**Przyszła kalibracja własnymi danymi:** wynik każdego strzału jest już
+zapisywany w `events_canonical` jako kwalifikatory (`goal`, `on_target`,
+`off_target`, `blocked`) — po sezonie, przy kilkuset strzałach, współczynniki
+da się wyznaczyć z własnych danych **bez żadnej migracji**.
+
 ## Zapis do archiwum
 
 `canon.to_records()` tłumaczy zdarzenia kanoniczne na kształt tabeli `events_canonical`

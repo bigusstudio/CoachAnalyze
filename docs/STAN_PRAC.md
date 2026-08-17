@@ -213,6 +213,140 @@ SELECT 'inspect',
 
 Wykonać PO wdrożeniu nowego kodu (inspekcję podnosi cron w ciągu minuty).
 
+### 4.2b Nowe od 2026-08-11 wieczorem: bramki ról, reset hasła (migracja 009)
+
+- **Bramki ról**: 13 tras POST bez `requireCan()` dostało bramki (m.in. zapis
+  mapowań — viewer mógł zmieniać profil). Pilnuje skaner `app/tests/test_bramki_rol.php`
+  (w CI): każda trasa POST ma bramkę albo jawny wpis na białej liście.
+- **Reset hasła przez e-mail** (`app/src/PasswordReset.php`, migracja
+  `009_password_resets.sql`): token 256 bitów generowany W PROCESIE ROBOCZYM,
+  w bazie tylko skrót; odpowiedź HTTP identyczna dla adresu istniejącego
+  i nieistniejącego; limit próśb w Redisie (3/h na adres, 10/h na IP, fail
+  closed); ważność 1 h, jednorazowy; wysyłka z kolejki (typ `reset_mail`)
+  z ponawianiem jak przy powiadomieniach.
+- **Zmiana hasła unieważnia pozostałe sesje**: sesja nosi odcisk hasha hasła
+  (`Session::bindAuth`), `Auth::currentUser()` porównuje go z bazą. Dotyczy też
+  resetu przez administratora i przez e-mail. Sesje sprzed wdrożenia (bez
+  odcisku) są honorowane do wylogowania.
+- Testy: `app/tests/integracja/test_haslo_http.php` (30 asercji, prawdziwy
+  HTTP + atrapy Redisa i SMTP + cron).
+
+### 4.2c Moduł M1 — Indeks współczynników (migracja 010) — NAPISANE
+
+Słownik metodyczny z odsyłaczami z raportu. Hasła domyślne (11 wskaźników,
+wszystko co silnik liczy) są stałą w kodzie (`IndexTerms::DOMYSLNE`); wersje
+klubowe w tabeli `index_terms` — edycja tworzy nową wersję, poprzednie zostają.
+Hasła przypięte do pojęć kanonicznych (pojęcie nieedytowalne). Panel: `/indeks`
+(lista + wyszukiwarka, pozycja „Indeks" w nawigacji), edycja za bramką `index`
+(admin, operator; viewer czyta). Publicznie: `/r/{club_key}/i/{slug}` — bez
+sesji, `noindex`, zły klucz i złe hasło dają identyczne 404 z wyrównanym czasem.
+
+Odsyłacze w raporcie: render dokleja blok „Indeks współczynników" przed
+`</body>` WYŁĄCZNIE gdy `config.options.index_base`+`index_links` są obecne
+(wstawia je `run_job.php` gdy zna klub). Bez konfiguracji wyjście bajt w bajt
+jak dotąd — złoty test odtworzenia raportu nietknięty. Adres bazowy jest
+publiczny, więc ten sam plik HTML działa w panelu i po udostępnieniu.
+Wskaźniki szacowane (xG) niosą znacznik i zastrzeżenie o kalibracji
+(`IndexTerms::XG_ZASTRZEZENIE` — jedna stała dla indeksu i raportu).
+
+KOMPROMIS ZAKRESU: odsyłacze są blokiem-legendą raportu, nie kotwicą przy
+każdej liczbie — wpięcie w poszczególne wartości wymaga zmiany szablonu v23
+(osobna decyzja, bo szablon jest wzorcem odbioru co do bajtu).
+
+Testy: `test_indeks.php` (23 asercje), scenariusz 6 w `test_mapowania_http.php`
+(55 łącznie), test renderu w silniku. Do wdrożenia: migracja `010_index_terms.sql`.
+
+### 4.2d Moduł M3 — Kalkulator xG (migracja 011) — NAPISANE
+
+Model: `engine/coachanalyze/xg.py` — regresja logistyczna, wyłącznie `math`.
+Osobne modele (otwarta noga/główka, wolny bezpośredni, karny = stała 0,76);
+rozpoznanie z kwalifikatorów, nieznany → otwarta noga z odnotowanym założeniem.
+Zastrzeżenie o kalibracji w trzech miejscach: hasło „xG" indeksu (M1),
+ostrzeżenie `XG_MODEL`/adnotacja przy raporcie, `docs/MODEL_KANONICZNY.md`.
+
+Uzupełnianie braków: OPT-IN (`options.xg_model`), wartości analityka mają
+bezwzględne pierwszeństwo. **Domyślnie wyłączone w silniku — test złoty
+nietknięty (bramka odbioru).** `run_job.php` włącza flagę dla produkcyjnych
+renderów: ponowny render meczu z lukami w xG pokaże wyższą sumę, z ostrzeżeniem
+`XG_MODEL` na ekranie pokrycia — świadoma decyzja, odnotowana w CHANGELOG.
+
+Interaktywne boisko BEZ ŁAMANIA zasad „zero JS" i „PHP nie liczy":
+`input type="image"` (czysty HTML) wysyła współrzędne kliknięcia, a PHP
+ODCZYTUJE wartość z siatki policzonej przez silnik — artefakt
+`app/src/data/xg_grid.json`, generowany komendą `python -m coachanalyze
+xg-grid` (odtwarzać po każdej zmianie współczynników!). Lista strzałów
+per użytkownik w `xg_manual_shots` (migracja 011) — notatnik roboczy,
+nie wchodzi do raportów. Przyszła kalibracja: wynik strzału już jest
+w `events_canonical` jako kwalifikatory — bez migracji.
+
+Poza zakresem (D7): warstwa bukmacherska. Kompromis: adnotacja przy KAŻDEJ
+wartości `xg_source: model` w treści raportu wymaga edycji szablonu v23
+(wzorzec odbioru co do bajtu) — na dziś niesie ją blok indeksu i ostrzeżenie
+`XG_MODEL`; decyzja o szablonie osobno, jak w M1.
+
+Testy: `engine/tests/test_xg.py` (12), `test_xg.php` (19).
+Do wdrożenia: migracja `011_xg_manual_shots.sql`.
+
+### 4.2e Logowanie: „Formularz stracił ważność" w pętli — NAPRAWIONE, NIEWDROŻONE
+
+**Zgłoszenie (Windows/Firefox, pilne):** przy każdej próbie logowania
+„Formularz stracił ważność. Spróbuj jeszcze raz.", równolegle ostrzeżenie
+przeglądarki o certyfikacie. Powtarzanie nie pomagało — bo nie miało prawa.
+
+**Rozpoznanie.** Token CSRF jest przywiązany do sesji, a sesja do ciasteczka.
+Gdy ciasteczko nie wraca, `checkCsrf()` zwracał `false` i warstwa tras miała
+do dyspozycji jeden komunikat na wszystkie przypadki — ten o starym formularzu.
+Komunikat obiecywał, że powtórzenie pomoże, więc użytkownik klikał w kółko.
+
+**Samo wiązanie tokenu jest poprawne** i zostało sprawdzone przelotem HTTP:
+`GET /login` bez żadnych ciasteczek zakłada sesję, wydaje token i `POST` z tej
+samej wizyty przechodzi. Pierwsze wejście nie jest odrzucane — pod warunkiem,
+że ciasteczko wraca. Nie ma czego przerabiać w wiązaniu; brakowało rozpoznania
+przyczyny.
+
+**Naprawa.** `Session::csrfProblem()` zwraca NAZWANĄ przyczynę zamiast `bool`:
+
+| Przyczyna | Co widzi użytkownik |
+|---|---|
+| `mismatch` — sesja żyje, token się nie zgadza | „Formularz stracił ważność…" (bez zmian; TU powtórzenie pomaga) |
+| `no_token` — ciasteczko wróciło, sesja pusta | „Sesja wygasła — zaloguj się ponownie." |
+| `no_cookie` — ciasteczko nie wróciło | „Przeglądarka nie odesłała ciasteczka sesji… Ponowne kliknięcie »Zaloguj« niczego tu nie zmieni." |
+| `no_cookie` + APP_URL po HTTPS, żądanie bez szyfrowania | „Strona została otwarta bez szyfrowania, a ciasteczko sesji wymaga HTTPS…" |
+
+Zanim komunikat obwini przeglądarkę, sprawdzana jest **własna strona**:
+`Session::storageProblem()` próbuje zapisu w katalogu sesji (próbą, nie
+`is_writable` — jak przy LOG_PATH). Serwer, który nie umie zapisać sesji,
+wygląda z przeglądarki identycznie jak zablokowane ciasteczka, a wysłanie
+użytkownika w szukanie ustawień przeglądarki przy własnej awarii to strata
+jego dnia. Przyczyna idzie do logu, na ekran krótkie zdanie.
+
+Dwie rzeczy przy okazji:
+
+- **Ostrzeżenie ZANIM ktoś kliknie.** Gdy ciasteczko ma flagę `Secure`, a
+  żądanie przyszło bez szyfrowania, `/login` i `/haslo/zapomniane` mówią o tym
+  od razu. Rozpoznanie wyłącza każdy sposób, w jaki serwer ogłasza HTTPS
+  (`HTTPS`, port 443, `REQUEST_SCHEME`, `X-Forwarded-Proto`, `X-Forwarded-SSL`) —
+  fałszywy alarm u zalogowanego człowieka byłby gorszy niż brak komunikatu.
+  Flaga `Secure` nadal bierze się WYŁĄCZNIE z APP_URL: wyprowadzanie jej
+  z nagłówków pozwoliłoby zdjąć ją samym żądaniem po HTTP.
+- **Trasy przedlogowe nie gubią komunikatu.** `/haslo/zapomniane` i
+  `/haslo/reset/{token}` niosły błąd przez `flash`, czyli przez sesję — przy
+  braku sesji komunikat przepadał w przekierowaniu i użytkownik dostawał czysty
+  formularz bez słowa wyjaśnienia. Przy braku sesji formularz jest teraz
+  rysowany od razu, z komunikatem w tej samej odpowiedzi.
+
+**Testy.** `app/tests/test_komunikaty_sesji.php` — 34 asercje, **wpięty w CI**:
+pilnuje, że każde odrzucenie przechodzi przez rozpoznanie przyczyny, że teksty
+nienaprawialne powtórzeniem nie zachęcają do powtórzenia i że rozpoznanie HTTPS
+nie daje fałszywych alarmów. `app/tests/integracja/test_sesja_http.php` —
+33 asercje przez prawdziwy HTTP, dwa serwery (APP_URL po HTTP i po HTTPS).
+Sprawdzone też, że test wyłapuje regres: przywrócenie jednego komunikatu na
+wszystkie przypadki zapala 8 asercji.
+
+**Do zrobienia poza kodem:** certyfikat na `app.coachanalyze.pl` — aplikacja
+zniesie teraz jego brak i nazwie problem, ale zalogować się bez zaufanego
+certyfikatu (albo bez HTTPS) i tak się nie da, bo ciasteczko sesji jest `Secure`.
+
 ### 4.3 Migracje 006, 007, 008 do wdrożenia
 
 W tej kolejności. **008 jest bezpieczna przy odwrotnej kolejności** (kod przed
@@ -286,7 +420,8 @@ PHP, łącznie:               724 asercje, 0 błędów
 ```
 
 Zestawy w repozytorium (CI): `test_layout`, `test_forms`,
-`test_disabled_functions`, `test_php_wersje`, `test_chmurki`, `test_sql_parametry`.
+`test_disabled_functions`, `test_php_wersje`, `test_chmurki`, `test_sql_parametry`,
+`test_bramki_rol`, `test_komunikaty_sesji`.
 
 Zestawy integracyjne zostały **przeniesione do repozytorium**
 (`app/tests/integracja/`) wraz z atrapami i syntetycznymi danymi — wcześniej
@@ -298,6 +433,7 @@ wolny port). Uruchamianie opisuje `app/tests/integracja/README.md`:
 ```
 test_etap3  test_4a  test_4b  test_4c  test_7  test_remember
 test_kolejka  test_powiadomienia  test_smtp  test_mapowania  test_konta
+test_mapowania_http  test_haslo_http  test_sesja_http  test_indeks  test_xg
 test_chmurki.js
 ```
 

@@ -5,7 +5,9 @@ w CI** — wymagają atrap i środowiska (Redis przez gniazdo, venv Pythona,
 czasem otwartego portu). Uruchamiane ręcznie przy pracy nad daną częścią.
 
 Testy z `app/tests/*.php` (bez tego podkatalogu) są statyczne, nie mają zależności
-i **to one chodzą w CI**.
+i **to one chodzą w CI**. Gdy coś tutaj wykryje usterkę, warto zapytać, czy da się
+jej pilnować także statycznie — tak powstały `test_sql_parametry`, `test_bramki_rol`
+i `test_komunikaty_sesji`.
 
 ## Uruchamianie
 
@@ -14,6 +16,8 @@ cd app/tests/integracja
 
 # Zestawy bez zależności
 php test_mapowania.php
+php test_indeks.php
+php test_xg.php
 php test_powiadomienia.php
 php test_4a.php  test_4b.php  test_4c.php  test_7.php  test_remember.php
 
@@ -30,6 +34,18 @@ PYTHONPATH=../../../engine php test_kolejka.php
 # łapie klasę błędu „testy zielone, funkcja nieosiągalna z interfejsu".
 php test_mapowania_http.php
 
+# Reset i zmiana hasła przez PRAWDZIWY HTTP: serwer PHP, atrapy Redisa i SMTP,
+# cron. Sprawdza m.in. identyczność odpowiedzi dla adresu istniejącego
+# i nieistniejącego oraz to, że surowy token nie istnieje poza mailem.
+php test_haslo_http.php
+
+# Sesja i token CSRF przez PRAWDZIWY HTTP: logowanie bez żadnej sesji na
+# wejściu, komunikaty przy braku ciasteczka, przy sesji wygasłej i przy
+# faktycznie starym formularzu. Podnosi DWA serwery — drugi z APP_URL po
+# HTTPS, żeby odtworzyć ciasteczko `Secure` odrzucane przy żądaniu bez
+# szyfrowania (objaw zgłoszony z produkcji).
+php test_sesja_http.php
+
 # Protokół SMTP przeciw atrapie serwera; certyfikat wytwarza sam test
 php test_smtp.php
 
@@ -41,7 +57,7 @@ node test_chmurki.js
 
 | Plik | Do czego |
 |---|---|
-| `seed.php` | schemat SQLite odwzorowujący migracje 001–008 + dane przykładowe |
+| `seed.php` | schemat SQLite odwzorowujący migracje 001–009 + dane przykładowe |
 | `fake_redis.php` | RESP przez gniazdo uniksowe, wiele połączeń naraz |
 | `fake_smtp.php` | SMTP i SMTPS (tryb `smtps` wymaga pliku PEM) |
 

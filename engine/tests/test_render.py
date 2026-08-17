@@ -222,6 +222,33 @@ def test_szablon_z_repozytorium_ma_placeholdery():
     }
 
 
+def test_indeks_wspolczynnikow_doklejany_tylko_z_konfiguracja():
+    """Odsyłacze do indeksu (M1) są OPT-IN przez config.options.index_base.
+
+    Bez konfiguracji wyjście musi być bajt w bajt takie jak dotąd — na tym
+    stoi złoty test odtworzenia raportu produkcyjnego. Etykiety przechodzą
+    przez ucieczkę HTML: pochodzą z bazy, czyli od użytkownika.
+    """
+    cfg = {"options": {"index_base": "/r/KLUCZ/i/", "index_links": [
+        {"slug": "xg", "label": "xG <gole & oczekiwane>", "estimated": True},
+        {"slug": "celnosc", "label": "Celność strzałów", "estimated": False},
+        {"slug": "zły/slug", "label": "odpada", "estimated": False},
+    ]}}
+
+    html, _ = render.render(RAMKA, config=cfg)
+    assert 'id="ca-indeks"' in html
+    assert '/r/KLUCZ/i/xg' in html and '/r/KLUCZ/i/celnosc' in html
+    assert 'xG &lt;gole &amp; oczekiwane&gt;' in html, "etykieta bez ucieczki HTML"
+    assert 'wskaźnik szacowany' in html
+    assert 'zły/slug' not in html, "slug spoza [a-z0-9-] nie może wejść do adresu"
+
+    bez, _ = render.render(RAMKA)
+    assert 'ca-indeks' not in bez
+
+    zwykly_config, _ = render.render(RAMKA, config={"options": {"contrast_fix": True}})
+    assert zwykly_config == bez, "config bez index_base nie może zmienić ani bajta"
+
+
 def test_paleta_z_parsera_wchodzi_do_html(tmp_path):
     """Kolory z pliku projektu trafiają do raportu bez zmiany zapisu."""
     projekt = tmp_path / "projekt.json"

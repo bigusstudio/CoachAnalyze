@@ -43,14 +43,16 @@ final class Users
     private const UPRAWNIENIA = [
         'admin' => [
             'accounts', 'upload', 'generate', 'share', 'clubs', 'seasons',
-            'notes', 'mappings', 'reports',
+            'notes', 'mappings', 'reports', 'index',
         ],
         'operator' => [
             'upload', 'generate', 'share', 'clubs', 'seasons',
-            'notes', 'mappings', 'reports',
+            'notes', 'mappings', 'reports', 'index',
         ],
         // Viewer OGLĄDA. Bez uploadu i bez udostępniania — te dwie czynności
         // wypuszczają dane poza panel i wymagają decyzji, a nie tylko dostępu.
+        // Indeks współczynników czyta (`/indeks` nie ma bramki na GET),
+        // ale nie edytuje — hasło opisuje metodykę, a metodyka to decyzja.
         'viewer' => ['notes', 'reports'],
     ];
 

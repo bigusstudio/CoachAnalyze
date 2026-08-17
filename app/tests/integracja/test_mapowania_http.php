@@ -78,6 +78,10 @@ file_put_contents($envFile, implode("\n", [
     'APP_URL=http://127.0.0.1:' . $port,
     'SESSION_NAME=ca_test',
     'REDIS_SOCKET=' . $sock,
+    // Niskie parametry argon2id — test haszuje dodatkowe konta, a koszt
+    // produkcyjny (96 MB, t=5) nic tu nie sprawdza.
+    'ARGON_MEMORY_COST=8192',
+    'ARGON_TIME_COST=1',
     '',
 ]));
 putenv('CA_ENV_PATH=' . $envFile);
@@ -451,6 +455,107 @@ check('po ponowieniu kreator ZNÓW zatrzymuje',
     $poNaprawie['status'] === 302
     && $poNaprawie['location'] === '/import/' . $importId2 . '/mapowanie',
     $poNaprawie['status'] . ' → ' . (string) $poNaprawie['location']);
+
+// ---------------------------------------------------------------- scenariusz 5
+echo "\n== viewer nie zapisze profilu mapowań (bramka roli) ==\n";
+
+/*
+ * Profil mapowań zmienia liczby w raportach tak samo jak generowanie.
+ * Viewer OGLĄDA — bramka `requireCan('mappings')` ma odpowiadać 404,
+ * nie 403: rola bez uprawnienia nie ma powodu wiedzieć, że trasa istnieje.
+ */
+ca_test_db($baza);
+Db::run("INSERT INTO users (email, pass_hash, display_name, role)
+         VALUES ('viewer@example.com', :h, 'Widz', 'viewer')",
+    ['h' => \CoachAnalyze\Auth::hashPassword('haslo-widza-do-testow')]);
+
+$ciasteczka = [];   // nowa przeglądarka
+$strona = http('GET', '/login');
+$logowanie = http('POST', '/login', ['form' => [
+    'email'    => 'viewer@example.com',
+    'password' => 'haslo-widza-do-testow',
+    'csrf'     => csrfZ($strona['body']),
+]]);
+check('viewer się loguje', $logowanie['status'] === 302, 'status ' . $logowanie['status']);
+$csrfViewer = csrfZ(http('GET', '/import')['body']);
+
+foreach ([
+    'zapis mapowań importu' => '/import/' . $importId2 . '/mapowanie',
+    'zapis mapowań klubu'   => '/kluby/1/mapowania',
+    'edycja klubu'          => '/kluby/1',
+    'ponowienie zadania'    => '/zadania/' . $jobInspect2 . '/ponow',
+    'generowanie raportu'   => '/import/' . $importId2 . '/generuj',
+] as $nazwa => $trasa) {
+    $proba = http('POST', $trasa, ['form' => ['csrf' => $csrfViewer, 'tag' => ['X' => '__ignoruj__']]]);
+    check("viewer odbity (404): {$nazwa}", $proba['status'] === 404,
+        $trasa . ' → ' . $proba['status']);
+}
+
+ca_test_db($baza);
+check('po próbach viewera nie przybyło wersji profilu',
+    (int) Db::one('SELECT COUNT(*) AS ile FROM mapping_profiles')['ile'] === 1);
+
+// ---------------------------------------------------------------- scenariusz 6
+echo "\n== indeks współczynników (M1): panel, viewer, wersja publiczna ==\n";
+
+// Viewer CZYTA indeks…
+$indeksViewer = http('GET', '/indeks');
+check('viewer widzi listę haseł', $indeksViewer['status'] === 200
+    && str_contains($indeksViewer['body'], 'xG'));
+
+// …ale nie edytuje.
+$edycjaViewer = http('POST', '/indeks/xg', ['form' => [
+    'csrf' => $csrfViewer, 'name' => 'X', 'definition' => 'Y',
+]]);
+check('viewer odbity (404) od edycji hasła', $edycjaViewer['status'] === 404,
+    'status ' . $edycjaViewer['status']);
+
+// Operator edytuje — powstaje wersja klubowa.
+$ciasteczka = [];
+$strona = http('GET', '/login');
+http('POST', '/login', ['form' => [
+    'email'    => 'operator@example.com',
+    'password' => 'bardzo-dlugie-haslo-testowe',
+    'csrf'     => csrfZ($strona['body']),
+]]);
+$haslo = http('GET', '/indeks/xg');
+check('operator widzi hasło xG', $haslo['status'] === 200
+    && str_contains($haslo['body'], 'porównawczo'), 'status ' . $haslo['status']);
+
+$edycja = http('POST', '/indeks/xg?klub=1', ['form' => [
+    'csrf'           => csrfZ($haslo['body']),
+    'name'           => 'xG po naszemu',
+    'definition'     => 'Definicja metodyki klubu.',
+    'estimated_note' => 'Nasze zastrzeżenie o modelu.',
+]]);
+check('edycja zapisuje wersję klubową', $edycja['status'] === 302,
+    $edycja['status'] . ' → ' . (string) $edycja['location']);
+
+ca_test_db($baza);
+check('wersja klubowa w bazie',
+    (int) Db::one("SELECT COUNT(*) AS ile FROM index_terms WHERE club_id = 1 AND slug = 'xg'")['ile'] === 1);
+
+// Hasło PUBLICZNE — nowa przeglądarka, zero sesji.
+$ciasteczka = [];
+$publiczne = http('GET', '/r/HUT7K2QX/i/xg');
+check('hasło publiczne dostępne bez logowania', $publiczne['status'] === 200
+    && str_contains($publiczne['body'], 'xG po naszemu'),
+    'status ' . $publiczne['status']);
+check('strona publiczna bez nawigacji panelu',
+    !str_contains($publiczne['body'], 'side__item'));
+
+$zlyKlucz = http('GET', '/r/ZLYKLUCZ/i/xg');
+$zlySlug  = http('GET', '/r/HUT7K2QX/i/nie-ma');
+check('zły klucz klubu daje 404', $zlyKlucz['status'] === 404, 'status ' . $zlyKlucz['status']);
+check('złe hasło daje IDENTYCZNE 404', $zlySlug['status'] === 404
+    && $zlySlug['body'] === $zlyKlucz['body']);
+
+// Raport z renderu niesie blok odsyłaczy do indeksu.
+$plikRaportu = Db::one('SELECT html_path FROM reports ORDER BY id DESC LIMIT 1');
+$trescRaportu = $plikRaportu !== null ? (string) @file_get_contents((string) $plikRaportu['html_path']) : '';
+check('raport ma blok odsyłaczy do indeksu', str_contains($trescRaportu, 'ca-indeks'));
+check('odsyłacz prowadzi pod publiczny adres klubu',
+    str_contains($trescRaportu, '/r/HUT7K2QX/i/'));
 
 echo "\n=== OK: {$ok}, BŁĘDÓW: {$fail} ===\n";
 exit($fail === 0 ? 0 : 1);

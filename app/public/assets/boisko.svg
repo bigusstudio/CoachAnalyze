@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="525" height="340" viewBox="0 0 525 340" role="img" aria-label="Boisko — kliknij miejsce strzału">
+  <!--
+    Kalkulator xG (M3): obrazek jest przyciskiem formularza (input type=image),
+    kliknięcie wysyła współrzędne w pikselach. Skala: 5 px = 1 m, boisko 105×68,
+    atak W PRAWO (współrzędne eksportu są znormalizowane kierunkowo — pułapka 2).
+    Zero skryptów — czysty HTML + SVG (CLAUDE.md §9).
+  -->
+  <rect x="0" y="0" width="525" height="340" fill="#20402a"/>
+  <g fill="none" stroke="#e8f2ea" stroke-width="2" opacity="0.85">
+    <rect x="1" y="1" width="523" height="338"/>
+    <line x1="262.5" y1="1" x2="262.5" y2="339"/>
+    <circle cx="262.5" cy="170" r="45.75"/>
+    <!-- pole karne i bramkowe po stronie ataku (prawej) -->
+    <rect x="442.5" y="69.2" width="82.5" height="201.6"/>
+    <rect x="497.5" y="124.2" width="27.5" height="91.6"/>
+    <!-- pole karne i bramkowe po stronie własnej -->
+    <rect x="0" y="69.2" width="82.5" height="201.6"/>
+    <rect x="0" y="124.2" width="27.5" height="91.6"/>
+    <!-- łuki pól karnych -->
+    <path d="M 442.5 133.5 A 45.75 45.75 0 0 0 442.5 206.5"/>
+    <path d="M 82.5 133.5 A 45.75 45.75 0 0 1 82.5 206.5"/>
+  </g>
+  <g fill="#e8f2ea" opacity="0.85">
+    <circle cx="262.5" cy="170" r="3"/>
+    <circle cx="470" cy="170" r="3"/>
+    <circle cx="55" cy="170" r="3"/>
+  </g>
+  <!-- bramka atakowana -->
+  <rect x="523" y="151.7" width="4" height="36.6" fill="#e8f2ea"/>
+  <text x="440" y="30" fill="#e8f2ea" font-size="14" font-family="sans-serif" opacity="0.7">→ atak</text>
+</svg>

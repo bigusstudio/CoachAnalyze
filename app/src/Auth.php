@@ -74,6 +74,17 @@ final class Auth
     }
 
     /**
+     * Odcisk poświadczenia do związania z sesją (Session::bindAuth).
+     *
+     * Skrót HASHA, nie hasła — hash i tak leży w bazie, a do sesji trafia
+     * tylko jego skrót, więc plik sesji nie zdradza nic ponad to, co baza.
+     */
+    public static function fingerprint(string $passHash): string
+    {
+        return substr(hash('sha256', $passHash), 0, 16);
+    }
+
+    /**
      * @return array{ok:bool, user?:array<string,mixed>, error?:string, retry_after?:int}
      */
     public function attempt(string $email, string $password): array
@@ -128,9 +139,11 @@ final class Auth
         // Konto założone na starych parametrach (m.in. p=2 sprzed zderzenia
         // z libargon2 na lh.pl) przechodzi na bieżące przy pierwszym udanym
         // logowaniu — o ile stary hash w ogóle daje się zweryfikować.
-        if (password_needs_rehash((string) $user['pass_hash'], PASSWORD_ARGON2ID, self::argonOptions())) {
+        $hashBiezacy = (string) $user['pass_hash'];
+        if (password_needs_rehash($hashBiezacy, PASSWORD_ARGON2ID, self::argonOptions())) {
+            $hashBiezacy = self::hashPassword($password);
             Db::run('UPDATE users SET pass_hash = :hash WHERE id = :id', [
-                'hash' => self::hashPassword($password),
+                'hash' => $hashBiezacy,
                 'id'   => $user['id'],
             ]);
         }
@@ -152,6 +165,9 @@ final class Auth
 
         $limiter->clear($email);
         Session::login((int) $user['id']);
+        // Odcisk hasha wiąże sesję z poświadczeniem — zmiana hasła unieważni
+        // wszystkie sesje poza tą, w której zmieniono (patrz Session::bindAuth).
+        Session::bindAuth(self::fingerprint($hashBiezacy));
         // Czas z aplikacji, nie z NOW() — jedno źródło zegara w całej warstwie PHP
         // (tak samo w Stats) i zapytania dają się uruchomić poza MySQL-em.
         Db::run('UPDATE users SET last_login_at = :now WHERE id = :id', [
@@ -183,12 +199,14 @@ final class Auth
         $userId = (int) $result['user_id'];
 
         // Konto mogło zniknąć od czasu wydania tokenu.
-        if (Db::one('SELECT id FROM users WHERE id = :id', ['id' => $userId]) === null) {
+        $konto = Db::one('SELECT id, pass_hash FROM users WHERE id = :id', ['id' => $userId]);
+        if ($konto === null) {
             Remember::forgetAll($userId, 'brak konta');
             return ['ok' => false];
         }
 
         Session::login($userId, Session::LEVEL_REMEMBERED);
+        Session::bindAuth(self::fingerprint((string) $konto['pass_hash']));
         return ['ok' => true, 'token' => (string) $result['token']];
     }
 
@@ -215,14 +233,19 @@ final class Auth
             return ['ok' => false, 'error' => 'account.err.short'];
         }
 
+        $nowyHash = self::hashPassword($new);
         Db::run('UPDATE users SET pass_hash = :hash WHERE id = :id', [
-            'hash' => self::hashPassword($new),
+            'hash' => $nowyHash,
             'id'   => $userId,
         ]);
 
         // Zmiana hasła to najczęściej reakcja na podejrzenie wycieku. Każde
         // zapamiętane urządzenie musi wtedy stracić dostęp.
         Remember::forgetAll($userId, 'zmiana hasła');
+
+        // POZOSTAŁE sesje wygasają same (odcisk przestaje się zgadzać);
+        // bieżąca dostaje odcisk nowego hasha i pracuje dalej.
+        Session::bindAuth(self::fingerprint($nowyHash));
 
         // Flaga wymuszonej zmiany zdejmuje się TYLKO tutaj — czyli wtedy, gdy
         // hasło zmienił sam właściciel konta, podając stare. Reset przez
@@ -268,6 +291,20 @@ final class Auth
         // Warunek stanu w PHP, nie w SQL — z tego samego powodu, co wyżej:
         // zapytanie z `status = 'active'` wywalałoby się na bazie bez tej kolumny.
         if ((string) ($user['status'] ?? 'active') === 'disabled') {
+            return null;
+        }
+
+        /*
+         * Sesja otwarta STARYM hasłem wygasa natychmiast po jego zmianie —
+         * przez kogokolwiek: właściciela, administratora, reset mailowy.
+         * Zmiana hasła to najczęściej reakcja na podejrzenie wycieku, więc
+         * cudza otwarta karta nie może pracować dalej do końca sesji.
+         *
+         * Sesja bez odcisku (sprzed wdrożenia) przechodzi — dostanie go
+         * przy następnym zalogowaniu.
+         */
+        $odcisk = Session::authFingerprint();
+        if ($odcisk !== null && !hash_equals(self::fingerprint((string) $user['pass_hash']), $odcisk)) {
             return null;
         }
 

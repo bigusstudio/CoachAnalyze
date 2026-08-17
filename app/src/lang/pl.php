@@ -27,11 +27,48 @@ return [
     'login.err.invalid_credentials' => 'Nieprawidłowy adres e-mail lub hasło.',
     'login.err.rate_limited'        => 'Zbyt wiele prób logowania. Spróbuj ponownie za %s.',
     'login.err.login_unavailable'   => 'Logowanie jest chwilowo niedostępne. Spróbuj ponownie za chwilę.',
+    // Odrzucenie tokenu CSRF ma TRZY różne przyczyny i trzy różne komunikaty.
+    // Powtórzenie próby pomaga WYŁĄCZNIE przy pierwszym z nich — pozostałe
+    // dwa dadzą ten sam wynik, więc komunikat nie ma prawa do niego zachęcać.
+    // Zgłoszone z produkcji: przy zablokowanym ciasteczku sesji użytkownik
+    // klikał „Zaloguj" w nieskończoność, bo tekst obiecywał, że to zadziała.
     'login.err.csrf'                => 'Formularz stracił ważność. Spróbuj jeszcze raz.',
+    'login.err.session_lost'        => 'Sesja wygasła — zaloguj się ponownie.',
+    'login.err.cookie_blocked'      => 'Przeglądarka nie odesłała ciasteczka sesji, więc logowanie nie może się udać. '
+        . 'Najczęstsze przyczyny: zablokowane ciasteczka dla tego adresu, tryb prywatny albo ostrzeżenie '
+        . 'o certyfikacie strony. Ponowne kliknięcie „Zaloguj" niczego tu nie zmieni.',
+    'login.err.cookie_insecure'     => 'Strona została otwarta bez szyfrowania, a ciasteczko sesji wymaga HTTPS — '
+        . 'przeglądarka je odrzuca i logowanie nie może się udać. Otwórz adres zaczynający się od https://.',
+    'login.err.session_storage'     => 'Serwer nie może zapisać sesji, więc logowanie jest w tej chwili niemożliwe. '
+        . 'To usterka po naszej stronie — została zapisana w logu. Spróbuj później albo zgłoś ją administratorowi.',
     'login.err.empty'               => 'Podaj adres e-mail i hasło.',
 
     'login.remember'      => 'Zapamiętaj mnie na tym urządzeniu',
     'login.remember.hint' => 'Zostaniesz zalogowany przez %d dni. Do zmiany hasła i tak poprosimy o nie ponownie.',
+    'login.forgot'        => 'Nie pamiętasz hasła?',
+
+    // --- reset hasła przez e-mail ---
+    'reset.title'          => 'Odzyskiwanie hasła',
+    'reset.hint'           => 'Podaj adres e-mail konta. Jeśli konto istnieje, wyślemy odnośnik do ustawienia nowego hasła.',
+    'reset.submit'         => 'Wyślij odnośnik',
+    'reset.back_to_login'  => 'Wróć do logowania',
+    // TEN SAM komunikat dla adresu istniejącego i nieistniejącego —
+    // formularz nie może służyć do sondowania listy kont (CLAUDE.md §5).
+    'reset.sent'           => 'Jeśli konto o tym adresie istnieje, za chwilę wyślemy wiadomość z odnośnikiem. Sprawdź pocztę.',
+    'reset.err.email'      => 'Podaj poprawny adres e-mail.',
+    'reset.err.rate'       => 'Zbyt wiele próśb o reset. Spróbuj ponownie za jakiś czas.',
+    'reset.err.unavailable' => 'Odzyskiwanie hasła jest chwilowo niedostępne. Spróbuj później.',
+    'reset.err.invalid.heading' => 'Odnośnik nie działa',
+    'reset.err.invalid'    => 'Odnośnik jest nieprawidłowy, zużyty albo wygasł. Poproś o nowy na ekranie logowania.',
+    'reset.new.title'      => 'Ustaw nowe hasło',
+    'reset.new.password'   => 'Nowe hasło',
+    'reset.new.hint'       => 'Co najmniej %d znaków.',
+    'reset.new.submit'     => 'Zapisz nowe hasło',
+    'reset.err.short'      => 'Hasło musi mieć co najmniej %d znaków.',
+    'reset.done'           => 'Hasło zostało zmienione. Zaloguj się nowym hasłem.',
+    'reset.mail.title'     => 'CoachAnalyze — ustawienie nowego hasła',
+    'reset.mail.body'      => 'Otrzymaliśmy prośbę o zmianę hasła do tego konta. Odnośnik jest ważny przez godzinę i działa jeden raz.'
+        . "\n\n" . 'Jeśli to nie Ty prosisz o zmianę — zignoruj tę wiadomość; hasło pozostaje bez zmian.',
 
     // --- konto operatora ---
     'account.title'       => 'Konto',
@@ -71,6 +108,86 @@ return [
     'nav.matches'         => 'Mecze',
     'nav.clubs'           => 'Kluby',
     'nav.notes'           => 'Notatki',
+    'nav.index'           => 'Indeks',
+
+    // --- indeks współczynników (M1) ---
+    'index.title'          => 'Indeks współczynników',
+    'index.intro'          => 'Słownik metodyczny raportów: co znaczy każdy wskaźnik, jak jest liczony '
+        . 'i jak go czytać. Hasła domyślne można dostosować do metodyki klubu — każda zmiana '
+        . 'tworzy nową wersję, a raporty odsyłają do haseł przy wskaźnikach.',
+    'index.search'         => 'Szukaj',
+    'index.search.hint'    => 'nazwa albo fragment treści hasła',
+    'index.filter'         => 'Pokaż',
+    'index.club'           => 'Klub',
+    'index.none'           => 'Żadne hasło nie pasuje do „%s”.',
+    'index.col.name'       => 'Wskaźnik',
+    'index.col.concept'    => 'Pojęcie kanoniczne',
+    'index.col.version'    => 'Wersja',
+    'index.version.default' => 'domyślne',
+    'index.version.club'   => 'klubowa, wersja %d',
+    'index.estimated'      => 'Wskaźnik szacowany',
+    'index.estimated.short' => 'szacowany',
+    'index.field.definition'     => 'Definicja',
+    'index.field.formula'        => 'Wzór',
+    'index.field.example'        => 'Przykład',
+    'index.field.interpretation' => 'Co to znaczy dla trenera',
+    'index.field.source'         => 'Źródło danych',
+    'index.field.estimated_note' => 'Adnotacja o szacowaniu (ograniczenia metody)',
+    'index.field.estimated_note.hint' => 'Wypełnij tylko, gdy wartość nie pochodzi wprost z eksportu — opisz ograniczenia metody.',
+    'index.edit'           => 'Dostosuj do metodyki klubu',
+    'index.edit.title'     => 'Edycja hasła: %s',
+    'index.edit.why'       => 'Zapis utworzy klubową wersję hasła dla „%s”. Hasło domyślne pozostaje '
+        . 'punktem wyjścia dla innych klubów.',
+    'index.edit.concept_fixed' => 'pojęcie jest stałe; hasło nie może „odpłynąć” do innego wskaźnika, '
+        . 'bo odsyłacze z archiwalnych raportów prowadziłyby do treści o czym innym',
+    'index.edit.versioning' => 'Zapis tworzy nową wersję hasła. Poprzednie wersje zostają — historia '
+        . 'metodyki musi być odtwarzalna.',
+    'index.edit.submit'    => 'Zapisz wersję klubową',
+    'index.saved'          => 'Hasło zapisane jako nowa wersja klubowa.',
+    'index.err.missing'    => 'Takie hasło nie istnieje w indeksie.',
+    'index.err.no_club'    => 'Brak klubu, dla którego można zapisać wersję hasła. Załóż klub w panelu.',
+    'index.err.save'       => 'Nie udało się zapisać hasła. Nazwa i definicja są wymagane.',
+    'index.public.subtitle' => 'CoachAnalyze · Indeks współczynników',
+
+    // --- kalkulator xG (M3) ---
+    'nav.xg'          => 'Kalkulator xG',
+    'xg.title'        => 'Kalkulator xG',
+    'xg.intro'        => 'Narzędzie robocze: kliknij miejsce strzału na boisku, a otrzymasz wartość xG '
+        . 'i ocenę jakości sytuacji. Możesz dodać strzał, którego nie otagowano, albo zweryfikować '
+        . 'własną ocenę. Lista poniżej nie wchodzi do żadnego raportu.',
+    'xg.index_link'   => 'Hasło „xG" w indeksie współczynników',
+    'xg.pitch.title'  => 'Kliknij miejsce strzału',
+    'xg.pitch.hint'   => 'Najpierw wybierz część ciała i rodzaj sytuacji, potem kliknij w boisko. '
+        . 'Atak w prawo. Przy rzucie karnym miejsce kliknięcia nie ma znaczenia.',
+    'xg.pitch.alt'    => 'Boisko — kliknięcie dodaje strzał',
+    'xg.body.foot'    => 'noga',
+    'xg.body.head'    => 'główka',
+    'xg.sit.open'     => 'gra otwarta',
+    'xg.sit.free_kick' => 'rzut wolny bezpośredni',
+    'xg.sit.penalty'  => 'rzut karny',
+    'xg.result'       => 'xG = %s dla pozycji %s × %s m',
+    'xg.quality.top'  => 'sytuacja bramkowa najwyższej jakości',
+    'xg.quality.good' => 'dobra sytuacja',
+    'xg.quality.avg'  => 'przeciętna sytuacja',
+    'xg.quality.low'  => 'niska jakość — strzał z dystansu lub z ostrego kąta',
+    'xg.list.title'   => 'Dodane strzały',
+    'xg.list.empty'   => 'Nie dodano jeszcze żadnego strzału.',
+    'xg.col.position' => 'Pozycja',
+    'xg.col.body'     => 'Część ciała',
+    'xg.col.situation' => 'Sytuacja',
+    'xg.col.quality'  => 'Ocena',
+    'xg.sum'          => 'Suma xG listy: %s',
+    'xg.edit'         => 'edytuj',
+    'xg.edit.title'   => 'Edycja strzału #%d',
+    'xg.edit.submit'  => 'Zapisz zmiany',
+    'xg.updated'      => 'Strzał zaktualizowany.',
+    'xg.delete'       => 'usuń',
+    'xg.deleted'      => 'Strzał usunięty z listy.',
+    'xg.err.no_point' => 'Kliknij w boisko, żeby wskazać miejsce strzału.',
+    'xg.err.grid'     => 'Nie udało się odczytać wartości — punkt poza boiskiem albo brak siatki xG.',
+    'xg.err.update'   => 'Nie udało się zapisać zmian strzału.',
+    'xg.err.no_grid'  => 'Brak artefaktu siatki xG (app/src/data/xg_grid.json). '
+        . 'Wygeneruj go: python -m coachanalyze xg-grid.',
     'nav.soon_hint'       => 'Wkrótce',
     'nav.theme.to_dark'   => 'Włącz motyw ciemny',
     'nav.theme.to_light'  => 'Włącz motyw jasny',
@@ -520,6 +637,7 @@ return [
     'mail.btn.progress'    => 'Sprawdź postęp',
     'mail.btn.details'     => 'Zobacz szczegóły',
     'mail.btn.open'        => 'Otwórz w panelu',
+    'mail.btn.reset'       => 'Ustaw nowe hasło',
     'mail.footer'          => 'Wiadomość wysłana automatycznie przez CoachAnalyze.',
     'mail.footer.settings' => 'ustawieniach konta',
 
