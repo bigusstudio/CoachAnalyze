@@ -48,6 +48,59 @@ Migracje bazy nie cofają się automatycznie. Zrzut bazy przed każdą migracją
 
 ---
 
+# HTTPS i nagłówki bezpieczeństwa
+
+## Wymuszenie HTTPS mieszka w pliku, który wdrożenie nadpisuje
+
+Przekierowanie HTTP→HTTPS niesie `app/public/.htaccess`, a przejście 2 rsync
+w `deploy.sh` **nadpisuje ten plik wersją z repozytorium**. Reguła włączona ręcznie
+na serwerze przeżywa więc dokładnie do najbliższego wdrożenia.
+
+Skutek jej zniknięcia jest cichy i całkowity: panel wraca na HTTP, ciasteczko sesji
+ma flagę `Secure` (bierze ją z `APP_URL`), więc przestaje wracać. Token CSRF nie ma się
+gdzie zapisać i **logowanie odbija każdą próbę** — nikt nie wejdzie do panelu.
+Aplikacja nazwie przyczynę na ekranie logowania („Strona została otwarta bez
+szyfrowania…"), co skraca diagnozę, ale nie przywraca dostępu.
+
+Dlatego reguła jest pilnowana w dwóch miejscach:
+
+| Gdzie | Co sprawdza |
+|---|---|
+| `app/tests/test_layout.php` (CI) | reguły w `app/public/.htaccess` NIE są zakomentowane, a blokady `[F,L]` stoją przed przekierowaniem |
+| `deploy.sh`, kontrola po wdrożeniu | `http://app.coachanalyze.pl/login` odpowiada 301 z `Location: https://…` |
+
+Jeśli wdrożenie zatrzyma się na tej kontroli — odkomentuj `RewriteCond %{HTTPS} !=on`
+**w repozytorium**, nie tylko w katalogu domeny.
+
+## Nagłówki ustawia wyłącznie `.htaccess`
+
+`Header always set` w Apache działa w fazie fixup i **zastępuje** nagłówek wysłany
+przez PHP. Dublowanie tych ustawień w `app/src/bootstrap.php` dawało więc dwa źródła
+prawdy, z których wygrywało to niewidoczne z kodu: kod deklarował
+`X-Frame-Options: DENY`, a produkcja odpowiadała `SAMEORIGIN`. Rozjazd wyszedł dopiero
+przy przeglądzie nagłówków na żywo (`curl -I`). Ustawienia z PHP zostały usunięte —
+politykę zmienia się w `app/public/.htaccess`.
+
+Kosztem jest brak zapasowego ustawienia: bez Apache z `mod_headers` tych nagłówków
+nie ma w ogóle. Dlatego `deploy.sh` sprawdza po wdrożeniu, czy faktycznie wracają.
+
+## `X-Frame-Options: DENY` blokuje osadzanie raportów w ramce
+
+Świadoma decyzja, nie przeoczenie. Panel nie ma ani jednego własnego `iframe`,
+więc `SAMEORIGIN` nie dawał niczego poza słabszą ochroną.
+
+**Dotyczy to także raportów publicznych `/r/{club_key}/{token}`** — klub NIE osadzi
+raportu w ramce na własnej stronie. Dziś nikt o to nie prosił; gdyby to miała być
+funkcja, właściwą drogą jest `Content-Security-Policy: frame-ancestors` z listą domen
+klubów (albo powrót do `SAMEORIGIN`), a **nie** zdjęcie nagłówka. Zdjęcie otwiera
+raport na osadzenie przez dowolną stronę, a raport jest chroniony wyłącznie
+nieodgadywalnością adresu.
+
+Odnośnik do raportu wysłany klubowi otwiera się normalnie w karcie przeglądarki —
+blokada dotyczy tylko ramek.
+
+---
+
 # Przypadki z wdrożenia 2026-08-11
 
 Wszystkie poniższe wystąpiły naprawdę, przy pierwszym uruchomieniu na lh.pl.

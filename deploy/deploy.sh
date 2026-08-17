@@ -273,6 +273,63 @@ for p in app/src/bootstrap.php .env storage/ storage/uploads/; do
   fi
 done
 
+echo "==> Kontrola wymuszenia HTTPS"
+#
+# POWÓD ISTNIENIA TEJ KONTROLI: przekierowanie niesie `app/public/.htaccess`,
+# a przejście 2 rsync NADPISUJE ten plik wersją z repozytorium. Reguła włączona
+# ręcznie na serwerze przeżywa więc dokładnie do najbliższego wdrożenia — i to
+# wdrożenie melduje „Gotowe", bo nic tego nie sprawdzało.
+#
+# Skutek wyłączenia jest cichy i całkowity: panel wraca na HTTP, a ciasteczko
+# sesji ma flagę `Secure` (bierze ją z APP_URL), więc przestaje wracać. Token
+# CSRF nie ma się gdzie zapisać i logowanie odbija KAŻDĄ próbę. Aplikacja nazwie
+# przyczynę na ekranie („Strona została otwarta bez szyfrowania…"), ale nikt nie
+# będzie mógł wejść do panelu.
+#
+# Odpowiedź czyta `curl`, nie awk: `%{redirect_url}` bierze się z nagłówka
+# `Location` bez parsowania tekstu, więc nie zależy od pisowni nagłówka
+# ani od zakończeń linii.
+HTTPS_PROBKA=$(curl -sI -o /dev/null \
+  -w '%{http_code} %{redirect_url}' \
+  --max-time 15 "http://app.coachanalyze.pl/login" || echo "000 ")
+HTTPS_KOD=${HTTPS_PROBKA%% *}
+HTTPS_CEL=${HTTPS_PROBKA#* }
+
+if [ "$HTTPS_KOD" = "301" ] && [ "${HTTPS_CEL#https://}" != "$HTTPS_CEL" ]; then
+  echo "    HTTP -> $HTTPS_CEL (301)          OK"
+else
+  echo "    !!! BŁĄD: brak przekierowania HTTP -> HTTPS na /login"
+  echo "        oczekiwano: 301 + Location: https://…"
+  echo "        otrzymano:  ${HTTPS_KOD:-brak odpowiedzi} + Location: ${HTTPS_CEL:-brak}"
+  echo "        Odkomentuj reguły 'RewriteCond %{HTTPS} !=on' w app/public/.htaccess"
+  echo "        W REPOZYTORIUM, nie tylko w $WEB/.htaccess — rsync nadpisuje ten plik."
+  FAIL=1
+fi
+
+echo "==> Kontrola nagłówków bezpieczeństwa"
+#
+# Nagłówki ustawia WYŁĄCZNIE `.htaccess` (patrz komentarz w `app/src/bootstrap.php`:
+# `Header always set` i tak zastępowało wersję z PHP, więc dublowanie zostało
+# usunięte). Zapasowego ustawienia po stronie aplikacji już nie ma, więc literówka
+# w tym pliku albo hosting bez `mod_headers` zdejmują ochronę bez śladu w logu.
+NAGLOWKI=$(curl -sI --max-time 15 "https://app.coachanalyze.pl/login" || echo "")
+
+# Nazwa i wartość osobno. Po HTTP/2 `curl` wypisuje nazwy małymi literami, a
+# liczba odstępów po dwukropku należy do serwera — dopasowanie przywiązane do
+# jednego zapisu zapalałoby się na czerwono bez żadnej zmiany w konfiguracji.
+for para in "X-Frame-Options=DENY" "Referrer-Policy=no-referrer" "X-Content-Type-Options=nosniff"; do
+  nazwa=${para%%=*}
+  wartosc=${para#*=}
+  if printf '%s' "$NAGLOWKI" | grep -qiE "^${nazwa}:[[:space:]]*${wartosc}[[:space:]]*$"; then
+    printf '    %-34s %s\n' "$nazwa" "$wartosc   OK"
+  else
+    echo "    !!! BŁĄD: brak nagłówka '$nazwa: $wartosc'"
+    echo "        otrzymano: $(printf '%s' "$NAGLOWKI" | grep -i "^${nazwa}:" | tr -d '\r' || echo 'nic')"
+    echo "        Sprawdź blok <IfModule mod_headers.c> w app/public/.htaccess"
+    FAIL=1
+  fi
+done
+
 if [ "$FAIL" -ne 0 ]; then
   echo "==> WDROŻENIE Z BŁĘDAMI (${REV:-kontrola}) — popraw powyższe zanim uznasz je za zakończone"
   exit 1

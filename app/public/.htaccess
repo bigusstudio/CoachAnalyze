@@ -12,9 +12,23 @@ Options -Indexes -MultiViews
   RewriteRule ^(app|storage|engine|deploy|docs|releases)/ - [F,L]
   RewriteRule (^|/)\.(env|git|htaccess|htpasswd) - [F,L]
 
-  # Wymuszenie HTTPS (po włączeniu certyfikatu)
-  # RewriteCond %{HTTPS} !=on
-  # RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+  # WYMUSZENIE HTTPS — WŁĄCZONE (certyfikat *.coachanalyze.pl wraz z apeksem).
+  #
+  # TA REGUŁA MUSI ISTNIEĆ W REPOZYTORIUM, nie tylko na serwerze.
+  # Przejście 2 rsync w `deploy.sh` ma źródło w `app/public/` i NADPISUJE ten
+  # plik wersją z repozytorium. Włączenie HTTPS ręcznie na produkcji przeżyłoby
+  # więc dokładnie do najbliższego wdrożenia. Po nim panel wróciłby na HTTP,
+  # a ciasteczko sesji ma flagę `Secure` (bierze ją z APP_URL) — przestałoby
+  # wracać, token CSRF nie miałby się gdzie zapisać i logowanie odbijałoby
+  # każdą próbę. Pilnuje tego `app/tests/test_layout.php` oraz kontrola
+  # po wdrożeniu w `deploy.sh`.
+  #
+  # KOLEJNOŚĆ MA ZNACZENIE: te dwie linie stoją PO blokadach [F,L] wyżej.
+  # Blokady mają wygrywać, bo `deploy.sh` sprawdza ochronę katalogów żądaniem
+  # po HTTP i oczekuje 403. Przekierowanie postawione wcześniej dałoby 301
+  # i kontrola ochrony przestałaby cokolwiek znaczyć.
+  RewriteCond %{HTTPS} !=on
+  RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
 
   # Wszystko inne do front controllera
   RewriteCond %{REQUEST_FILENAME} !-f
@@ -27,11 +41,30 @@ Options -Indexes -MultiViews
   Require all denied
 </FilesMatch>
 
-# Raporty publiczne: bez indeksowania przez wyszukiwarki
+# NAGŁÓWKI BEZPIECZEŃSTWA — TO JEST ICH JEDYNE ŹRÓDŁO PRAWDY.
+#
+# `Header always set` działa w fazie fixup i ZASTĘPUJE nagłówek ustawiony przez
+# PHP. Dublowanie tych samych nagłówków w `app/src/bootstrap.php` dawało więc
+# tylko złudzenie kontroli: kod deklarował `X-Frame-Options: DENY`, a produkcja
+# odpowiadała `SAMEORIGIN` z tego pliku i nikt tego nie zauważył. Ustawienia
+# z PHP zostały usunięte — jeśli zmieniasz politykę, zmieniasz ją TUTAJ.
+#
+# KOSZT TEJ DECYZJI: bez Apache z mod_headers (np. wbudowany serwer PHP
+# w testach integracyjnych, hosting na nginx) tych nagłówków nie ma w ogóle.
+# Dlatego `deploy.sh` sprawdza po wdrożeniu, czy faktycznie wracają.
+#
+# `DENY`, nie `SAMEORIGIN`: panel nie ma ani jednego własnego iframe'a, więc
+# `SAMEORIGIN` nie dawał niczego poza słabszą ochroną. DOTYCZY TO TAKŻE
+# raportów publicznych `/r/` — klub nie osadzi raportu w ramce na swojej
+# stronie. To świadoma blokada, opisana w `docs/RUNBOOK.md`; gdyby osadzanie
+# miało być funkcją, wraca tu `SAMEORIGIN` albo `Content-Security-Policy:
+# frame-ancestors` z listą domen klubów, a nie zdjęcie nagłówka.
 <IfModule mod_headers.c>
   Header always set X-Content-Type-Options "nosniff"
-  Header always set X-Frame-Options "SAMEORIGIN"
+  Header always set X-Frame-Options "DENY"
   Header always set Referrer-Policy "no-referrer"
+  # Raporty publiczne: bez indeksowania przez wyszukiwarki. Adres jest jedynym
+  # zabezpieczeniem raportu, a odnośnik w wynikach szukania znosi je w całości.
   <If "%{REQUEST_URI} =~ m#^/r/#">
     Header always set X-Robots-Tag "noindex, nofollow, noarchive"
   </If>

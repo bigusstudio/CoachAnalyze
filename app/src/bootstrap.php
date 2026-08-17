@@ -133,12 +133,29 @@ set_exception_handler(static function (\Throwable $e) use ($debug): void {
     exit(1);
 });
 
-// Nagłówki bezpieczeństwa dla całego panelu. Raport publiczny dokłada własne
-// (X-Robots-Tag, Referrer-Policy) w Etapie 7.
+/*
+ * NAGŁÓWKI BEZPIECZEŃSTWA USTAWIA `app/public/.htaccess`, NIE TEN PLIK.
+ *
+ * Stały tu wcześniej `X-Frame-Options: DENY` i `Referrer-Policy: same-origin`.
+ * Oba były martwe: `Header always set` w Apache działa w fazie fixup i
+ * ZASTĘPUJE nagłówek wysłany przez PHP. Produkcja odpowiadała więc
+ * `SAMEORIGIN` i `no-referrer` z `.htaccess`, a kod deklarował coś innego —
+ * dwa źródła prawdy, z których wygrywało to niewidoczne z kodu. Rozjazd wyszedł
+ * dopiero przy przeglądzie nagłówków na żywo (`curl -I`), po włączeniu HTTPS.
+ *
+ * Politykę zmienia się teraz w JEDNYM miejscu: `app/public/.htaccess`.
+ * Czy faktycznie działa, sprawdza kontrola po wdrożeniu w `deploy.sh` —
+ * bo od tej pory nie ma już zapasowego ustawienia po stronie PHP.
+ *
+ * `X-Content-Type-Options` zostaje świadomie: `.htaccess` ustawia DOKŁADNIE
+ * tę samą wartość, więc nie ma tu czego pomylić, a nagłówek działa także tam,
+ * gdzie nie ma Apache — pod wbudowanym serwerem PHP w testach integracyjnych.
+ *
+ * Nagłówki własne raportu publicznego (`X-Robots-Tag`, `Referrer-Policy`)
+ * dokłada `index.php` przy trasach `/r/`.
+ */
 if (PHP_SAPI !== 'cli' && !headers_sent()) {
     header('X-Content-Type-Options: nosniff');
-    header('X-Frame-Options: DENY');
-    header('Referrer-Policy: same-origin');
 
     // NIE BUFOROWAĆ STRON PANELU.
     //

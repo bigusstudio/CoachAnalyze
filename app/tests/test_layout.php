@@ -286,6 +286,105 @@ check(
     'ostrzeżenia z wczytywania .env trafiłyby do odpowiedzi'
 );
 
+echo "\n== .htaccess: wymuszenie HTTPS jest WŁĄCZONE ==\n";
+
+/**
+ * POWÓD ISTNIENIA TEGO TESTU: regułę przekierowania niesie plik
+ * `app/public/.htaccess`, a przejście 2 rsync w `deploy.sh` NADPISUJE go wersją
+ * z repozytorium. Reguła włączona ręcznie na serwerze żyje więc dokładnie do
+ * najbliższego wdrożenia.
+ *
+ * Skutek jej zniknięcia jest cichy i całkowity: panel wraca na HTTP, ciasteczko
+ * sesji ma flagę `Secure` (z APP_URL) i przestaje wracać, token CSRF nie ma się
+ * gdzie zapisać, a logowanie odbija każdą próbę. Tak wyglądała awaria zgłoszona
+ * z produkcji (Firefox/Windows) i po niej powstał ten test.
+ *
+ * Sprawdzamy TREŚĆ PLIKU, nie odpowiedź serwera: test ma być statyczny i chodzić
+ * w CI, gdzie nie ma ani Apache, ani produkcji. Za sprawdzenie odpowiedzi na
+ * żywo odpowiada kontrola po wdrożeniu w `deploy.sh`.
+ */
+$htaccessPath = $root . '/app/public/.htaccess';
+check('app/public/.htaccess istnieje', is_file($htaccessPath));
+
+if (is_file($htaccessPath)) {
+    // Wiersze bez komentarzy — komentarze w tym pliku CYTUJĄ reguły, żeby
+    // wyjaśnić kolejność, więc szukanie po całej treści dałoby wynik fałszywie
+    // zielony (dokładnie tak, jak przy zakomentowanej regule wcześniej).
+    //
+    // PODZIAŁ WIERSZY JAWNIE, NIE PRZEZ `\R`.
+    // `\R` bez modyfikatora `u` dopasowuje bajt 0x85 (NEL), a to DRUGI BAJT
+    // polskiego `ą` w UTF-8 (0xC4 0x85). `preg_split('/\R/')` rozcinał więc
+    // komentarze w środku słowa — „wewnątrz" dawało wiersz „trz niego…", który
+    // nie zaczyna się od `#` i trafiał do reguł czynnych jako śmieć. Wyszło to
+    // na jaw dopiero wtedy, gdy fragment komentarza wniósł słowo `SAMEORIGIN`
+    // do zbioru „reguł czynnych".
+    $reguly = [];
+    foreach (preg_split('/\r\n|\n|\r/', (string) file_get_contents($htaccessPath)) ?: [] as $linia) {
+        $linia = trim($linia);
+        if ($linia !== '' && !str_starts_with($linia, '#')) {
+            $reguly[] = $linia;
+        }
+    }
+    $czynne = implode("\n", $reguly);
+
+    check('warunek "RewriteCond %{HTTPS} !=on" NIE jest zakomentowany',
+        preg_match('/^RewriteCond\s+%\{HTTPS\}\s*!=\s*on/m', $czynne) === 1,
+        'bez tego warunku przekierowanie nie działa albo zapętla się');
+
+    check('przekierowanie na https NIE jest zakomentowane',
+        preg_match('/^RewriteRule\s+\^\s+https:\/\/%\{HTTP_HOST\}%\{REQUEST_URI\}/m', $czynne) === 1,
+        'reguła w repozytorium musi być identyczna z tą działającą na serwerze');
+
+    check('przekierowanie jest trwałe (R=301) i kończy przetwarzanie (L)',
+        preg_match('/^RewriteRule\s+\^\s+https:.*\[[^\]]*R=301[^\]]*\]/m', $czynne) === 1
+        && preg_match('/^RewriteRule\s+\^\s+https:.*\[[^\]]*L[^\]]*\]/m', $czynne) === 1);
+
+    /*
+     * KOLEJNOŚĆ: blokady [F,L] muszą stać PRZED przekierowaniem.
+     *
+     * `deploy.sh` sprawdza ochronę katalogów żądaniem po HTTP i oczekuje 403.
+     * Gdyby przekierowanie łapało pierwsze, dostawałby 301 i kontrola ochrony —
+     * jedyna, która pilnuje poufności plików klienta — przestałaby cokolwiek
+     * znaczyć, meldując przy tym „OK".
+     */
+    $pozycjaBlokady = null;
+    $pozycjaHttps = null;
+    foreach ($reguly as $i => $linia) {
+        if ($pozycjaBlokady === null && preg_match('/^RewriteRule.*\[F,L\]/', $linia) === 1) {
+            $pozycjaBlokady = $i;
+        }
+        if ($pozycjaHttps === null && preg_match('/^RewriteCond\s+%\{HTTPS\}/', $linia) === 1) {
+            $pozycjaHttps = $i;
+        }
+    }
+    check('blokady [F,L] stoją PRZED przekierowaniem na HTTPS',
+        $pozycjaBlokady !== null && $pozycjaHttps !== null && $pozycjaBlokady < $pozycjaHttps,
+        'inaczej kontrola ochrony w deploy.sh dostaje 301 zamiast 403');
+
+    echo "\n== .htaccess: jedno źródło nagłówków bezpieczeństwa ==\n";
+
+    /*
+     * `Header always set` w Apache zastępuje nagłówek wysłany przez PHP, więc
+     * dublowanie tych ustawień w `bootstrap.php` dawało dwa źródła prawdy —
+     * a wygrywało to niewidoczne z kodu. Kod deklarował `DENY`, produkcja
+     * odpowiadała `SAMEORIGIN`. Rozjazd wyszedł dopiero przy `curl -I`.
+     */
+    check('X-Frame-Options ustawiony na DENY',
+        preg_match('/^Header\s+always\s+set\s+X-Frame-Options\s+"DENY"/m', $czynne) === 1,
+        'panel nie ma własnych ramek, SAMEORIGIN dawał tylko słabszą ochronę');
+
+    check('Referrer-Policy ustawiony na no-referrer',
+        preg_match('/^Header\s+always\s+set\s+Referrer-Policy\s+"no-referrer"/m', $czynne) === 1);
+
+    $bootstrapKod = codeOnly((string) file_get_contents($root . '/app/src/bootstrap.php'));
+    check('bootstrap.php NIE ustawia już X-Frame-Options',
+        !str_contains($bootstrapKod, 'X-Frame-Options'),
+        'ustawienie z PHP jest zastępowane przez Apache — mylące, nie działające');
+    check('bootstrap.php NIE ustawia już Referrer-Policy dla całego panelu',
+        !str_contains($bootstrapKod, 'Referrer-Policy'),
+        'źródłem prawdy jest .htaccess');
+}
+
 echo "\n== deploy.sh: wykluczenia przy rsync --delete ==\n";
 
 /**
@@ -303,13 +402,16 @@ if (is_file($deployPath)) {
     $deploy = (string) file_get_contents($deployPath);
 
     // Sklejamy polecenia rozbite na kilka linii odwrotnym ukośnikiem.
-    $sklejony = (string) preg_replace('/\\\\\s*\R\s*/', ' ', $deploy);
+    // Koniec wiersza wypisany jawnie, nie przez `\R` — powód wyżej, przy
+    // czytaniu `.htaccess`: `\R` łapie bajt 0x85, czyli drugi bajt `ą`.
+    $sklejony = (string) preg_replace('/\\\\\s*(?:\r\n|\n|\r)\s*/', ' ', $deploy);
 
     // Liczymy WYWOŁANIA, czyli linie zaczynające się od nazwy polecenia.
     // Samo `str_contains('rsync')` łapało też komentarze wspominające rsync —
     // a te potrafią wpaść w środek listy po sklejeniu linii z odwrotnym ukośnikiem.
     $wywolania = [];
-    foreach (preg_split('/\R/', $sklejony) ?: [] as $linia) {
+    // Koniec wiersza jawnie, nie przez `\R` — patrz uwaga przy czytaniu `.htaccess`.
+    foreach (preg_split('/\r\n|\n|\r/', $sklejony) ?: [] as $linia) {
         $linia = trim($linia);
         if (str_starts_with($linia, 'rsync ')) {
             $wywolania[] = $linia;
@@ -354,7 +456,8 @@ if (is_file($deployPath)) {
      * `.env` ma być kopiowany, a `storage/` ma być prawdziwym katalogiem.
      */
     $liniePolecen = [];
-    foreach (preg_split('/\R/', $sklejony) ?: [] as $linia) {
+    // Koniec wiersza jawnie, nie przez `\R` — patrz uwaga przy czytaniu `.htaccess`.
+    foreach (preg_split('/\r\n|\n|\r/', $sklejony) ?: [] as $linia) {
         $linia = trim($linia);
         if ($linia !== '' && !str_starts_with($linia, '#')) {
             $liniePolecen[] = $linia;
@@ -407,6 +510,22 @@ if (is_file($deployPath)) {
         str_contains($polecenia, '.probe') && !str_contains($polecenia, '-w "$WEB/storage"'),
         'testy dostępu kłamią na ścieżkach spoza open_basedir');
     check('sprawdza zapisywalność LOG_PATH', str_contains($polecenia, 'LOG_PATH'));
+
+    /*
+     * Reguła HTTPS mieszka w pliku, który rsync nadpisuje, więc samo „jest
+     * w repozytorium" nie wystarcza — wdrożenie musi sprawdzić, że po
+     * synchronizacji faktycznie działa. Test statyczny pilnuje treści pliku,
+     * ta kontrola pilnuje odpowiedzi serwera; jedno bez drugiego zostawia lukę.
+     */
+    check('kontroluje przekierowanie HTTP -> HTTPS po wdrożeniu',
+        str_contains($polecenia, 'redirect_url') && str_contains($polecenia, '"301"'),
+        'bez tego wdrożenie może po cichu wyłączyć HTTPS i zameldować „Gotowe"');
+
+    // Po usunięciu nagłówków z bootstrap.php nie ma już zapasowego ustawienia
+    // po stronie aplikacji: literówka w .htaccess zdejmuje ochronę bez śladu.
+    check('kontroluje nagłówki bezpieczeństwa po wdrożeniu',
+        str_contains($polecenia, 'X-Frame-Options=DENY'),
+        'jedyne źródło nagłówków musi być sprawdzane na żywo');
     echo "\n== deploy.sh: zrzut bazy ==\n";
 
     /*

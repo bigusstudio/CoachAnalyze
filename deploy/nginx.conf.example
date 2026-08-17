@@ -8,8 +8,13 @@ server {
 
     client_max_body_size 32M;   # eksporty LiveTag bywają duże
 
+    # Te trzy nagłówki muszą zgadzać się z `app/public/.htaccess` — to on jest
+    # źródłem prawdy na produkcji (lh.pl to Apache), a aplikacja nie ustawia ich
+    # już sama. Rozjazd między dwiema konfiguracjami znaczy, że przeniesienie na
+    # VPS po cichu zmienia politykę bezpieczeństwa. `DENY` blokuje też osadzanie
+    # raportów `/r/` w ramce — świadomie, patrz `docs/RUNBOOK.md`.
     add_header X-Content-Type-Options nosniff always;
-    add_header X-Frame-Options SAMEORIGIN always;
+    add_header X-Frame-Options DENY always;
     add_header Referrer-Policy no-referrer always;
 
     # Raporty publiczne — bez indeksowania
