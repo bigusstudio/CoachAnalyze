@@ -80,6 +80,26 @@ Options -Indexes -MultiViews
   Header always set X-Content-Type-Options "nosniff"
   Header always set X-Frame-Options "DENY"
   Header always set Referrer-Policy "no-referrer"
+
+  # HSTS — ŚWIADOMIE WĄSKI: bez `includeSubDomains` i bez `preload`.
+  #
+  # Certyfikat jest wildcardem `*.coachanalyze.pl` i pod tą domeną żyją INNE
+  # subdomeny, nad którymi ten plik nie ma władzy. `includeSubDomains` narzuciłby
+  # im wymóg HTTPS zdalnie, z przeglądarki odwiedzającego — subdomena bez
+  # certyfikatu albo z odświeżanym ręcznie stałaby się nieosiągalna, a przyczyna
+  # siedziałaby w konfiguracji zupełnie innego hosta. `preload` jest jeszcze
+  # bardziej jednokierunkowy: wpis na listę wbudowaną w przeglądarki wychodzi
+  # miesiącami i nie da się go cofnąć wdrożeniem.
+  #
+  # `max-age=86400` (doba), nie rok. Przy pierwszym włączeniu HSTS-a to jest
+  # okno wycofania: gdyby certyfikat albo przekierowanie się posypało, błąd
+  # sam wygasa po dobie, zamiast blokować dostęp do panelu na rok. Podniesienie
+  # wartości to osobna decyzja, do podjęcia po kilku spokojnych tygodniach.
+  #
+  # Nagłówek wysyłany także po HTTP jest przez przeglądarki IGNOROWANY (tak mówi
+  # RFC 6797) — nie ma tu czego warunkować, a `always` gwarantuje go również
+  # przy odpowiedziach błędu.
+  Header always set Strict-Transport-Security "max-age=86400"
   # Raporty publiczne: bez indeksowania przez wyszukiwarki. Adres jest jedynym
   # zabezpieczeniem raportu, a odnośnik w wynikach szukania znosi je w całości.
   <If "%{REQUEST_URI} =~ m#^/r/#">

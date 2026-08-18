@@ -317,7 +317,14 @@ NAGLOWKI=$(curl -sI --max-time 15 "https://app.coachanalyze.pl/login" || echo ""
 # Nazwa i wartość osobno. Po HTTP/2 `curl` wypisuje nazwy małymi literami, a
 # liczba odstępów po dwukropku należy do serwera — dopasowanie przywiązane do
 # jednego zapisu zapalałoby się na czerwono bez żadnej zmiany w konfiguracji.
-for para in "X-Frame-Options=DENY" "Referrer-Policy=no-referrer" "X-Content-Type-Options=nosniff"; do
+#
+# `Strict-Transport-Security` sprawdzamy razem z resztą, bo dzieli z nimi jedyne
+# źródło (`.htaccess`) i jedyny tryb awarii: znika po cichu, bez śladu w logu.
+# Wartość MUSI się zgadzać co do znaku — `max-age` podniesiony przypadkiem
+# wydłuża okno, w którym awaria certyfikatu blokuje panel, a tego nie da się
+# cofnąć wdrożeniem, tylko czekaniem.
+for para in "X-Frame-Options=DENY" "Referrer-Policy=no-referrer" \
+            "X-Content-Type-Options=nosniff" "Strict-Transport-Security=max-age=86400"; do
   nazwa=${para%%=*}
   wartosc=${para#*=}
   if printf '%s' "$NAGLOWKI" | grep -qiE "^${nazwa}:[[:space:]]*${wartosc}[[:space:]]*$"; then

@@ -376,6 +376,32 @@ if (is_file($htaccessPath)) {
     check('Referrer-Policy ustawiony na no-referrer',
         preg_match('/^Header\s+always\s+set\s+Referrer-Policy\s+"no-referrer"/m', $czynne) === 1);
 
+    /*
+     * HSTS — sprawdzany na REGUŁACH CZYNNYCH, nie w całej treści pliku.
+     *
+     * Komentarz nad regułą wyjaśnia, czemu nie ma tam `includeSubDomains`
+     * ani `preload`, więc szukanie po całym pliku dałoby wynik zielony także
+     * dla reguły zakomentowanej — dokładnie ten błąd, przez który powstała
+     * kontrola przekierowania HTTPS wyżej.
+     */
+    check('HSTS ustawiony z max-age=86400',
+        preg_match('/^Header\s+always\s+set\s+Strict-Transport-Security\s+"max-age=86400"\s*$/m', $czynne) === 1,
+        'nagłówka nie ma albo ma inną wartość niż uzgodniona doba');
+
+    /*
+     * BRAK `includeSubDomains` I `preload` JEST DECYZJĄ, NIE PRZEOCZENIEM.
+     *
+     * Certyfikat to wildcard `*.coachanalyze.pl`, a pod tą domeną żyją inne
+     * subdomeny poza zasięgiem tego pliku. `includeSubDomains` narzuciłby im
+     * HTTPS z przeglądarki odwiedzającego, a `preload` trafia do przeglądarek
+     * na miesiące i nie cofa się wdrożeniem. Obie dyrektywy są łatwe do
+     * dopisania „dla porządku" i kosztowne do odkręcenia — dlatego pilnuje
+     * ich test, a nie pamięć.
+     */
+    check('HSTS bez includeSubDomains i bez preload',
+        preg_match('/Strict-Transport-Security\s+"[^"]*(includeSubDomains|preload)/i', $czynne) !== 1,
+        'wildcard obejmuje subdomeny, nad którymi ten plik nie ma władzy');
+
     $bootstrapKod = codeOnly((string) file_get_contents($root . '/app/src/bootstrap.php'));
     check('bootstrap.php NIE ustawia już X-Frame-Options',
         !str_contains($bootstrapKod, 'X-Frame-Options'),
@@ -526,6 +552,12 @@ if (is_file($deployPath)) {
     check('kontroluje nagłówki bezpieczeństwa po wdrożeniu',
         str_contains($polecenia, 'X-Frame-Options=DENY'),
         'jedyne źródło nagłówków musi być sprawdzane na żywo');
+
+    // HSTS ma być sprawdzany NA ŻYWO razem z resztą: reguła w repozytorium
+    // niczego nie gwarantuje, jeśli hosting nie ma `mod_headers`.
+    check('kontroluje HSTS po wdrożeniu',
+        str_contains($polecenia, 'Strict-Transport-Security=max-age=86400'),
+        'obecność reguły w pliku to nie to samo co nagłówek w odpowiedzi');
     echo "\n== deploy.sh: zrzut bazy ==\n";
 
     /*
