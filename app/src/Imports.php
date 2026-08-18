@@ -39,8 +39,10 @@ final class Imports
          * Bez tego użytkownik dostałby surowy błąd bazy o naruszeniu NOT NULL,
          * z którego nie wynika, że wystarczy założyć klub.
          *
-         * TODO(club-scope): po Sesji 2 `clubId` przychodzi z trasy i staje się
-         * parametrem obowiązkowym.
+         * SESJA 2: `/klub/{id}/import` przekazuje `clubId` wprost z trasy —
+         * obowiązkowo, bez sięgania po ten fallback. Globalny `/import` (bez
+         * kontekstu klubu w adresie) nadal istnieje dla ciągłości i korzysta
+         * z klubu domyślnego jak dotąd.
          */
         $clubId ??= Clubs::tenantDefault();
         if ($clubId === null) {

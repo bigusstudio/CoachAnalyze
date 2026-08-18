@@ -215,5 +215,44 @@ check('zapis nazwy i barw NIE kasuje pól opisowych',
 check('klub odnajdywany po kluczu publicznym',
     (int) (Clubs::findByKey('HUT7K2QX')['id'] ?? 0) === 1);
 
+// ---------------------------------------------------------------- Sesja 2: tenanci
+echo "\n== Clubs::tenants() — wyłącznie is_own_team=1 ==\n";
+
+/*
+ * seed.php zakłada cztery kluby: 1 (tenant), 2 (rywal), 3 (rywal, „Rywal C"),
+ * 4 (tenant, „Klub D") — bez meczów/raportów przypisanych do 3 i 4. Bez tego
+ * podział „lista klubów w nawigacji = tylko tenanci" (Sesja 2) byłby
+ * przetestowany na jednym klubie i nierozróżnialny od zwykłego Clubs::all().
+ */
+$tenanci = Clubs::tenants();
+$tenanciIds = array_map(static fn(array $c): int => (int) $c['id'], $tenanci);
+
+check('dokładnie dwaj tenanci', count($tenanci) === 2, 'znaleziono: ' . implode(', ', $tenanciIds));
+check('tenanci to id 1 i 4', $tenanciIds === [1, 4] || $tenanciIds === [4, 1],
+    implode(', ', $tenanciIds));
+check('rywale (2, 3) nie wchodzą do tenants()',
+    !in_array(2, $tenanciIds, true) && !in_array(3, $tenanciIds, true));
+
+$klubJeden = $tenanci[array_search(1, $tenanciIds, true)];
+/*
+ * Liczniki PO TENANCIE (`club_id`), nie po stronie boiska (`club_home_id`) —
+ * ta sama reguła co w `Matches::search()`. Seed przypisuje klubowi 1 cztery
+ * mecze jako club_id (patrz komentarz w seed.php), a raporty — dwa.
+ */
+check('matches_count liczony po club_id (tenant), nie po club_home_id',
+    (int) $klubJeden['matches_count'] === (int) Db::one(
+        'SELECT COUNT(*) AS c FROM matches WHERE club_id = 1'
+    )['c']);
+check('reports_count liczony po club_id (tenant)',
+    (int) $klubJeden['reports_count'] === (int) Db::one(
+        'SELECT COUNT(*) AS c FROM reports WHERE club_id = 1'
+    )['c']);
+
+$klubCztery = $tenanci[array_search(4, $tenanciIds, true)];
+check('świeży tenant bez meczów: liczniki na zero',
+    (int) $klubCztery['matches_count'] === 0 && (int) $klubCztery['reports_count'] === 0);
+check('świeży tenant bez importu: last_import_at puste',
+    $klubCztery['last_import_at'] === null);
+
 echo "\n=== OK: {$ok}, BŁĘDÓW: {$fail} ===\n";
 exit($fail === 0 ? 0 : 1);

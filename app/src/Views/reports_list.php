@@ -7,6 +7,9 @@ use CoachAnalyze\View;
 /**
  * Wszystkie wygenerowane raporty, niezależnie od meczu.
  *
+ * BEZ KONTEKSTU KLUBU (`$club === null`): globalna `/raporty`. Z KONTEKSTEM
+ * (Sesja 2, `/klub/{id}/raporty`): filtr „klub" znika, zakres wchodzi z adresu.
+ *
  * @var list<array<string,mixed>> $rows
  * @var int $total
  * @var int $page
@@ -16,16 +19,19 @@ use CoachAnalyze\View;
  * @var array<string,mixed> $filters
  * @var string|null $notice
  * @var string|null $error
+ * @var array<string,mixed>|null $club
  */
+$club ??= null;
+$basePath = $club !== null ? '/klub/' . (int) $club['id'] . '/raporty' : '/raporty';
 
 /** Adres z podmienionym jednym parametrem — reszta filtra zostaje. */
-$link = static function (array $zmiany) use ($filters): string {
+$link = static function (array $zmiany) use ($filters, $basePath): string {
     $q = array_filter(array_merge($filters, $zmiany), static fn($v) => $v !== null && $v !== '');
-    return '/raporty' . ($q === [] ? '' : '?' . http_build_query($q));
+    return $basePath . ($q === [] ? '' : '?' . http_build_query($q));
 };
 ?>
 <div class="actions actions--head">
-  <h1 class="h1"><?= View::e(View::t('reports.title')) ?></h1>
+  <h1 class="h1"><?= View::e($club !== null ? View::t('nav.reports') : View::t('reports.title')) ?></h1>
   <span class="hint"><?= View::e(View::t('reports.count', $total)) ?></span>
 </div>
 
@@ -37,7 +43,8 @@ $link = static function (array $zmiany) use ($filters): string {
 <?php endif; ?>
 
 <section class="panel">
-  <form class="filtr" method="get" action="/raporty">
+  <form class="filtr" method="get" action="<?= View::e($basePath) ?>">
+    <?php if ($club === null): ?>
     <label class="field">
       <span class="field__label"><?= View::e(View::t('reports.club')) ?></span>
       <select class="field__input" name="klub">
@@ -49,6 +56,7 @@ $link = static function (array $zmiany) use ($filters): string {
         <?php endforeach; ?>
       </select>
     </label>
+    <?php endif; ?>
 
     <label class="field">
       <span class="field__label"><?= View::e(View::t('reports.season')) ?></span>
@@ -75,7 +83,7 @@ $link = static function (array $zmiany) use ($filters): string {
     </label>
 
     <button class="btn" type="submit"><?= View::e(View::t('reports.filter')) ?></button>
-    <a class="link" href="/raporty"><?= View::e(View::t('reports.clear')) ?></a>
+    <a class="link" href="<?= View::e($basePath) ?>"><?= View::e(View::t('reports.clear')) ?></a>
   </form>
 </section>
 
@@ -157,7 +165,7 @@ $link = static function (array $zmiany) use ($filters): string {
               <?php if ($r['link_stan'] === 'active' && $r['link_id'] !== null): ?>
                 <form class="inline" method="post" action="/link/<?= (int) $r['link_id'] ?>/odwolaj">
                   <input type="hidden" name="csrf" value="<?= View::e(Session::csrfToken()) ?>">
-                  <input type="hidden" name="powrot" value="/raporty">
+                  <input type="hidden" name="powrot" value="<?= View::e($basePath) ?>">
                   <button class="link link--danger" type="submit">
                     <?= View::e(View::t('reports.act.revoke')) ?>
                   </button>

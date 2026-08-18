@@ -714,3 +714,104 @@ form.chmurka__zamknij button:hover { color: var(--tekst); }
 }
 
 .field__input--slim { padding: 4px 8px; font-size: 13px; width: auto; }
+
+/* --- kontekst klubu (Sesja 2) --------------------------------------------
+ *
+ * `--club-primary` / `--club-secondary` przychodzą jako `style` na <main>
+ * (layout.php) — SUROWE hexy z bazy, bez żadnej obróbki po stronie PHP
+ * (arytmetyka koloru jest wyłącznie domeną silnika, CLAUDE.md; pilnuje tego
+ * `test_4b.php`). Podbicie pod ciemne tło liczy WYŁĄCZNIE CSS — `color-mix()`,
+ * nie warunkowa korekta jasności jak w silniku, tylko stałe rozjaśnienie o tę
+ * samą proporcję dla każdej barwy. Fallback `var(--akcent)` obowiązuje poza
+ * scope'em klubu, gdzie `--club-primary` nie istnieje.
+ */
+.club-scope {
+  --club-accent:   var(--club-primary, var(--akcent));
+  --club-accent-2: var(--club-secondary, var(--tekst-slaby));
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .club-scope {
+    --club-accent:   color-mix(in srgb, var(--club-primary, var(--akcent)) 70%, white 30%);
+    --club-accent-2: color-mix(in srgb, var(--club-secondary, var(--tekst-slaby)) 70%, white 30%);
+  }
+}
+:root[data-theme="dark"] .club-scope {
+  --club-accent:   color-mix(in srgb, var(--club-primary, var(--akcent)) 70%, white 30%);
+  --club-accent-2: color-mix(in srgb, var(--club-secondary, var(--tekst-slaby)) 70%, white 30%);
+}
+
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 16px;
+  font-size: 13px;
+  color: var(--tekst-slaby);
+}
+.breadcrumb__link { color: var(--tekst-slaby); text-decoration: underline; }
+.breadcrumb__link:hover { color: var(--club-accent, var(--akcent)); }
+.breadcrumb__current { color: var(--tekst); font-weight: 600; }
+.breadcrumb__sep { opacity: 0.6; }
+
+/* --- hub klubu --- */
+.hub__banner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 20px;
+  margin-bottom: 18px;
+  background: var(--tlo-panel);
+  border: 1px solid var(--obramowanie);
+  border-left: 4px solid var(--club-accent, var(--akcent));
+  border-radius: var(--promien);
+}
+.hub__crest { width: 56px; height: 56px; object-fit: contain; flex-shrink: 0; }
+.hub__meta { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
+.hub__name { margin: 0; font-size: 20px; }
+.hub__sub { font-size: 13px; color: var(--tekst-slaby); }
+.hub__cta { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.hub__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.hub__tile {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px;
+  background: var(--tlo-panel);
+  border: 1px solid var(--obramowanie);
+  border-radius: var(--promien);
+  text-decoration: none;
+  color: var(--tekst);
+}
+.hub__tile:hover { border-color: var(--club-accent, var(--akcent)); }
+.hub__tile strong { font-size: 15px; }
+.hub__tile span { font-size: 12px; color: var(--tekst-slaby); }
+
+/* --- kluby: karty tenantów (`/kluby`) --- */
+.club-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 14px;
+}
+.club-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 18px;
+  background: var(--tlo-panel);
+  border: 1px solid var(--obramowanie);
+  border-radius: var(--promien);
+  text-decoration: none;
+  color: var(--tekst);
+}
+.club-card:hover { border-color: var(--akcent); }
+.club-card__head { display: flex; align-items: center; gap: 10px; }
+.club-card__name { font-size: 16px; font-weight: 600; }
+.club-card__counts { display: flex; gap: 14px; font-size: 13px; color: var(--tekst-slaby); }
+.club-card__foot { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--tekst-slaby); }
+.club-card__note { font-size: 12px; color: var(--tekst-slaby); }

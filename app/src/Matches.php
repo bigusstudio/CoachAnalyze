@@ -58,9 +58,10 @@ final class Matches
          * widać. Zobaczy ją pierwszy mecz scoutingowy — analiza dwóch obcych
          * drużyn ma tenanta, ale żadna ze stron nim nie jest.
          *
-         * TODO(club-scope): gdy kontekst klubu wejdzie do adresu
-         * (`/klub/{id}/mecze`, Sesja 2), ten filtr przestaje być opcjonalny
-         * i staje się obowiązkowym warunkiem każdego wywołania.
+         * SESJA 2: `/klub/{id}/mecze` przekazuje `tenant` obowiązkowo. Globalna
+         * `/mecze` (poza kontekstem klubu) go NIE przekazuje i przegląda
+         * historię wszystkich tenantów naraz — to świadomy, osobny widok, nie
+         * pozostałość po TODO.
          */
         if (!empty($filters['tenant'])) {
             $where[] = 'm.club_id = :tenant';

@@ -16,10 +16,16 @@ use CoachAnalyze\View;
  * @var string|null $title
  * @var string|null $active   identyfikator pozycji nawigacji
  * @var bool|null   $chrome   false = strona bez panelu (logowanie)
+ * @var array<string,mixed>|null $club   kontekst klubu (Sesja 2) — obecność
+ *                                       WŁĄCZA scope theming i okruszki
+ * @var string|null $crumb   etykieta bieżącej podstrony w okruszkach
+ *                           (`Kluby → {klub} → {crumb}`); null = sam hub klubu
  */
 $theme  = View::theme();
 $chrome = $chrome ?? true;
 $active = $active ?? '';
+$club   = $club ?? null;
+$crumb  = $crumb ?? null;
 
 // Przełącznik prowadzi do motywu PRZECIWNEGO niż obecnie widoczny. Gdy wyboru
 // jeszcze nie było, zakładamy jasny — taki jest domyślny w większości systemów,
@@ -99,7 +105,12 @@ $chmurki = $chrome && Session::userId() !== null
   </header>
 
   <nav class="side" aria-label="<?= View::e(View::t('nav.menu')) ?>">
-    <a class="side__item<?= $active === 'dashboard' ? ' is-active' : '' ?>" href="/">
+    <?php /*
+      Punktem wejścia jest teraz lista klubów (Sesja 2) — pulpit ogólny
+      (liczniki niezależne od klubu, wszystkie mecze, wszystkie zadania)
+      zostaje dostępny z nawigacji, tylko pod innym adresem.
+    */ ?>
+    <a class="side__item<?= $active === 'pulpit' ? ' is-active' : '' ?>" href="/pulpit">
       <?= View::e(View::t('nav.dashboard')) ?>
     </a>
     <a class="side__item<?= $active === 'matches' ? ' is-active' : '' ?>" href="/mecze">
@@ -140,7 +151,34 @@ $chmurki = $chrome && Session::userId() !== null
     <?php endif; ?>
   </nav>
 
-  <main class="main">
+  <main class="main<?= $club !== null ? ' club-scope' : '' ?>"
+    <?php if ($club !== null): ?>
+      <?php /*
+        Barwy klubu jako zmienne CSS, w scope'ie TEGO <main>, nie :root — poza
+        widokiem klubu panel wygląda dokładnie tak jak dziś.
+        WYŁĄCZNIE surowe hexy z bazy — żadnej arytmetyki koloru po stronie PHP
+        (regułę pilnuje `test_4b.php`: „PHP nie liczy luminancji ani nie miesza
+        kanałów", CLAUDE.md — korekta kontrastu jest wyłącznie domeną silnika
+        przy renderze raportu, `options.contrast_fix`). Podbicie pod ciemny
+        motyw robi `color-mix()` w czystym CSS (app.css, `.club-scope`), nie PHP.
+      */ ?>
+      style="--club-primary: <?= View::e(View::color($club['color_primary'] ?? null, '#888888')) ?>;
+             --club-secondary: <?= View::e(View::color($club['color_secondary'] ?? null, '#5A6B7B')) ?>;"
+    <?php endif; ?>
+  >
+    <?php if ($club !== null): ?>
+      <nav class="breadcrumb" aria-label="<?= View::e(View::t('nav.breadcrumb')) ?>">
+        <a class="breadcrumb__link" href="/kluby"><?= View::e(View::t('nav.clubs')) ?></a>
+        <span class="breadcrumb__sep" aria-hidden="true">→</span>
+        <?php if ($crumb === null): ?>
+          <span class="breadcrumb__current"><?= View::e((string) $club['name']) ?></span>
+        <?php else: ?>
+          <a class="breadcrumb__link" href="/klub/<?= (int) $club['id'] ?>"><?= View::e((string) $club['name']) ?></a>
+          <span class="breadcrumb__sep" aria-hidden="true">→</span>
+          <span class="breadcrumb__current"><?= View::e($crumb) ?></span>
+        <?php endif; ?>
+      </nav>
+    <?php endif; ?>
     <?= $content ?>
   </main>
 

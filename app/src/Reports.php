@@ -52,8 +52,9 @@ final class Reports
          * denormalizacja w `reports` istnieje właśnie po to, żeby lista
          * raportów klubu nie musiała dotykać drugiej tabeli.
          *
-         * TODO(club-scope): po wejściu kontekstu klubu w adres (Sesja 2)
-         * warunek staje się obowiązkowy dla każdego wywołania.
+         * SESJA 2: `/klub/{id}/raporty` przekazuje `tenant` obowiązkowo.
+         * Globalna `/raporty` go nie przekazuje — to świadomy, osobny widok
+         * „co wygenerowaliśmy w ogóle", nie pozostałość po TODO.
          */
         if (!empty($filters['tenant'])) {
             $warunki[] = 'r.club_id = :tenant';

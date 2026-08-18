@@ -6,23 +6,33 @@ use CoachAnalyze\View;
 /**
  * Biblioteka meczów: filtr, sortowanie, stronicowanie.
  *
+ * BEZ KONTEKSTU KLUBU (`$club === null`): globalna `/mecze`, wszystkie tenanty
+ * naraz, z filtrem po klubie. Z KONTEKSTEM (`$club !== null`, Sesja 2):
+ * `/klub/{id}/mecze` — zakres jest już ustalony przez adres, więc filtr
+ * „klub" znika, a formularz i stronicowanie zostają w tym samym scope'ie.
+ *
  * @var array{rows:list<array<string,mixed>>,total:int,page:int,pages:int,per_page:int} $wynik
  * @var list<array<string,mixed>> $clubs
  * @var list<array<string,mixed>> $seasons
  * @var array<string,mixed> $filtr
  * @var string|null $notice
+ * @var array<string,mixed>|null $club
  */
+$club ??= null;
 $rows = $wynik['rows'];
+$basePath = $club !== null ? '/klub/' . (int) $club['id'] . '/mecze' : '/mecze';
 
 /** Adres z podmienionym jednym parametrem — reszta filtra zostaje. */
-$link = static function (array $zmiany) use ($filtr): string {
+$link = static function (array $zmiany) use ($filtr, $basePath): string {
     $q = array_filter(array_merge($filtr, $zmiany), static fn($v) => $v !== null && $v !== '');
-    return '/mecze' . ($q === [] ? '' : '?' . http_build_query($q));
+    return $basePath . ($q === [] ? '' : '?' . http_build_query($q));
 };
 ?>
 <div class="actions actions--head">
-  <h1 class="h1"><?= View::e(View::t('matches.title')) ?></h1>
-  <a class="btn btn--ghost" href="/import"><?= View::e(View::t('import.nav')) ?></a>
+  <h1 class="h1"><?= View::e($club !== null ? View::t('nav.matches') : View::t('matches.title')) ?></h1>
+  <a class="btn btn--ghost" href="<?= $club !== null ? '/klub/' . (int) $club['id'] . '/import' : '/import' ?>">
+    <?= View::e(View::t('import.nav')) ?>
+  </a>
 </div>
 
 <?php if (!empty($notice)): ?>
@@ -30,7 +40,8 @@ $link = static function (array $zmiany) use ($filtr): string {
 <?php endif; ?>
 
 <section class="panel">
-  <form class="filtr" method="get" action="/mecze">
+  <form class="filtr" method="get" action="<?= View::e($basePath) ?>">
+    <?php if ($club === null): ?>
     <label class="field">
       <span class="field__label"><?= View::e(View::t('matches.club')) ?></span>
       <select class="field__input" name="klub">
@@ -42,6 +53,7 @@ $link = static function (array $zmiany) use ($filtr): string {
         <?php endforeach; ?>
       </select>
     </label>
+    <?php endif; ?>
 
     <label class="field">
       <span class="field__label"><?= View::e(View::t('matches.season')) ?></span>

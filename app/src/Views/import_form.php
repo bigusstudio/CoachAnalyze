@@ -8,9 +8,16 @@ use CoachAnalyze\View;
 /**
  * Formularz wgrania eksportu.
  *
+ * BEZ KONTEKSTU KLUBU (`$club === null`): globalny `/import`, klub domyślny
+ * (`Clubs::tenantDefault()`). Z KONTEKSTEM (Sesja 2, `/klub/{id}/import`):
+ * `clubId` wprost z adresu — patrz `handleClubImport()` w index.php.
+ *
  * @var string|null $error
  * @var bool        $storageReady
+ * @var array<string,mixed>|null $club
  */
+$club ??= null;
+$action = $club !== null ? '/klub/' . (int) $club['id'] . '/import' : '/import';
 $mb = (int) (Upload::maxBytes() / 1024 / 1024);
 ?>
 <h1 class="h1"><?= View::e(View::t('import.title')) ?></h1>
@@ -24,7 +31,7 @@ $mb = (int) (Upload::maxBytes() / 1024 / 1024);
 <?php endif; ?>
 
 <section class="panel">
-  <form method="post" action="/import" enctype="multipart/form-data">
+  <form method="post" action="<?= View::e($action) ?>" enctype="multipart/form-data">
     <input type="hidden" name="csrf" value="<?= View::e(Session::csrfToken()) ?>">
     <?php // Podpowiedź dla przeglądarki; twardy limit i tak sprawdza serwer. ?>
     <input type="hidden" name="MAX_FILE_SIZE" value="<?= (int) Upload::maxBytes() ?>">
@@ -49,4 +56,8 @@ $mb = (int) (Upload::maxBytes() / 1024 / 1024);
   </form>
 </section>
 
-<p><a class="link" href="/"><?= View::e(View::t('common.back')) ?></a></p>
+<p>
+  <a class="link" href="<?= $club !== null ? '/klub/' . (int) $club['id'] : '/' ?>">
+    <?= View::e(View::t('common.back')) ?>
+  </a>
+</p>

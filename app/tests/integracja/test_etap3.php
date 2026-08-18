@@ -10,7 +10,27 @@ use CoachAnalyze\RateLimit;
 use CoachAnalyze\RedisClient;
 
 $root = dirname(__DIR__, 3);
-$sock = $argv[1];
+
+/*
+ * BRAMKA WEJŚCIOWA — jak w `test_konta.php`. Bez atrapy Redisa ten zestaw
+ * kończył się ostrzeżeniem „Undefined array key 1" i błędem typu w konstruktorze
+ * `RedisClient`, czyli komunikatem o PHP zamiast o brakującej atrapie.
+ */
+$sock = $argv[1] ?? null;
+if ($sock === null || !file_exists($sock)) {
+    fwrite(STDERR, implode("\n", [
+        'Ten zestaw wymaga atrapy Redisa.',
+        '',
+        '  php fake_redis.php /tmp/ca.sock &',
+        '  php test_etap3.php /tmp/ca.sock',
+        '',
+        $sock === null
+            ? 'Nie podano ścieżki gniazda jako pierwszego argumentu.'
+            : "Gniazdo nie istnieje: {$sock}",
+        '',
+    ]) . "\n");
+    exit(2);
+}
 
 ob_start();
 require $root . '/app/src/bootstrap.php';

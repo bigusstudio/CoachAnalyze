@@ -8,15 +8,23 @@ use CoachAnalyze\View;
 /**
  * Notatnik: wyszukiwanie, lista, dodawanie.
  *
+ * BEZ KONTEKSTU KLUBU (`$club === null`): globalny `/notatki`, wszystkie
+ * tenanty naraz. Z KONTEKSTEM (Sesja 2, `/klub/{id}/notatki`): wybór klubu
+ * przy nowej notatce znika (jest ustalony adresem), a `$matches` przychodzi
+ * z kontrolera już ograniczone do tenanta.
+ *
  * @var list<array<string,mixed>> $notes
  * @var array<string,int> $tags
  * @var array<string,mixed> $filtr
  * @var list<array<string,mixed>> $matches
  * @var list<array<string,mixed>> $clubs
  * @var string|null $notice
+ * @var array<string,mixed>|null $club
  */
+$club ??= null;
+$basePath = $club !== null ? '/klub/' . (int) $club['id'] . '/notatki' : '/notatki';
 ?>
-<h1 class="h1"><?= View::e(View::t('note.title')) ?></h1>
+<h1 class="h1"><?= View::e($club !== null ? View::t('nav.notes') : View::t('note.title')) ?></h1>
 
 <?php if (!empty($notice)): ?>
   <p class="notice" role="status"><?= View::e($notice) ?></p>
@@ -26,7 +34,7 @@ use CoachAnalyze\View;
 <?php endif; ?>
 
 <section class="panel">
-  <form class="filtr" method="get" action="/notatki">
+  <form class="filtr" method="get" action="<?= View::e($basePath) ?>">
     <label class="field">
       <span class="field__label"><?= View::e(View::t('note.search')) ?></span>
       <input class="field__input" type="search" name="q" value="<?= View::e((string) ($filtr['q'] ?? '')) ?>"
@@ -54,7 +62,7 @@ use CoachAnalyze\View;
     <p class="hint">
       <?= View::e(View::t('note.tags_used')) ?>
       <?php foreach (array_slice($tags, 0, 12, true) as $tag => $ile): ?>
-        <a class="tag tag--link" href="/notatki?tag=<?= rawurlencode((string) $tag) ?>">
+        <a class="tag tag--link" href="<?= View::e($basePath) ?>?tag=<?= rawurlencode((string) $tag) ?>">
           <?= View::e((string) $tag) ?> <span class="muted"><?= (int) $ile ?></span>
         </a>
       <?php endforeach; ?>
@@ -93,7 +101,7 @@ use CoachAnalyze\View;
           <?php if ($n['tags'] !== []): ?>
             <div class="notatka__tagi">
               <?php foreach ($n['tags'] as $tag): ?>
-                <a class="tag tag--link" href="/notatki?tag=<?= rawurlencode((string) $tag) ?>">
+                <a class="tag tag--link" href="<?= View::e($basePath) ?>?tag=<?= rawurlencode((string) $tag) ?>">
                   <?= View::e((string) $tag) ?>
                 </a>
               <?php endforeach; ?>
@@ -102,6 +110,7 @@ use CoachAnalyze\View;
 
           <form method="post" action="/notatki/<?= (int) $n['id'] ?>/usun">
             <input type="hidden" name="csrf" value="<?= View::e(Session::csrfToken()) ?>">
+            <input type="hidden" name="powrot" value="<?= View::e($basePath) ?>">
             <button class="link link--btn" type="submit"><?= View::e(View::t('note.delete')) ?></button>
           </form>
         </li>
@@ -115,6 +124,10 @@ use CoachAnalyze\View;
 
   <form method="post" action="/notatki">
     <input type="hidden" name="csrf" value="<?= View::e(Session::csrfToken()) ?>">
+    <input type="hidden" name="powrot" value="<?= View::e($basePath) ?>">
+    <?php if ($club !== null): ?>
+      <input type="hidden" name="club_id" value="<?= (int) $club['id'] ?>">
+    <?php endif; ?>
 
     <div class="grid2">
       <label class="field">
@@ -148,6 +161,7 @@ use CoachAnalyze\View;
           <?php endforeach; ?>
         </select>
       </label>
+      <?php if ($club === null): ?>
       <label class="field">
         <span class="field__label"><?= View::e(View::t('note.club')) ?></span>
         <select class="field__input" name="club_id">
@@ -157,6 +171,7 @@ use CoachAnalyze\View;
           <?php endforeach; ?>
         </select>
       </label>
+      <?php endif; ?>
     </div>
 
     <label class="field">

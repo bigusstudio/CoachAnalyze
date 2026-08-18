@@ -13,7 +13,11 @@ use CoachAnalyze\View;
  * @var string|null $notice
  * @var string|null $suggestedName  nazwa zaproponowana z danych eksportu
  * @var string|null $backTo
+ * @var bool|null   $forceTenant    Sesja 2: formularz z „Kluby → Nowy klub" —
+ *                                  pole „to mój klub" znika, bo wynik i tak
+ *                                  jest zawsze tenantem (patrz saveClub())
  */
+$forceTenant = $forceTenant ?? false;
 $isNew    = $club === null;
 $name     = (string) ($club['name'] ?? $suggestedName ?? '');
 $short    = (string) ($club['short_name'] ?? '');
@@ -43,6 +47,9 @@ if ($isNew && $suggestedName !== null && $aliases === '') {
     <input type="hidden" name="csrf" value="<?= View::e(Session::csrfToken()) ?>">
     <?php if (!empty($backTo)): ?>
       <input type="hidden" name="powrot" value="<?= View::e($backTo) ?>">
+    <?php endif; ?>
+    <?php if ($forceTenant): ?>
+      <input type="hidden" name="force_tenant" value="1">
     <?php endif; ?>
 
     <label class="field">
@@ -84,11 +91,15 @@ if ($isNew && $suggestedName !== null && $aliases === '') {
       <span class="hint"><?= View::e(View::t('club.aliases.hint')) ?></span>
     </label>
 
-    <label class="field field--check">
-      <input type="checkbox" name="is_own_team" value="1"
-             <?= !empty($club['is_own_team']) ? 'checked' : '' ?>>
-      <span><?= View::e(View::t('club.own_team')) ?></span>
-    </label>
+    <?php if ($forceTenant): ?>
+      <p class="notice" role="status"><?= View::e(View::t('club.new_tenant.hint')) ?></p>
+    <?php else: ?>
+      <label class="field field--check">
+        <input type="checkbox" name="is_own_team" value="1"
+               <?= !empty($club['is_own_team']) ? 'checked' : '' ?>>
+        <span><?= View::e(View::t('club.own_team')) ?></span>
+      </label>
+    <?php endif; ?>
 
     <label class="field">
       <span class="field__label"><?= View::e(View::t('club.crest')) ?></span>

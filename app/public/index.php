@@ -206,10 +206,20 @@ function requireCan(array $user, string $czynnosc): void
 }
 
 switch (true) {
+    /*
+     * PUNKT WEJŚCIA = LISTA KLUBÓW (Sesja 2, docs/PRZEBUDOWA_KLUB_SESJE.md).
+     * Klub jest teraz jednostką, wokół której kręci się panel — pulpit ogólny
+     * (liczniki i zadania niezależne od klubu) zostaje, ale pod `/pulpit`,
+     * dostępny z nawigacji, nie jako to, co widać zaraz po zalogowaniu.
+     */
     case $path === '/' && $method === 'GET':
+        redirect('/kluby');
+        break;
+
+    case $path === '/pulpit' && $method === 'GET':
         View::page('dashboard', [
             'title'    => View::t('dash.title'),
-            'active'   => 'dashboard',
+            'active'   => 'pulpit',
             'counters' => Stats::counters(),
             'matches'  => Stats::recentMatches(5),
             'jobs'     => Stats::jobsNeedingAttention(),
@@ -401,21 +411,37 @@ switch (true) {
         break;
 
     // ---------------------------------------------------------------- kluby
+    /*
+     * LISTA = WYŁĄCZNIE TENANCI (Sesja 2). Rywale (`is_own_team = 0`) nie są
+     * „klubem do wyboru" w nawigacji — żyją w warstwie danych jako strona
+     * meczu. Nadal da się do nich dotrzeć pod adresem, np. z pokrycia importu
+     * („znany klub" → `/kluby/{id}`) — ten edytor generyczny zostaje bez zmian.
+     */
     case $path === '/kluby' && $method === 'GET':
         View::page('clubs_list', [
             'title'  => View::t('club.list'),
             'active' => 'clubs',
-            'clubs'  => Clubs::all(),
+            'clubs'  => Clubs::tenants(),
             'notice' => Session::flash('notice'),
             'error'  => Session::flash('error'),
         ]);
         break;
 
     case $path === '/kluby/nowy' && $method === 'GET':
+        // `?tenant=1` — wejście z nawigacji „Kluby → Nowy klub". Tworzenie
+        // klubu z listy głównej ZAWSZE zakłada tenanta (WYTYCZNA Sesji 2):
+        // pole „to mój klub" znika z formularza, a POST je wymusza niżej
+        // (saveClub) niezależnie od tego, co przyszłoby w żądaniu.
+        //
+        // Bez tego parametru formularz zostaje TAKI SAM jak dziś — to ścieżka
+        // zakładania RYWALA z ekranu pokrycia importu (nazwa z eksportu,
+        // `is_own_team` odznaczone domyślnie), świadomie nietknięta.
+        $forceTenant = ($_GET['tenant'] ?? '') === '1';
         View::page('club_form', [
-            'title'         => View::t('club.new'),
+            'title'         => View::t($forceTenant ? 'club.new_tenant' : 'club.new'),
             'active'        => 'clubs',
             'club'          => null,
+            'forceTenant'   => $forceTenant,
             // Nazwa proponowana z danych eksportu — operator potwierdza lub poprawia.
             'suggestedName' => isset($_GET['nazwa']) ? trim((string) $_GET['nazwa']) : null,
             'backTo'        => safeReturn($_GET['powrot'] ?? null),
@@ -447,6 +473,46 @@ switch (true) {
 
     case preg_match('#^/herb/(\d+)$#', $path, $m) === 1 && $method === 'GET':
         serveCrest((int) $m[1]);
+        break;
+
+    // ------------------------------------------------------- hub klubu (Sesja 2)
+    //
+    // Wejście do panelu, gdy kontekst klubu jest wybrany. Wszystkie trasy
+    // poniżej wymagają TENANTA — rywal (`is_own_team = 0`) pod tym adresem
+    // dostaje 404, tak samo jak nieistniejące id: hub jest pojęciem tenanta,
+    // nie każdego wiersza w `clubs` (patrz `resolveTenant()`).
+    case preg_match('#^/klub/(\d+)$#', $path, $m) === 1 && $method === 'GET':
+        showClubHub((int) $m[1]);
+        break;
+
+    case preg_match('#^/klub/(\d+)/mecze$#', $path, $m) === 1 && $method === 'GET':
+        showClubMatches((int) $m[1]);
+        break;
+
+    case preg_match('#^/klub/(\d+)/raporty$#', $path, $m) === 1 && $method === 'GET':
+        showClubReports((int) $m[1]);
+        break;
+
+    case preg_match('#^/klub/(\d+)/notatki$#', $path, $m) === 1 && $method === 'GET':
+        showClubNotes((int) $m[1]);
+        break;
+
+    case preg_match('#^/klub/(\d+)/import$#', $path, $m) === 1 && $method === 'GET':
+        showClubImport((int) $m[1]);
+        break;
+
+    case preg_match('#^/klub/(\d+)/import$#', $path, $m) === 1 && $method === 'POST':
+        // Sama czynność (wgranie eksportu) jest tożsama z globalnym `/import` —
+        // ta sama bramka roli.
+        requireCan($user, 'upload');
+        requireCsrf();
+        handleClubImport((int) $m[1], (int) $user['id']);
+        break;
+
+    // Konfigurator to Sesja 3 — CTA z huba ma dokąd prowadzić już teraz,
+    // zamiast 404 albo linku, który nie robi nic.
+    case preg_match('#^/klub/(\d+)/konfigurator$#', $path, $m) === 1 && $method === 'GET':
+        showClubConfiguratorSoon((int) $m[1]);
         break;
 
     // ------------------------------------------------------- biblioteka meczów
@@ -548,7 +614,7 @@ switch (true) {
         requireCsrf();
         Notes::delete((int) $m[1], (int) $user['id']);
         Session::flash('notice', View::t('note.deleted'));
-        redirect('/notatki');
+        redirect(safeReturn($_POST['powrot'] ?? '/notatki'));
         break;
 
     // ------------------------------------------------- indeks współczynników (M1)
@@ -915,12 +981,22 @@ function serveReport(int $id): void
  * czeka na ekranie. Render jest osobnym krokiem i osobną decyzją — dlatego tutaj
  * nie powstaje żadne zadanie w kolejce.
  */
-function handleImport(int $userId): void
+/**
+ * `$clubId` — SESJA 2: `/klub/{id}/import` przekazuje tenanta wprost z trasy,
+ * obowiązkowo (`showClubImport()`/route sprawdza wcześniej, że to tenant).
+ * `null` to globalny `/import`, bez kontekstu w adresie — zostaje dla
+ * ciągłości i sięga po klub domyślny w `Imports::create()`.
+ *
+ * `$formPath` — dokąd wraca operator przy błędzie walidacji pliku. Musi
+ * wskazywać TEN formularz, z którego przyszedł, inaczej błąd „za duży plik"
+ * na scoped ekranie wyrzuciłby operatora do globalnego `/import`.
+ */
+function handleImport(int $userId, ?int $clubId = null, string $formPath = '/import'): void
 {
     $csv = Upload::accept($_FILES['csv'] ?? null, 'csv', true);
     if (!$csv['ok']) {
         Session::flash('error', View::t($csv['error']));
-        redirect('/import');
+        redirect($formPath);
     }
 
     $json = Upload::accept($_FILES['json'] ?? null, 'json', false);
@@ -928,7 +1004,7 @@ function handleImport(int $userId): void
         // CSV już leży w storage — sprzątamy, żeby nieudany import nie zostawiał śmieci.
         @unlink((string) $csv['path']);
         Session::flash('error', View::t($json['error']));
-        redirect('/import');
+        redirect($formPath);
     }
 
     /*
@@ -947,7 +1023,8 @@ function handleImport(int $userId): void
         $userId,
         (string) $csv['path'],
         $json['path'] ?? null,
-        (string) $csv['sha256']
+        (string) $csv['sha256'],
+        $clubId
     );
 
     $jobId = Imports::queueInspect($importId, $userId);
@@ -1485,10 +1562,16 @@ function showMatchNotes(int $matchId): void
 
 function saveNote(int $userId): void
 {
+    // Formularz notatki bywa osadzony na scoped `/klub/{id}/notatki` (Sesja 2) —
+    // `powrot` odsyła operatora dokładnie tam, skąd przyszedł, zamiast zawsze
+    // do globalnego notatnika. `safeReturn()` przepuszcza wyłącznie ścieżki
+    // własne aplikacji.
+    $powrot = safeReturn($_POST['powrot'] ?? '/notatki');
+
     $body = trim((string) ($_POST['body'] ?? ''));
     if ($body === '') {
         Session::flash('error', View::t('note.err.body'));
-        redirect('/notatki');
+        redirect($powrot);
     }
 
     $scope = (string) ($_POST['scope'] ?? 'match');
@@ -1498,7 +1581,7 @@ function saveNote(int $userId): void
     // udającą coś więcej — i nigdy nie pokazałaby się w kontekście raportu.
     if ($scope === 'event' && ($eventRef === '' || empty($_POST['match_id']))) {
         Session::flash('error', View::t('note.err.event'));
-        redirect('/notatki');
+        redirect($powrot);
     }
 
     $kategoria = (string) ($_POST['kategoria'] ?? '');
@@ -1520,7 +1603,7 @@ function saveNote(int $userId): void
     ]);
 
     Session::flash('notice', View::t('note.created'));
-    redirect('/notatki');
+    redirect($powrot);
 }
 
 // ------------------------------------------------------ publikacja (panel)
@@ -1918,6 +2001,9 @@ function showClub(int $id): void
         'active'        => 'clubs',
         'club'          => $club,
         'suggestedName' => null,
+        // Hub przekazuje `?powrot=/klub/{id}`, żeby zapis wracał do niego,
+        // a nie na listę klubów (`club_form.php` → `$backTo`).
+        'backTo'        => safeReturn($_GET['powrot'] ?? null),
         'notice'        => Session::flash('notice'),
         'error'         => Session::flash('error'),
     ]);
@@ -1953,7 +2039,13 @@ function saveClub(?int $id, int $userId): void
         'short_name'      => trim((string) ($_POST['short_name'] ?? '')),
         'color_primary'   => $primary,
         'color_secondary' => $secondary,
-        'is_own_team'     => !empty($_POST['is_own_team']),
+        // `force_tenant` — formularz osiągnięty z nawigacji „Kluby → Nowy klub"
+        // (`/kluby/nowy?tenant=1`). Pole „to mój klub" tam nie istnieje, więc
+        // czytanie samego `is_own_team` dałoby ZAWSZE false. Wymuszamy prawdę
+        // po stronie serwera — ukryte pole formularza jest sygnałem KONTEKSTU,
+        // a nie danymi, którym ufamy bez sprawdzenia, więc liczy się jego
+        // ISTNIENIE (wysłał je nasz formularz), nie treść.
+        'is_own_team'     => !empty($_POST['force_tenant']) || !empty($_POST['is_own_team']),
         'aliases'         => (string) ($_POST['aliases'] ?? ''),
     ];
 
@@ -2031,6 +2123,211 @@ function serveCrest(int $clubId): void
     header('X-Content-Type-Options: nosniff');
     header('Cache-Control: private, max-age=300');
     readfile($path);
+}
+
+// -------------------------------------------------------- hub klubu (Sesja 2)
+
+/**
+ * Klub, ale WYŁĄCZNIE tenant. Hub i wszystko pod `/klub/{id}/…` to pojęcie
+ * tenanta — rywal (`is_own_team = 0`) nie ma tu czego robić: nie jest
+ * „klubem do wyboru" w nawigacji (WYTYCZNA Sesji 2) i nie ma własnych
+ * meczów jako właściciel analizy (`club_id` zawsze wskazuje na tenanta).
+ *
+ * 404, nie przekierowanie — z tych samych powodów co `requireCan()`: adres,
+ * pod którym nie ma nic do pokazania, nie ma wyglądać, jakby coś ukrywał.
+ *
+ * @return array<string,mixed>|null
+ */
+function resolveTenant(int $id): ?array
+{
+    $club = Clubs::find($id);
+    return $club !== null && !empty($club['is_own_team']) ? $club : null;
+}
+
+function tenantNotFound(): void
+{
+    http_response_code(404);
+    View::page('soon', [
+        'title'   => View::t('common.not_found'),
+        'heading' => View::t('common.not_found'),
+        'body'    => View::t('club.not_found'),
+    ]);
+}
+
+function showClubHub(int $id): void
+{
+    $club = resolveTenant($id);
+    if ($club === null) {
+        tenantNotFound();
+        return;
+    }
+
+    $mecze   = Matches::search(['tenant' => $id, 'sort' => 'data_desc']);
+    $raporty = Reports::search(['tenant' => $id, 'sort' => 'date_desc']);
+
+    View::page('club_dashboard', [
+        'title'         => View::t('club.hub.title', (string) $club['name']),
+        'active'        => 'clubs',
+        'club'          => $club,
+        'crumb'         => null,
+        // NAZWA CELOWO NIE „template": `View::render()` ma własny parametr
+        // `$template` (nazwa PLIKU szablonu) i `extract(…, EXTR_SKIP)` NIE
+        // nadpisuje istniejących zmiennych — klucz `template` w danych
+        // zostałby po cichu wchłonięty przez ten parametr, a widok dostałby
+        // napis „club_dashboard” zamiast wiersza z bazy albo `null`.
+        'reportTemplate' => \CoachAnalyze\ReportTemplates::current($id),
+        'matches'       => $mecze['rows'],
+        'matchesTotal'  => $mecze['total'],
+        'reports'       => $raporty['rows'],
+        'reportsTotal'  => $raporty['total'],
+        'notice'        => Session::flash('notice'),
+        'error'         => Session::flash('error'),
+    ]);
+}
+
+function showClubMatches(int $id): void
+{
+    $club = resolveTenant($id);
+    if ($club === null) {
+        tenantNotFound();
+        return;
+    }
+
+    $filtr = [
+        'sezon'  => isset($_GET['sezon']) && $_GET['sezon'] !== '' ? (int) $_GET['sezon'] : null,
+        'sort'   => Matches::normalizeSort($_GET['sort'] ?? null),
+        'strona' => max(1, (int) ($_GET['strona'] ?? 1)),
+    ];
+    View::page('matches_list', [
+        'title'   => View::t('matches.title'),
+        'active'  => 'clubs',
+        'club'    => $club,
+        'crumb'   => View::t('nav.matches'),
+        'wynik'   => Matches::search([
+            'tenant' => $id,
+            'season' => $filtr['sezon'],
+            'sort'   => $filtr['sort'],
+            'page'   => $filtr['strona'],
+        ]),
+        'clubs'   => [],
+        'seasons' => Seasons::all(),
+        'filtr'   => $filtr,
+        'notice'  => Session::flash('notice'),
+    ]);
+}
+
+function showClubReports(int $id): void
+{
+    $club = resolveTenant($id);
+    if ($club === null) {
+        tenantNotFound();
+        return;
+    }
+
+    $wynik = Reports::search([
+        'tenant' => $id,
+        'season' => isset($_GET['sezon']) && $_GET['sezon'] !== '' ? (int) $_GET['sezon'] : null,
+        'sort'   => isset($_GET['sort']) ? (string) $_GET['sort'] : null,
+        'page'   => isset($_GET['strona']) ? (int) $_GET['strona'] : 1,
+    ]);
+
+    View::page('reports_list', [
+        'title'   => View::t('reports.title'),
+        'active'  => 'clubs',
+        'club'    => $club,
+        'crumb'   => View::t('nav.reports'),
+        'rows'    => $wynik['rows'],
+        'total'   => $wynik['total'],
+        'page'    => $wynik['page'],
+        'pages'   => $wynik['pages'],
+        'clubs'   => [],
+        'seasons' => Reports::filterSeasons(),
+        'filters' => [
+            'klub'  => '',
+            'sezon' => $_GET['sezon'] ?? '',
+            'sort'  => Reports::normalizeSort($_GET['sort'] ?? null),
+        ],
+        'notice'  => Session::flash('notice'),
+        'error'   => Session::flash('error'),
+    ]);
+}
+
+function showClubNotes(int $id): void
+{
+    $club = resolveTenant($id);
+    if ($club === null) {
+        tenantNotFound();
+        return;
+    }
+
+    $filtr = [
+        'q'      => trim((string) ($_GET['q'] ?? '')),
+        'poziom' => (string) ($_GET['poziom'] ?? ''),
+        'tag'    => trim((string) ($_GET['tag'] ?? '')),
+    ];
+    View::page('notes_list', [
+        'title'   => View::t('note.title'),
+        'active'  => 'clubs',
+        'club'    => $club,
+        'crumb'   => View::t('nav.notes'),
+        'notes'   => Notes::search($filtr['q'], $filtr['poziom'] ?: null, $filtr['tag'] ?: null, $id),
+        'tags'    => Notes::tagCloud(),
+        'filtr'   => $filtr,
+        // Wybór meczu w formularzu nowej notatki ograniczony do tenanta —
+        // inaczej notatka „przy meczu" mogłaby wskazać mecz innego klubu.
+        'matches' => Matches::search(['tenant' => $id, 'sort' => 'data_desc'])['rows'],
+        'clubs'   => [],
+        'notice'  => Session::flash('notice'),
+        'error'   => Session::flash('error'),
+    ]);
+}
+
+function showClubImport(int $id): void
+{
+    $club = resolveTenant($id);
+    if ($club === null) {
+        tenantNotFound();
+        return;
+    }
+
+    View::page('import_form', [
+        'title'        => View::t('import.title'),
+        'active'       => 'clubs',
+        'club'         => $club,
+        'crumb'        => View::t('import.nav'),
+        'error'        => Session::flash('error'),
+        'storageReady' => Storage::writable(),
+    ]);
+}
+
+function handleClubImport(int $id, int $userId): void
+{
+    $club = resolveTenant($id);
+    if ($club === null) {
+        tenantNotFound();
+        return;
+    }
+
+    handleImport($userId, $id, '/klub/' . $id . '/import');
+}
+
+/** CTA „Skonfiguruj raporty" z huba — konfigurator sam jest Sesją 3. */
+function showClubConfiguratorSoon(int $id): void
+{
+    $club = resolveTenant($id);
+    if ($club === null) {
+        tenantNotFound();
+        return;
+    }
+
+    View::page('soon', [
+        'title'   => View::t('club.configurator.title'),
+        'active'  => 'clubs',
+        'club'    => $club,
+        'crumb'   => View::t('club.configurator.crumb'),
+        'heading' => View::t('club.configurator.title'),
+        'body'    => View::t('club.configurator.soon'),
+    ]);
 }
 
 function showLogin(): void

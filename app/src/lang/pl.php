@@ -192,6 +192,7 @@ return [
     'nav.theme.to_dark'   => 'Włącz motyw ciemny',
     'nav.theme.to_light'  => 'Włącz motyw jasny',
     'nav.menu'            => 'Nawigacja',
+    'nav.breadcrumb'      => 'Ścieżka',
 
     // --- pulpit ---
     'dash.title'          => 'Pulpit',
@@ -345,6 +346,27 @@ return [
     'club.err.crest_too_big' => 'Herb jest za duży — limit to 2 MB.',
     'club.err.crest_type' => 'Herb musi być plikiem PNG albo SVG, a zawartość musi zgadzać się z rozszerzeniem.',
     'club.err.crest_svg'  => 'Ten plik SVG zawiera treść wykonywalną (skrypt, zdarzenie albo odwołanie zewnętrzne) i został odrzucony.',
+
+    // --- hub klubu (Sesja 2) ---
+    'club.new_tenant'          => 'Nowy klub',
+    'club.new_tenant.hint'     => 'Ten klub trafi na listę klubów jako Twój — z hubem, meczami i raportami.',
+    'club.hub.title'           => 'Klub: %s',
+    'club.hub.no_template'     => 'Brak templatu raportów',
+    'club.hub.template'        => 'Templat v%d, zaktualizowany %s',
+    'club.hub.configure'       => 'Skonfiguruj raporty',
+    'club.hub.reconfigure'     => 'Edytuj templat raportów',
+    'club.hub.count_matches'   => 'mecze: %d',
+    'club.hub.count_reports'   => 'raporty: %d',
+    'club.hub.open_notes'      => 'Notatki klubu',
+    'club.hub.new_import'      => 'Wgraj nowy eksport',
+    'club.hub.all_matches'     => 'Wszystkie mecze klubu',
+    'club.hub.all_reports'     => 'Wszystkie raporty klubu',
+    'club.hub.template_hint'   => 'Mapowania tagów tego klubu — aktualna wersja templatu: v%d.',
+    'club.configurator.title'  => 'Konfigurator raportów',
+    'club.configurator.crumb'  => 'Konfigurator',
+    'club.configurator.soon'   => 'Konfigurator raportów (import założycielski, mapowanie zmiennych, sekcje) powstaje w kolejnej sesji.',
+    'club.card.last_import'    => 'Ostatni import: %s',
+    'club.card.no_import'      => 'Brak importu',
 
     // --- biblioteka meczów (Etap 4c) ---
     'matches.title'       => 'Mecze',

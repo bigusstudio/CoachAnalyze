@@ -229,7 +229,13 @@ $zalogowanie = http('POST', '/login', ['email' => KONTO, 'password' => HASLO, 'c
 check('LOGOWANIE PRZY PIERWSZYM WEJŚCIU PRZECHODZI',
     $zalogowanie['status'] === 302 && $zalogowanie['location'] === '/',
     $zalogowanie['status'] . ' → ' . (string) $zalogowanie['location']);
-check('panel wpuszcza', http('GET', '/')['status'] === 200);
+// Sesja 2 (przebudowa pod kluby): punkt wejścia po zalogowaniu to lista
+// klubów, nie „/" wprost — „/" przekierowuje tam samo (docs/PRZEBUDOWA_KLUB_SESJE.md).
+$wejscie = http('GET', '/');
+check('panel wpuszcza (przekierowanie na listę klubów)',
+    $wejscie['status'] === 302 && $wejscie['location'] === '/kluby',
+    $wejscie['status'] . ' → ' . (string) $wejscie['location']);
+check('lista klubów odpowiada', http('GET', '/kluby')['status'] === 200);
 
 // ============================================================ 2. bez ciasteczka
 echo "\n== żądanie BEZ ciasteczka sesji: komunikat o ciasteczku, nie o formularzu ==\n";

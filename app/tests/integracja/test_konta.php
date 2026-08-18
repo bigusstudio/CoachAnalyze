@@ -31,6 +31,38 @@ function check(string $name, bool $cond, string $detail = ''): void
     }
 }
 
+/*
+ * BRAMKA WEJŚCIOWA: ten zestaw NIE DZIAŁA bez atrapy Redisa.
+ *
+ * Limiter logowania jest „fail closed" — bez Redisa `Auth::attempt()` zwraca
+ * `login_unavailable` i NIE dochodzi do weryfikacji hasła. Uruchomiony bez
+ * gniazda zestaw sypie wtedy pięcioma błędami, z których ani jeden nie mówi
+ * o Redisie: „komunikat TAKI SAM jak przy zlym hasle", brak wpisu
+ * `login.disabled`, nieudane logowanie po przywróceniu konta, a dalej
+ * `account.err.reauth` przy zmianie hasła — bo skoro logowanie nie przeszło,
+ * sesja nie dostała pełnego dostępu. Jedna brakująca atrapa, pięć mylących
+ * objawów i godzina szukania regresji, której nie ma.
+ *
+ * Dlatego mówimy o tym wprost i NIE udajemy, że test się wykonał: brak atrapy
+ * kończy się kodem różnym od zera. Cicho pominięty zestaw jest gorszy niż
+ * zestaw, który głośno odmawia startu.
+ */
+$sock = $argv[1] ?? null;
+if ($sock === null || !file_exists($sock)) {
+    fwrite(STDERR, implode("\n", [
+        'Ten zestaw wymaga atrapy Redisa (limiter logowania jest „fail closed").',
+        '',
+        '  php fake_redis.php /tmp/ca.sock &',
+        '  php test_konta.php /tmp/ca.sock',
+        '',
+        $sock === null
+            ? 'Nie podano ścieżki gniazda jako pierwszego argumentu.'
+            : "Gniazdo nie istnieje: {$sock}",
+        '',
+    ]) . "\n");
+    exit(2);
+}
+
 $baza    = $here . '/konta.sqlite';
 $envFile = $here . '/.env.konta';
 @unlink($baza);
@@ -40,8 +72,8 @@ file_put_contents($envFile, implode("\n", [
     'STORAGE_PATH=' . $here, 'APP_URL=https://app.example.test',
     'SESSION_NAME=ca_test', 'PASSWORD_MIN_LENGTH=8',
     // Limiter logowania siedzi w Redisie i „fail closed" — bez niego `attempt()`
-    // odmawia logowania niezaleznie od hasla. Podajemy atrape.
-    'REDIS_SOCKET=' . ($argv[1] ?? '/tmp/ca_konta.sock'),
+    // odmawia logowania niezaleznie od hasla. Atrapa sprawdzona wyzej, w bramce.
+    'REDIS_SOCKET=' . $sock,
     'REDIS_PREFIX=konta:', '',
 ]));
 putenv('CA_ENV_PATH=' . $envFile);

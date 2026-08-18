@@ -9,11 +9,18 @@ use CoachAnalyze\View;
  *
  * @var string|null $heading
  * @var string|null $body
+ * @var array<string,mixed>|null $club  kontekst klubu (Sesja 2) — gdy obecny,
+ *                                       „Wróć" prowadzi do huba, nie na pulpit
  */
+$club ??= null;
 ?>
 <h1 class="h1"><?= View::e($heading ?? View::t('soon.title')) ?></h1>
 
 <section class="panel">
   <p class="empty"><?= View::e($body ?? View::t('soon.body')) ?></p>
-  <p><a class="link" href="/"><?= View::e(View::t('common.back')) ?></a></p>
+  <p>
+    <a class="link" href="<?= $club !== null ? '/klub/' . (int) $club['id'] : '/' ?>">
+      <?= View::e(View::t('common.back')) ?>
+    </a>
+  </p>
 </section>

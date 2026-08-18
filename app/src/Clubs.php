@@ -64,6 +64,36 @@ final class Clubs
     }
 
     /**
+     * Kluby własne — TENANCI. To one, i wyłącznie one, są „klubem do wyboru"
+     * w nawigacji (Sesja 2, docs/PRZEBUDOWA_KLUB_SESJE.md).
+     *
+     * Rywale (`is_own_team = 0`) ZOSTAJĄ poza tą listą — żyją w warstwie danych
+     * jako `club_away_id` meczów i nie mają własnego huba. Nie znikają z systemu:
+     * nadal da się do nich dotrzeć przez `/kluby/{id}` (link z pokrycia importu,
+     * z listy meczów), tylko nie mają wejścia z głównej nawigacji.
+     *
+     * Liczniki liczone są PO TENANCIE (`club_id`), nie po stronie boiska
+     * (`club_home_id`/`club_away_id`) — zgodnie z regułą z `Matches::search()`:
+     * `club_id` mówi, czyja jest analiza, a nie kto grał.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public static function tenants(): array
+    {
+        return Db::all(
+            "SELECT c.*,
+                    (SELECT COUNT(*) FROM matches m WHERE m.club_id = c.id) AS matches_count,
+                    (SELECT COUNT(*) FROM reports r WHERE r.club_id = c.id) AS reports_count,
+                    (SELECT MAX(i.created_at)
+                       FROM imports i JOIN matches m2 ON m2.id = i.match_id
+                      WHERE m2.club_id = c.id) AS last_import_at
+               FROM clubs c
+              WHERE c.is_own_team = 1
+              ORDER BY c.name"
+        );
+    }
+
+    /**
      * Domyślny tenant — klub, do którego trafia praca, gdy kontekst klubu nie
      * został jeszcze wybrany w interfejsie.
      *
@@ -76,9 +106,10 @@ final class Clubs
      * powtarzalny — losowanie „któregoś" dawałoby mecze rozrzucone po klubach
      * bez żadnej reguły.
      *
-     * TODO(club-scope): po Sesji 2 klub przychodzi z adresu (`/klub/{id}/import`)
-     * i ta metoda przestaje być używana w ścieżce importu. Zostaje jako awaryjne
-     * domknięcie dla zadań uruchamianych poza kontekstem żądania.
+     * SESJA 2: `/klub/{id}/import` przekazuje `club_id` wprost z adresu i NIE
+     * woła już tej metody. Zostaje jako domknięcie dla globalnego `/import`
+     * (ekran bez wyboru klubu — świadomie zachowany dla ciągłości, patrz
+     * `handleImport()`) oraz dla zadań uruchamianych poza kontekstem żądania.
      */
     public static function tenantDefault(): ?int
     {

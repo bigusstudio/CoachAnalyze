@@ -121,6 +121,16 @@ function ca_test_db(string $file, bool $withData = true): PDO
         ['HUT7K2QX', 'Klub A']);
     Db::run('INSERT INTO clubs (owner_id,club_key,name) VALUES (1,?,?)',
         ['POG4M8ZR', 'Klub B']);
+    /*
+     * Sesja 2 (przebudowa pod kluby): DRUGI TENANT (id 4) + drugi rywal (id 3),
+     * bez meczów przypisanych do żadnego z nich. Bez tego `Clubs::tenants()`
+     * i podział „lista klubów w nawigacji = tylko tenanci" byłyby przetestowane
+     * tylko na jednym klubie — nierozróżnialne od zwykłego `Clubs::all()`.
+     */
+    Db::run('INSERT INTO clubs (owner_id,club_key,name,is_own_team) VALUES (1,?,?,0)',
+        ['RIV5K2NX', 'Rywal C']);
+    Db::run('INSERT INTO clubs (owner_id,club_key,name,is_own_team) VALUES (1,?,?,1)',
+        ['STL9R4WQ', 'Klub D']);
 
     $mecze = [
         ['2026-08-09', 1, 2, 'done'],

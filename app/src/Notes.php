@@ -170,9 +170,9 @@ final class Notes
          * pustą, choć klub dało się wywieść z meczu. Backfill w 012 to
          * ujednolicił i od teraz filtr obejmuje wszystkie trzy zasięgi.
          *
-         * TODO(club-scope): wyszukiwarka notatek w panelu woła to bez tenanta —
-         * kontekst klubu wchodzi w Sesji 2 i wtedy parametr przestaje być
-         * opcjonalny.
+         * SESJA 2: `/klub/{id}/notatki` przekazuje `tenant` obowiązkowo.
+         * Globalny notatnik (`/notatki`) go nie przekazuje — przeszukuje
+         * notatki wszystkich tenantów naraz, świadomie.
          */
         if ($tenant !== null) {
             $where[] = 'n.club_id = :tenant';
