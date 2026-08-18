@@ -558,6 +558,24 @@ if (is_file($deployPath)) {
     check('kontroluje HSTS po wdrożeniu',
         str_contains($polecenia, 'Strict-Transport-Security=max-age=86400'),
         'obecność reguły w pliku to nie to samo co nagłówek w odpowiedzi');
+
+    /*
+     * Buforowanie zasobów sprawdzalne WYŁĄCZNIE na żywo: wbudowany serwer PHP
+     * w testach integracyjnych nie czyta `.htaccess`, więc `test_assety.php`
+     * pilnuje treści pliku, a odpowiedzi serwera — dopiero to.
+     *
+     * Sprawdzamy OBIE strony reguły. Sama obecność `immutable` w skrypcie nie
+     * wystarcza: bez zapytania o adres BEZ wersji przeoczylibyśmy jedyny
+     * groźny przypadek, czyli przypięcie pliku na rok pod adresem, który
+     * nigdy się nie zmieni.
+     */
+    check('kontroluje buforowanie assetów po wdrożeniu',
+        str_contains($polecenia, 'immutable') && str_contains($polecenia, 'must-revalidate'),
+        'deploy ma pytać o adres z wersją i bez wersji');
+    check('kontrola cache pyta o adres z wersją i bez',
+        str_contains($polecenia, '/assets/app.css?v=')
+        && preg_match('#"https://[^"]*/assets/app\.css"#', $polecenia) === 1,
+        'jedno z dwóch zapytań nie istnieje');
     echo "\n== deploy.sh: zrzut bazy ==\n";
 
     /*

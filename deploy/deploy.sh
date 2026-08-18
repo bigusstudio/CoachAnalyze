@@ -337,6 +337,53 @@ for para in "X-Frame-Options=DENY" "Referrer-Policy=no-referrer" \
   fi
 done
 
+echo "==> Kontrola buforowania zasobów statycznych"
+#
+# Adresy `/assets/*` wychodzą z aplikacji z parametrem `?v=<mtime>`
+# (`View::asset()`), a `.htaccess` buforuje bezterminowo WYŁĄCZNIE takie adresy.
+# Obie strony tej reguły da się potwierdzić dopiero tutaj: wbudowany serwer PHP
+# w testach integracyjnych nie czyta `.htaccess`, więc test statyczny sprawdza
+# treść pliku, a nie odpowiedź serwera.
+#
+# Wartość `v` jest dowolna — reguła patrzy na WZORZEC parametru, nie na to, czy
+# znacznik zgadza się z czasem pliku. Stąd `?v=kontrola` zamiast liczenia mtime.
+#
+# ASYMETRIA OCEN JEST CELOWA I NIE JEST NIEDOCIĄGNIĘCIEM:
+#   - adres BEZ wersji odpowiadający `immutable` to BŁĄD. Przypina plik
+#     w przeglądarkach na rok, a odkręcić to można wyłącznie zmianą nazwy pliku
+#     — żadne wdrożenie tego nie cofnie.
+#   - adres Z wersją bez `immutable` to tylko OSTRZEŻENIE. Świeżość gwarantuje
+#     sam parametr `?v=`: po wdrożeniu przeglądarka dostaje nowy adres, dla
+#     którego nie ma kopii. Tracimy oszczędność, nie poprawność — a to za mało,
+#     żeby zatrzymać wdrożenie.
+CACHE_WERSJA=$(curl -sI --max-time 15 "https://app.coachanalyze.pl/assets/app.css?v=kontrola" \
+  | grep -i '^cache-control:' | tr -d '\r' || echo "")
+CACHE_BEZ=$(curl -sI --max-time 15 "https://app.coachanalyze.pl/assets/app.css" \
+  | grep -i '^cache-control:' | tr -d '\r' || echo "")
+
+if printf '%s' "$CACHE_WERSJA" | grep -qi 'immutable'; then
+  echo "    /assets/app.css?v=…   immutable          OK"
+else
+  echo "    UWAGA: /assets/app.css?v=… nie odpowiada 'immutable'"
+  echo "        otrzymano: ${CACHE_WERSJA:-brak nagłówka Cache-Control}"
+  echo "        Świeżość zapewnia sam ?v= — to strata oszczędności, nie poprawności."
+  echo "        Sprawdź RewriteRule [E=CA_ZASOB_WERSJONOWANY:1] w app/public/.htaccess"
+fi
+
+if printf '%s' "$CACHE_BEZ" | grep -qi 'immutable'; then
+  echo "    !!! BŁĄD: /assets/app.css BEZ wersji odpowiada 'immutable'"
+  echo "        otrzymano: $CACHE_BEZ"
+  echo "        To przypina plik w przeglądarkach na rok. Odkręcenie wymaga zmiany"
+  echo "        nazwy pliku — wdrożeniem się tego nie cofnie."
+  FAIL=1
+elif printf '%s' "$CACHE_BEZ" | grep -qi 'must-revalidate'; then
+  echo "    /assets/app.css (bez wersji)  must-revalidate   OK"
+else
+  echo "    UWAGA: /assets/app.css bez wersji nie ma 'must-revalidate'"
+  echo "        otrzymano: ${CACHE_BEZ:-brak nagłówka Cache-Control}"
+  echo "        Bez tego obowiązuje buforowanie heurystyczne — to był pierwotny błąd."
+fi
+
 if [ "$FAIL" -ne 0 ]; then
   echo "==> WDROŻENIE Z BŁĘDAMI (${REV:-kontrola}) — popraw powyższe zanim uznasz je za zakończone"
   exit 1
