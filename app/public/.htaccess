@@ -30,6 +30,23 @@ Options -Indexes -MultiViews
   RewriteCond %{HTTPS} !=on
   RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
 
+  # ZNACZNIK ZASOBU WERSJONOWANEGO — obsługiwany w bloku mod_headers niżej.
+  #
+  # Adresy `/assets/*` wychodzą z aplikacji z parametrem `?v=<mtime>`
+  # (`View::asset()`), który zmienia się wtedy i tylko wtedy, gdy plik
+  # faktycznie się zmienił. Taki adres wolno buforować bezterminowo: po
+  # wdrożeniu przeglądarka dostaje NOWY adres, dla którego nie ma kopii.
+  #
+  # Znacznik stawiamy WYŁĄCZNIE przy obecnym `v`. Adres bez wersji — wpisany
+  # z palca, ale też taki, dla którego `View::asset()` nie odnalazło pliku na
+  # dysku — trafia niżej na `must-revalidate`, czyli traci oszczędność, a nie
+  # świeżość. Bezwarunkowe `immutable` przypięłoby w takim wypadku stary
+  # arkusz na rok, bez odkręcenia inaczej niż zmianą nazwy pliku.
+  #
+  # Reguła NIE MA `[L]` i nie podmienia adresu (`-`) — sam znacznik.
+  RewriteCond %{QUERY_STRING} (^|&)v=[0-9a-z]+
+  RewriteRule ^assets/ - [E=CA_ZASOB_WERSJONOWANY:1]
+
   # Wszystko inne do front controllera
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteCond %{REQUEST_FILENAME} !-d
@@ -68,6 +85,29 @@ Options -Indexes -MultiViews
   <If "%{REQUEST_URI} =~ m#^/r/#">
     Header always set X-Robots-Tag "noindex, nofollow, noarchive"
   </If>
+
+  # BUFOROWANIE ZASOBÓW STATYCZNYCH.
+  #
+  # Dotąd nie było tu ŻADNEJ reguły dla `/assets/`, a brak `Cache-Control` nie
+  # znaczy „nie buforuj". Znaczy BUFOROWANIE HEURYSTYCZNE: przeglądarce wolno
+  # wtedy trzymać kopię przez ułamek wieku pliku i podawać ją bez pytania
+  # serwera. Stąd panel po wdrożeniu wyglądający jak przed nim, do czasu
+  # twardego odświeżenia — o które nie ma jak poprosić operatora.
+  #
+  # Rozstrzyga znacznik ustawiony w bloku mod_rewrite wyżej: adres z wersją
+  # buforuje się bezterminowo, adres bez wersji jest za każdym razem
+  # rewalidowany (tanie 304, zero ryzyka podania starego pliku).
+  #
+  # `FilesMatch` ZAWĘŻA REGUŁĘ DO PLIKÓW STATYCZNYCH i to nie jest ozdobnik.
+  # `Header set` działa w fazie fixup i wygrywa z nagłówkiem wysłanym przez
+  # PHP — bez tego zawężenia nadpisałby `Cache-Control: no-store`, który
+  # `app/src/bootstrap.php` wysyła dla stron panelu, i strony za sesją
+  # zaczęłyby lądować na dysku. To ta sama pułapka, przez którą zniknęło
+  # stąd dublowane `X-Frame-Options` (komentarz wyżej).
+  <FilesMatch "\.(css|js|svg|png|jpe?g|gif|woff2?)$">
+    Header set Cache-Control "public, max-age=31536000, immutable" env=CA_ZASOB_WERSJONOWANY
+    Header set Cache-Control "public, max-age=0, must-revalidate" env=!CA_ZASOB_WERSJONOWANY
+  </FilesMatch>
 </IfModule>
 
 # Uploady bywają duże

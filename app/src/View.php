@@ -123,4 +123,85 @@ final class View
         }
         return self::t('time.seconds', max(1, $seconds));
     }
+
+    /** @var array<string,string> Wyliczone adresy zasobów — jeden `stat` na plik na żądanie. */
+    private static array $assetCache = [];
+
+    /**
+     * Adres zasobu statycznego z parametrem wersji: `/assets/app.css?v=lkq3n1`.
+     *
+     * PO CO: bez tego przeglądarka po wdrożeniu podaje stary arkusz i stary
+     * skrypt. Nagłówki Apache dla plików statycznych nie niosą `Cache-Control`,
+     * więc obowiązuje BUFOROWANIE HEURYSTYCZNE — przeglądarce wolno wtedy
+     * trzymać kopię przez ułamek wieku pliku i podawać ją BEZ pytania serwera.
+     * Skutkiem jest panel po deployu wyglądający jak przed nim, do czasu
+     * twardego odświeżenia, o które nie ma jak poprosić operatora. Zmiana
+     * adresu rozwiązuje to u źródła: dla nowego adresu żadna kopia nie istnieje.
+     *
+     * WERSJA TO `filemtime`, nie hash treści. Powód praktyczny: `rsync -a`
+     * w `deploy.sh` przenosi czasy modyfikacji, więc plik niezmieniony
+     * zachowuje swój czas i swój adres (bufor działa dalej), a plik podmieniony
+     * dostaje nowy. Liczenie skrótu treści przy każdym żądaniu byłoby czytaniem
+     * całego arkusza po to, żeby wypisać sześć znaków.
+     *
+     * Czas jest zapisany w bazie 36 — krócej i bez udawania, że to sekret.
+     * Apache i tak wysyła dokładny `Last-Modified` w nagłówku odpowiedzi,
+     * więc skracanie tego do skrótu byłoby zabezpieczeniem pozorowanym.
+     *
+     * ─────────────────────────────────────────────────────────────────────
+     * DLACZEGO DWIE ŚCIEŻKI, A NIE JEDNA — TO JEST TA SAMA PUŁAPKA,
+     * KTÓRA W TYM REPOZYTORIUM WRACAŁA JUŻ DWA RAZY (patrz `test_layout.php`).
+     *
+     * Układ w repozytorium NIE jest układem produkcyjnym. `deploy.sh` robi dwa
+     * przejścia rsync i zawartość `app/public/` ląduje piętro wyżej:
+     *
+     *   repozytorium                          produkcja
+     *   app/public/assets/app.css      ->     {domena}/assets/app.css
+     *   app/src/View.php               ->     {domena}/app/src/View.php
+     *
+     * `CA_ROOT` wskazuje katalog zawierający `app/`, więc ten sam adres
+     * publiczny `/assets/app.css` leży pod DWOMA różnymi ścieżkami na dysku,
+     * zależnie od układu. Sprawdzenie tylko jednej z nich działałoby w testach
+     * i cicho przestawało działać na produkcji — albo odwrotnie.
+     * ─────────────────────────────────────────────────────────────────────
+     *
+     * Gdy pliku nie da się odnaleźć, zwracamy adres BEZ parametru zamiast
+     * zmyślać wersję. Wersja wzięta z sufitu byłaby gorsza niż jej brak:
+     * przypięłaby przypadkową wartość na długo. Adres bez parametru trafia
+     * natomiast na regułę `must-revalidate` z `app/public/.htaccess`, czyli
+     * degraduje się do zachowania poprawnego, tylko mniej oszczędnego.
+     * Powód zapisujemy do logu — cicha degradacja jest tu nie do wykrycia.
+     */
+    public static function asset(string $sciezka): string
+    {
+        if (isset(self::$assetCache[$sciezka])) {
+            return self::$assetCache[$sciezka];
+        }
+
+        $wzgledna = ltrim($sciezka, '/');
+        $korzen   = defined('CA_ROOT') ? CA_ROOT : dirname(__DIR__, 2);
+
+        $kandydaci = [
+            $korzen . '/' . $wzgledna,                 // produkcja: {domena}/assets/…
+            $korzen . '/app/public/' . $wzgledna,      // repozytorium: app/public/assets/…
+        ];
+
+        $wynik = $sciezka;
+        foreach ($kandydaci as $plik) {
+            $mtime = @filemtime($plik);
+            if ($mtime !== false) {
+                $wynik = $sciezka . '?v=' . base_convert((string) $mtime, 10, 36);
+                break;
+            }
+        }
+
+        if ($wynik === $sciezka) {
+            error_log(
+                'View::asset: nie odnaleziono pliku dla ' . $sciezka
+                . ' (sprawdzone: ' . implode(', ', $kandydaci) . ') — adres bez wersji'
+            );
+        }
+
+        return self::$assetCache[$sciezka] = $wynik;
+    }
 }

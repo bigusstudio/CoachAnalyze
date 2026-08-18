@@ -76,7 +76,7 @@ $moze = Users::can($user, 'generate');
       </div>
 
       <?php /* Obrazek JEST przyciskiem: klik = wysłanie punkt_x/punkt_y. */ ?>
-      <input type="image" name="punkt" src="/assets/boisko.svg"
+      <input type="image" name="punkt" src="<?= View::e(View::asset('/assets/boisko.svg')) ?>"
              alt="<?= View::e(View::t('xg.pitch.alt')) ?>" width="525" height="340">
     </form>
 

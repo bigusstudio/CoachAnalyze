@@ -60,7 +60,7 @@ $chmurki = $chrome && Session::userId() !== null
 <meta http-equiv="refresh" content="<?= (int) $refresh ?>">
 <?php endif; ?>
 <title><?= View::e($title ?? View::t('app.name')) ?> — <?= View::e(View::t('app.name')) ?></title>
-<link rel="stylesheet" href="/assets/app.css">
+<link rel="stylesheet" href="<?= View::e(View::asset('/assets/app.css')) ?>">
 </head>
 <body>
 <?php if (!$chrome): ?>
@@ -236,8 +236,15 @@ $chmurki = $chrome && Session::userId() !== null
 
   `defer` i miejsce na końcu dokumentu: skrypt nie blokuje renderowania,
   a gdy się nie wczyta, panel działa dalej — chmurki są już w HTML-u.
+
+  KOLEJNOŚĆ ATRYBUTÓW NIE JEST DOWOLNA: `defer` stoi PRZED `src`, bo
+  `app/tests/test_chmurki.php` wycina znacznik wyrażeniem `<script\b[^>]*>`,
+  a to zatrzymuje się na pierwszym `>` — czyli na tym z `?>` zamykającego
+  wstawkę PHP. Z `src` na początku atrybut `defer` wypadłby poza dopasowanie
+  i asercja „skrypt ma atrybut defer" zapaliłaby się na czerwono przy
+  całkowicie poprawnym znaczniku.
 */ ?>
-<script src="/assets/powiadomienia.js" defer></script>
+<script defer src="<?= View::e(View::asset('/assets/powiadomienia.js')) ?>"></script>
 <?php endif; ?>
 </body>
 </html>
