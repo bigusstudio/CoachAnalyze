@@ -295,9 +295,44 @@ przepada po cichu — wraca jako ostrzeżenie `UNKNOWN_TEAM`.
   "unmapped_tags": [
     { "tag": "PRESS WYSOKI 2", "count": 7, "sample_labels": ["UDANY", "NIEUDANY"] }
   ],
-  "unmapped_labels": []
+  "unmapped_labels": [],
+  "dictionary": {
+    "tags": [
+      { "tag": "STRATA", "count": 50,
+        "samples": [ { "b": 12.4, "team": "NASZA", "labels": ["ICH POŁOWA"] } ] }
+    ],
+    "labels": [
+      { "label": "CELNY", "count": 18,
+        "samples": [ { "b": 61.2, "team": "NASZA", "labels": ["CELNY"] } ] }
+    ]
+  }
 }
 ```
+
+### Blok `dictionary` — PEŁNY słownik eksportu
+
+Wszystko, co w pliku jest: **każdy** tag i **każda** etykieta, z liczbą wystąpień
+i próbką do trzech zdarzeń.
+
+**To nie to samo co `unmapped_tags`.** Tamta lista niesie wyłącznie pozycje, których
+silnik NIE rozpoznał. `inspect` nie dostaje profilu klubu, więc tagi z domyślnego
+słownika silnika (`STRZAŁ`, `ZDOBYCIE SBZ`, `III STREFA`, `STRATA`, `ODBIÓR`…) są
+rozpoznawane i z `unmapped_tags` znikają. Na eksporcie referencyjnym to 9 z 11 tagów.
+Konfigurator raportu klubu buduje templat z pierwszego importu i potrzebuje kompletu,
+więc dostaje go tutaj.
+
+- Kolejność **deterministyczna**: malejąco po `count`, remisy alfabetycznie.
+- `samples` niosą wyłącznie `b`, `team`, `labels` — tyle, żeby człowiek rozpoznał tag.
+  Bez współrzędnych, komentarza i xG: próbka ma odpowiedzieć „co to za tag", a nie
+  odtwarzać przebieg meczu.
+- Liczone po zdarzeniach **już sparsowanych**, więc etykiety pochodzą ze
+  `split_labels`, a nie z ponownego dzielenia linii (pułapka 11).
+- Blok jest **czysto addytywny**: nie zmienia żadnej wartości w `coverage`,
+  w metrykach ani w renderze.
+
+> **Gdyby podpowiedzi bindingów liczył kiedyś model językowy** (backlog po Sesji 7):
+> do modelu wolno wysłać nazwy tagów i policzone metryki, **nigdy `samples`** —
+> to są surowe zdarzenia meczowe, czyli dokładnie to, czego zabrania CLAUDE.md §5.
 
 `unmapped_tags` niesie **liczbę wystąpień** i **etykiety towarzyszące** (`sample_labels`
 to próbka: kolejność pierwszego wystąpienia, najwyżej 8 pozycji) — bez nich operator

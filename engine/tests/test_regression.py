@@ -334,3 +334,55 @@ def test_rozjazd_ma_udokumentowany_powod(case):
 def test_manifest_exists():
     """Sam manifest jest w repozytorium i musi istnieć — inaczej nikt nie zauważy braku testów."""
     assert MANIFEST.exists(), "Brak engine/tests/golden/manifest.json"
+
+
+@pytest.mark.parametrize("case", load_cases(), ids=lambda c: c["id"])
+def test_golden_slownik_obejmuje_caly_eksport(case):
+    """Pełny słownik (`meta.dictionary`) na eksporcie referencyjnym.
+
+    Blok zasila konfigurator raportu klubu (Sesja 3 przebudowy) i jego jedyną
+    obietnicą jest KOMPLETNOŚĆ: ma pokazać wszystko, co w pliku jest — także
+    tagi, które silnik rozpoznaje z domyślnego słownika i których dlatego
+    NIE MA w `unmapped_tags`. Przy imporcie założycielskim `inspect` nie
+    dostaje profilu klubu, więc bez tego bloku najważniejsze tagi klubu byłyby
+    w konfiguratorze niewidoczne.
+
+    Sprawdzamy to na realnym eksporcie, nie na syntetyku: liczby biorą się
+    z manifestu, więc rozjazd z rzeczywistością zapala się tutaj.
+    """
+    src = wymagaj_csv(case)
+    frame = parse.prep_frame(str(src))
+    meta = coverage.build_meta(frame, canon.build(frame))
+
+    slownik = meta["dictionary"]
+    tagi = {p["tag"]: p["count"] for p in slownik["tags"]}
+
+    # 1. KOMPLETNOŚĆ: suma wystąpień tagów = liczba zdarzeń w eksporcie.
+    #    Każde zdarzenie ma dokładnie jeden tag, więc te liczby muszą się zgadzać
+    #    co do jedności. Nierówność znaczy, że słownik gubi zdarzenia.
+    assert sum(tagi.values()) == case["coverage"]["events"], (
+        "Słownik nie obejmuje wszystkich zdarzeń eksportu"
+    )
+
+    # 2. Tagi z DOMYŚLNEGO słownika silnika są widoczne z licznikami — czyli
+    #    dokładnie to, czego `unmapped_tags` nie pokazuje.
+    nierozpoznane = {p["tag"] for p in meta["unmapped_tags"]}
+    rozpoznane = [t for t in tagi if t not in nierozpoznane]
+    assert rozpoznane, "eksport referencyjny musi zawierać tagi ze słownika domyślnego"
+    for tag in rozpoznane:
+        assert tagi[tag] > 0
+
+    # 3. Strzały: liczba wystąpień tagów zmapowanych na `shot` nie może być
+    #    mniejsza niż liczba strzałów w pokryciu. Wiąże słownik z metryką,
+    #    więc rozjazd między nimi przestaje być niewidoczny.
+    assert sum(tagi.values()) >= case["coverage"]["shots"]
+
+    # 4. Próbka jest przycięta i niesie wyłącznie to, co pomaga rozpoznać tag.
+    for pozycja in slownik["tags"]:
+        assert 1 <= len(pozycja["samples"]) <= 3
+        for probka in pozycja["samples"]:
+            assert set(probka) == {"b", "team", "labels"}
+
+    # 5. Porządek deterministyczny: malejąco po liczbie wystąpień.
+    liczby = [p["count"] for p in slownik["tags"]]
+    assert liczby == sorted(liczby, reverse=True)

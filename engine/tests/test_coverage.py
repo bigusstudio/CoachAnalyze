@@ -12,6 +12,10 @@ KLUCZE_META = {
     "ok", "engine_version", "format_fingerprint", "half_split_ms", "duration_ms",
     "coverage", "sections_available", "sections_unavailable", "warnings",
     "unmapped_tags", "unmapped_labels",
+    # `dictionary` — pełny słownik eksportu, dodany dla konfiguratora raportu
+    # klubu (Sesja 3 przebudowy). Klucz DOŁOŻONY, nic nie zostało usunięte:
+    # to rozszerzenie kontraktu, nie jego zmiana.
+    "dictionary",
 }
 
 KLUCZE_COVERAGE = {
@@ -174,3 +178,115 @@ def test_inspect_zwraca_wykryte_nazwy_druzyn(write_csv, row, capsys):
     meta = json.loads(capsys.readouterr().out)
 
     assert meta["coverage"]["teams"] == ["HUTNIK KRAKÓW", "POGOŃ-SOKÓŁ LUBACZÓW"]
+
+
+# ===========================================================================
+# PEŁNY SŁOWNIK EKSPORTU (`meta.dictionary`)
+#
+# Zasila konfigurator raportu klubu (Sesja 3 przebudowy). Powód istnienia bloku:
+# `unmapped_tags` niesie wyłącznie tagi NIEROZPOZNANE, a przy imporcie
+# założycielskim `inspect` nie dostaje profilu klubu — tagi z domyślnego
+# słownika silnika są wtedy rozpoznawane i z tamtej listy znikają. Konfigurator
+# potrzebuje kompletu, łącznie z nimi.
+# ===========================================================================
+
+
+def test_slownik_zlicza_wszystkie_tagi_takze_rozpoznane(write_csv, row):
+    """STRZAŁ jest w domyślnym słowniku silnika, więc NIE ma go w `unmapped_tags`.
+    W `dictionary` być musi — inaczej konfigurator nie pokaże najważniejszego
+    tagu klubu dokładnie wtedy, gdy operator buduje z niego templat."""
+    meta = meta_for(write_csv([
+        row("STRZAŁ", team="A"),
+        row("STRZAŁ", team="B"),
+        row("TAG WŁASNY KLUBU", team="A"),
+    ]))
+
+    tagi = {p["tag"]: p["count"] for p in meta["dictionary"]["tags"]}
+
+    assert tagi == {"STRZAŁ": 2, "TAG WŁASNY KLUBU": 1}
+    assert "STRZAŁ" not in [p["tag"] for p in meta["unmapped_tags"]]
+
+
+def test_slownik_liczy_etykiety_dokladnie_tak_jak_parser(write_csv, row):
+    """Słownik NIE PARSUJE NICZEGO SAM — bierze `labels` już rozdzielone.
+
+    Pułapka 11 dotyczy niedzielenia CAŁEJ LINII i pilnuje jej osobno
+    `test_traps.py::test_pole_labels_z_przecinkami_w_cudzyslowie` — nie
+    powtarzamy tego tutaj. Wewnątrz pojedynczej komórki `split_labels` dzieli
+    po przecinku i tak wygląda kontrakt parsera; zagnieżdżone cudzysłowy
+    w środku komórki nie są formatem, który silnik obiecuje obsłużyć.
+
+    Asercja porównuje słownik z policzeniem wprost po `frame["events"]` —
+    rozjazd oznaczałby, że blok liczy po czymś innym niż reszta silnika.
+    """
+    csv_path = write_csv([
+        row("STRZAŁ", labels="CELNY,LEWA NOGA"),
+        row("STRZAŁ", labels="CELNY"),
+    ])
+    frame = parse.prep_frame(csv_path)
+    meta = coverage.build_meta(frame, canon.build(frame))
+
+    z_parsera = {}
+    for e in frame["events"]:
+        for etykieta in e["labels"]:
+            z_parsera[etykieta] = z_parsera.get(etykieta, 0) + 1
+
+    etykiety = {p["label"]: p["count"] for p in meta["dictionary"]["labels"]}
+
+    assert etykiety == z_parsera == {"CELNY": 2, "LEWA NOGA": 1}
+
+
+def test_slownik_nie_myli_niecelny_z_celny(write_csv, row):
+    """Pułapka 7: dopasowanie po zawieraniu łapie CELNY wewnątrz NIECELNY.
+    Zliczanie idzie po pełnej nazwie, więc to dwie osobne pozycje."""
+    meta = meta_for(write_csv([
+        row("STRZAŁ", labels="CELNY"),
+        row("STRZAŁ", labels="NIECELNY"),
+        row("STRZAŁ", labels="NIECELNY"),
+    ]))
+
+    etykiety = {p["label"]: p["count"] for p in meta["dictionary"]["labels"]}
+
+    assert etykiety == {"CELNY": 1, "NIECELNY": 2}
+
+
+def test_slownik_niesie_probke_do_trzech_zdarzen(write_csv, row):
+    meta = meta_for(write_csv([row("STRZAŁ", begin=i, team="A") for i in range(7)]))
+
+    pozycja = meta["dictionary"]["tags"][0]
+
+    assert pozycja["count"] == 7, "licznik obejmuje WSZYSTKIE wystąpienia"
+    assert len(pozycja["samples"]) == 3, "próbka jest przycięta do trzech"
+    assert pozycja["samples"][0] == {"b": 0.0, "team": "A", "labels": []}
+
+
+def test_slownik_probka_nie_niesie_wspolrzednych_ani_xg(write_csv, row):
+    """Próbka ma pomóc rozpoznać tag, a nie odtwarzać przebieg meczu."""
+    meta = meta_for(write_csv([
+        row("STRZAŁ", team="A", labels="CELNY", comment="X 0,81", x="80", y="30"),
+    ]))
+
+    assert set(meta["dictionary"]["tags"][0]["samples"][0]) == {"b", "team", "labels"}
+
+
+def test_slownik_porzadek_jest_deterministyczny(write_csv, row):
+    """Najczęstsze na górze, remisy alfabetycznie. Kolejność zmieniająca się
+    między przebiegami dawałaby fałszywe różnice przy porównywaniu `meta`."""
+    meta = meta_for(write_csv([
+        row("RZADKI"),
+        row("CZESTY"), row("CZESTY"), row("CZESTY"),
+        row("ARemis"), row("BRemis"),
+    ]))
+
+    assert [p["tag"] for p in meta["dictionary"]["tags"]] == [
+        "CZESTY", "ARemis", "BRemis", "RZADKI",
+    ]
+
+
+def test_slownik_bez_zdarzen_nie_wywala():
+    """Eksport bez zdarzeń odrzuca wcześniej `prep_frame` (NotLiveTagExport),
+    więc przez `inspect` ten stan nie przejdzie. Sama funkcja ma być jednak
+    odporna: bywa wołana na ramce składanej w testach i narzędziach, a wtedy
+    wyjątek z zliczania byłby awarią w miejscu, które niczego nie liczy."""
+    assert coverage.build_dictionary({"events": []}) == {"tags": [], "labels": []}
+    assert coverage.build_dictionary({}) == {"tags": [], "labels": []}

@@ -215,6 +215,84 @@ def build_warnings(frame, canon_result, has_json=False, palette=None):
     return warnings
 
 
+def _probka_zdarzenia(e):
+    """Jedno zdarzenie w postaci skróconej — tyle, żeby człowiek rozpoznał tag.
+
+    Czas, drużyna i etykiety towarzyszące. Bez współrzędnych, komentarza i xG:
+    próbka ma pomóc odpowiedzieć „co to za tag", a nie odtwarzać przebiegu meczu.
+
+    UWAGA NA PRZYSZŁOŚĆ: gdyby podpowiedzi bindingów kiedyś liczył model
+    językowy (backlog po Sesji 7), do modelu wolno wysłać NAZWY tagów
+    i policzone metryki — nigdy tych próbek. To są surowe zdarzenia meczowe,
+    czyli dokładnie to, czego CLAUDE.md §5 zabrania wypuszczać na zewnątrz.
+    """
+    return {
+        "b": e.get("b"),
+        "team": e.get("team"),
+        "labels": list(e.get("labels") or []),
+    }
+
+
+def _pozycje_slownika(zliczone, klucz):
+    """Histogram na listę: najczęstsze na górze, remisy alfabetycznie.
+
+    Porządek jest DETERMINISTYCZNY, bo `meta.json` bywa porównywany w testach,
+    a lista zmieniająca kolejność między przebiegami dawałaby fałszywe różnice.
+    """
+    return [
+        {klucz: nazwa, "count": dane["count"], "samples": dane["samples"]}
+        for nazwa, dane in sorted(zliczone.items(), key=lambda p: (-p[1]["count"], p[0]))
+    ]
+
+
+def build_dictionary(frame, probka=3):
+    """Pełny słownik eksportu: KAŻDY tag i KAŻDA etykieta, z liczbą wystąpień.
+
+    PO CO TO ISTNIEJE: konfigurator raportu (Sesja 3 przebudowy) buduje templat
+    klubu z pierwszego importu i musi pokazać operatorowi kompletną listę tego,
+    co w pliku jest. `unmapped_tags` do tego nie wystarcza — niesie wyłącznie
+    tagi, których silnik NIE rozpoznał. Przy imporcie założycielskim `inspect`
+    nie dostaje profilu klubu, więc tagi z domyślnego słownika silnika
+    (STRZAŁ, ZDOBYCIE SBZ, III STREFA, STRATA, ODBIÓR…) są rozpoznawane
+    i znikają z tamtej listy — czyli w konfiguratorze byłoby ich nie widać
+    dokładnie wtedy, gdy są najbardziej potrzebne.
+
+    LICZYMY PO ZDARZENIACH JUŻ SPARSOWANYCH, nie po surowym CSV. Dzięki temu
+    etykiety przychodzą z `split_labels`, czyli z parsera respektującego
+    cudzysłowy (pułapka 11), a nie z ponownego dzielenia linii po przecinku.
+    Ta funkcja niczego nie parsuje i niczego nie liczy poza zliczeniem —
+    żadna metryka piłkarska od niej nie zależy.
+
+    Blok jest CZYSTO ADDYTYWNY: nie zmienia ani jednej wartości w `coverage`,
+    w metrykach ani w renderze. Test złoty porównuje DATA i PAL, nie `meta`.
+    """
+    events = frame.get("events") or []
+
+    tagi = {}
+    etykiety = {}
+
+    for e in events:
+        tag = e.get("tag")
+        if tag:
+            poz = tagi.setdefault(tag, {"count": 0, "samples": []})
+            poz["count"] += 1
+            if len(poz["samples"]) < probka:
+                poz["samples"].append(_probka_zdarzenia(e))
+
+        for etykieta in (e.get("labels") or []):
+            if not etykieta:
+                continue
+            poz = etykiety.setdefault(etykieta, {"count": 0, "samples": []})
+            poz["count"] += 1
+            if len(poz["samples"]) < probka:
+                poz["samples"].append(_probka_zdarzenia(e))
+
+    return {
+        "tags": _pozycje_slownika(tagi, "tag"),
+        "labels": _pozycje_slownika(etykiety, "label"),
+    }
+
+
 def build_meta(frame, canon_result, config=None, has_json=False, palette=None, ok=True):
     """Pełny `meta.json` zgodny z docs/KONTRAKT_CLI.md."""
     config = config or {}
@@ -243,4 +321,8 @@ def build_meta(frame, canon_result, config=None, has_json=False, palette=None, o
         # oba kształty (Mappings::unknown), więc zmiana jest bezpieczna.
         "unmapped_tags": canon_result["report"]["unmapped_tags_detail"],
         "unmapped_labels": canon_result["report"]["unmapped_labels_detail"],
+        # PEŁNY słownik eksportu — wszystko, co w pliku jest, nie tylko to,
+        # czego silnik nie rozpoznał. Zasila konfigurator raportu klubu
+        # (Sesja 3 przebudowy). Patrz `build_dictionary`.
+        "dictionary": build_dictionary(frame),
     }

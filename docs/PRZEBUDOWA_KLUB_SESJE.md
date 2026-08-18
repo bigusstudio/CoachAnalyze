@@ -196,6 +196,28 @@ Wizard mapowania tagów już istnieje (model proponuje, user potwierdza; profile
 ### Poza zakresem
 Zapis templatu, generowanie raportu, silnik Python.
 
+### KOREKTA 2026-08-19 — silnik raportuje pełny słownik
+
+Punkt 4 („listing słownika: **wszystkie** unikalne tagi i etykiety z licznikami")
+zderzył się z kontraktem CLI i **nie dał się zrobić bez zmiany w silniku**.
+
+Powód: `inspect` raportował wyłącznie `unmapped_tags`, czyli tagi, których silnik
+NIE rozpoznał. Przy imporcie założycielskim `inspect` nie dostaje profilu klubu,
+więc tagi z domyślnego słownika silnika są rozpoznawane i z tamtej listy znikają.
+Na eksporcie referencyjnym znaczyło to **9 z 11 tagów niewidocznych** — w tym
+`STRZAŁ`, `STRATA`, `ODBIÓR`, `ZDOBYCIE SBZ`, `III STREFA`. Konfigurator
+pokazywałby prawie pustą listę dokładnie wtedy, gdy operator buduje z niej templat.
+
+Rozstrzygnięcie: `meta.json` niesie od tej zmiany blok **`dictionary`** — histogram
+wszystkich tagów i etykiet z liczbą wystąpień i próbką do trzech zdarzeń.
+Agregacja w `coverage.py`, po zdarzeniach JUŻ sparsowanych. **Parser i metryki
+nietknięte**, blok czysto addytywny, test złoty porównuje DATA i PAL, więc `meta`
+go nie dotyczy.
+
+**Sesja 5 przestaje być jedyną, która dotyka Pythona.** Ta zmiana weszła osobnym
+commitem przed resztą Sesji 3, żeby ewentualny rewert konfiguratora nie zabrał
+ze sobą słownika.
+
 ---
 
 ## SESJA 4 — Konfigurator, część B: edycja zmiennych + zapis templatu v1
@@ -382,4 +404,9 @@ Edycja templatu nie zostawia klubu z niespójnymi raportami. Regeneracja zawsze 
 1 (schema) → 2 (UI klubów) → 3+4 (konfigurator) → 5 (silnik+sample) → 6 (import n+1) → 7 (regeneracja)
 ```
 
-Sesje 3+4 mogą iść w jednym oknie Claude Code. Sesja 5 to jedyna, która dotyka Pythona — reszta żyje w PHP/JS. Test regresji z Sesji 5 jest bramką: dopóki nie przechodzi, nie ruszać 6 i 7.
+Sesje 3+4 mogą iść w jednym oknie Claude Code. Test regresji z Sesji 5 jest bramką: dopóki nie przechodzi, nie ruszać 6 i 7.
+
+> **KOREKTA 2026-08-19.** Zdanie „Sesja 5 to jedyna, która dotyka Pythona" już
+> nie obowiązuje. Sesja 3 wymagała addytywnego bloku `dictionary` w `meta.json`
+> — bez niego listing słownika przy imporcie założycielskim był pusty. Szczegóły
+> i powód w korekcie przy Sesji 3.
