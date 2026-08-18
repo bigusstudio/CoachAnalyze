@@ -9,7 +9,26 @@ i **to one chodzą w CI**. Gdy coś tutaj wykryje usterkę, warto zapytać, czy 
 jej pilnować także statycznie — tak powstały `test_sql_parametry`, `test_bramki_rol`
 i `test_komunikaty_sesji`.
 
-## Uruchamianie
+## Uruchamianie — wszystko naraz
+
+```bash
+bash app/tests/integracja/uruchom.sh              # statyczne + integracyjne
+bash app/tests/integracja/uruchom.sh --bez-http   # bez przelotów HTTP (szybciej)
+bash app/tests/integracja/uruchom.sh --tylko-statyczne
+```
+
+Skrypt sam podnosi atrapę Redisa, podaje ją zestawom, które jej wymagają,
+i uruchamia wszystko w kolejności od najtańszego do najbardziej zależnego od
+środowiska. Kończy jednym wynikiem zbiorczym i kodem wyjścia: `0` wszystko
+zielone, `1` jakiś zestaw nie przeszedł, `2` zły argument.
+
+**Pominięcia są głośne.** Brak `node` albo venv nie wywala przebiegu, ale ląduje
+w podsumowaniu jako POMINIĘTY, z powodem. Zestaw cicho pominięty jest gorszy
+niż zestaw czerwony, bo wygląda jak zielony.
+
+Stan wyjściowy przy pisaniu tego pliku: **28 zestawów, 1115 asercji, 0 błędów**.
+
+## Uruchamianie pojedynczo
 
 ```bash
 cd app/tests/integracja
