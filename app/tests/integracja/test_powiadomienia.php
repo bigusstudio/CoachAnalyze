@@ -70,10 +70,10 @@ Db::run("INSERT INTO clubs (id, owner_id, club_key, name, color_primary, is_own_
 Db::run("INSERT INTO seasons (id, owner_id, label, is_current)
          VALUES (1, 1, '2025/2026', 1)");
 
-Db::run("INSERT INTO matches (id, owner_id, season_id, club_home_id, club_away_id, played_at, status, created_at)
-         VALUES (1, 1, 1, 1, 2, '2026-03-14', 'done', :t)", ['t' => $teraz]);
-Db::run("INSERT INTO matches (id, owner_id, season_id, club_home_id, club_away_id, played_at, status, created_at)
-         VALUES (2, 1, 1, 1, 2, '2026-04-02', 'queued', :t)", ['t' => $teraz]);
+Db::run("INSERT INTO matches (id, owner_id, club_id, season_id, club_home_id, club_away_id, played_at, status, created_at)
+         VALUES (1, 1, 1, 1, 1, 2, '2026-03-14', 'done', :t)", ['t' => $teraz]);
+Db::run("INSERT INTO matches (id, owner_id, club_id, season_id, club_home_id, club_away_id, played_at, status, created_at)
+         VALUES (2, 1, 1, 1, 1, 2, '2026-04-02', 'queued', :t)", ['t' => $teraz]);
 
 // Dwa raporty dla meczu 1 — regeneracja. Starszy zostaje.
 Db::run("INSERT INTO reports (id, match_id, html_path, engine_version, generated_at)

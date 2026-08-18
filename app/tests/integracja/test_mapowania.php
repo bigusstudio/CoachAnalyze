@@ -50,8 +50,8 @@ ca_test_db($baza, false);
 $teraz = Stats::now();
 Db::run("INSERT INTO clubs (id, owner_id, club_key, name, color_primary, is_own_team, created_at)
          VALUES (1, 1, 'HUT7K2QX', 'Klub A', '#E8722C', 1, :t)", ['t' => $teraz]);
-Db::run("INSERT INTO matches (id, owner_id, club_home_id, played_at, status, created_at)
-         VALUES (1, 1, 1, '2026-08-11', 'draft', :t)", ['t' => $teraz]);
+Db::run("INSERT INTO matches (id, owner_id, club_id, club_home_id, played_at, status, created_at)
+         VALUES (1, 1, 1, 1, '2026-08-11', 'draft', :t)", ['t' => $teraz]);
 
 // ================================================================ ZAMKNIĘTA LISTA
 echo "== lista pojec jest zamknieta i zgodna z dokumentem ==\n";

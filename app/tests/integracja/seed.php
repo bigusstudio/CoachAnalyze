@@ -28,11 +28,21 @@ function ca_test_db(string $file, bool $withData = true): PDO
     $pdo->exec('CREATE TABLE clubs (id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id INT,
         club_key TEXT, name TEXT, short_name TEXT, color_primary TEXT, color_secondary TEXT,
         crest_path TEXT, is_own_team INT DEFAULT 0, aliases_json TEXT,
+        details TEXT NULL, updated_at TEXT NULL,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP)');
     $pdo->exec('CREATE TABLE seasons (id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id INT,
         label TEXT, date_from TEXT, date_to TEXT, is_current INT DEFAULT 0)');
+    /*
+     * `club_id NOT NULL` — TAK SAMO JAK NA PRODUKCJI po migracji 012.
+     *
+     * Kuszące byłoby zostawić tu NULL-owalną kolumnę, żeby stare wpisy testowe
+     * przechodziły bez zmian. Byłby to dokładnie ten sam błąd co przy powtórzonym
+     * symbolu nazwanym: schemat testowy łagodniejszy od produkcyjnego przepuszcza
+     * kod, który wywala się dopiero u klienta. Wpisy testowe podają klub.
+     */
     $pdo->exec('CREATE TABLE matches (id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id INT,
-        season_id INT NULL, club_home_id INT NULL, club_away_id INT NULL, played_at TEXT NULL,
+        club_id INT NOT NULL, season_id INT NULL, club_home_id INT NULL, club_away_id INT NULL,
+        played_at TEXT NULL, is_home INT NULL,
         competition TEXT NULL, half_split_ms INT NULL, status TEXT DEFAULT "draft",
         created_at TEXT DEFAULT CURRENT_TIMESTAMP)');
     $pdo->exec('CREATE TABLE imports (id INTEGER PRIMARY KEY AUTOINCREMENT, match_id INT,
@@ -57,8 +67,18 @@ function ca_test_db(string $file, bool $withData = true): PDO
         status TEXT NOT NULL DEFAULT "new", resolution TEXT NULL,
         resolved_by INT NULL, resolved_at TEXT NULL)');
     $pdo->exec('CREATE TABLE reports (id INTEGER PRIMARY KEY AUTOINCREMENT, match_id INT,
+        club_id INT NULL, template_version INT NULL,
         html_path TEXT, params_json TEXT, engine_version TEXT,
         generated_at TEXT DEFAULT CURRENT_TIMESTAMP)');
+    // Migracja 012 — templaty raportów klubu i tagi ignorowane na stałe.
+    $pdo->exec('CREATE TABLE club_report_templates (id INTEGER PRIMARY KEY AUTOINCREMENT,
+        club_id INT NOT NULL, version INT NOT NULL, config TEXT NOT NULL,
+        created_by INT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (club_id, version))');
+    $pdo->exec('CREATE TABLE club_ignored_tags (id INTEGER PRIMARY KEY AUTOINCREMENT,
+        club_id INT NOT NULL, source_type TEXT NOT NULL, raw_name TEXT NOT NULL,
+        created_by INT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (club_id, source_type, raw_name))');
     $pdo->exec('CREATE TABLE share_links (id INTEGER PRIMARY KEY AUTOINCREMENT, report_id INT,
         club_id INT, token TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP, expires_at TEXT NULL,
         revoked_at TEXT NULL, views INT DEFAULT 0, last_viewed_at TEXT NULL)');
@@ -110,14 +130,21 @@ function ca_test_db(string $file, bool $withData = true): PDO
         [null,         null, null, 'draft'], // mecz bez daty i klubów
         ['2026-07-05', 1, 2, 'done'],        // szósty — nie powinien wejść do „ostatnich 5"
     ];
+    /*
+     * `club_id` wypełniane tą samą regułą, co backfill w migracji 012:
+     * tenant = strona „nasza", a gdy jej nie ma — klub domyślny (tu: 1).
+     * Dzięki temu inwariant `club_id = club_home_id` obowiązuje także w danych
+     * testowych i mecz bez przypisanego klubu (czwarty i piąty) nadal ma
+     * właściciela, tak jak będzie go miał na produkcji.
+     */
     foreach ($mecze as [$d, $h, $a, $st]) {
-        Db::run('INSERT INTO matches (owner_id,season_id,club_home_id,club_away_id,played_at,status)
-                 VALUES (1,1,?,?,?,?)', [$h, $a, $d, $st]);
+        Db::run('INSERT INTO matches (owner_id,club_id,season_id,club_home_id,club_away_id,played_at,status)
+                 VALUES (1,?,1,?,?,?,?)', [$h ?? 1, $h, $a, $d, $st]);
     }
 
-    Db::run('INSERT INTO reports (match_id,html_path,engine_version,generated_at) VALUES (1,?,?,?)',
+    Db::run('INSERT INTO reports (match_id,club_id,html_path,engine_version,generated_at) VALUES (1,1,?,?,?)',
         ['/nie/istnieje/raport_1.html', '0.6.0', '2026-08-09 21:14:00']);
-    Db::run('INSERT INTO reports (match_id,html_path,engine_version,generated_at) VALUES (2,?,?,?)',
+    Db::run('INSERT INTO reports (match_id,club_id,html_path,engine_version,generated_at) VALUES (2,2,?,?,?)',
         ['/nie/istnieje/raport_2.html', '0.6.0', '2026-08-02 20:02:00']);
 
     $teraz = Stats::now();

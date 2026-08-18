@@ -18,6 +18,7 @@ cd app/tests/integracja
 php test_mapowania.php
 php test_indeks.php
 php test_xg.php
+php test_kluby_templaty.php   # Sesja 1 przebudowy: tenant, templaty, tagi ignorowane
 php test_powiadomienia.php
 php test_4a.php  test_4b.php  test_4c.php  test_7.php  test_remember.php
 

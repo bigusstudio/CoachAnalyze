@@ -40,6 +40,25 @@ canonical_events[]  ←── na tym poziomie liczy się WSZYSTKO
 `team_side` przyjmuje `us`, `them`, `none`. Wartość `none` jest poprawna i częsta — część tagów
 w eksportach nie ma przypisanej drużyny i trafia do osobnej sekcji raportu.
 
+### `us` to nie to samo co właściciel analizy
+
+Od migracji 012 mecz ma **dwie różne kolumny klubowe** i mylenie ich zmieni liczby w raporcie:
+
+| Kolumna | Znaczenie | Kto z tego korzysta |
+|---|---|---|
+| `matches.club_id` | **tenant** — czyja to analiza, kto jest właścicielem danych | warstwa PHP: każde zapytanie listy, uprawnienia, routing `/klub/{id}/…` |
+| `matches.club_home_id` | strona **`us`** w modelu meczu — kto jest „nami" na boisku | silnik: `team_side`, przypisanie zdarzeń, barwy drużyn w raporcie |
+
+Dla całej historii sprzed przebudowy obie wskazują ten sam klub i taki jest inwariant
+przejściowy: `club_id = club_home_id`. Rozjadą się przy pierwszej **analizie scoutingowej** —
+meczu dwóch obcych drużyn, zamówionym przez klub, którego na boisku nie ma. Wtedy tenant
+istnieje, a `us` nie istnieje w ogóle i `team_side` dla wszystkich zdarzeń jest `them` albo `none`.
+
+**Reguła dla kodu:** warstwa PHP filtruje po `club_id` i nigdy po `club_home_id`.
+Silnik nie zna `club_id` w ogóle — dostaje strony `us`/`them` przez `config.json`
+(`docs/KONTRAKT_CLI.md`) i nie ma pojęcia, czyja jest analiza. To rozdzielenie jest celowe:
+tenant to sprawa aplikacji, strony boiska to sprawa modelu meczu.
+
 `xg_source`: `analyst` (wpisane ręcznie w komentarzu), `model` (policzone ze współrzędnych, moduł M3),
 `null` (brak). Wartość szacowana musi być oznaczona w raporcie jako szacowana.
 

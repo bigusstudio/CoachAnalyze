@@ -25,14 +25,42 @@ final class Imports
         string $csvPath,
         ?string $jsonPath,
         string $checksum,
+        ?int $clubId = null,
     ): int {
+        /*
+         * TENANT MECZU. `matches.club_id` jest NOT NULL od migracji 012, więc
+         * mecz nie może powstać bez właściciela analizy.
+         *
+         * Parametr jest opcjonalny, bo ekran importu nie ma jeszcze wyboru klubu
+         * — kontekst wchodzi do adresu dopiero w Sesji 2. Do tego czasu
+         * rozstrzyga klub własny.
+         *
+         * Brak jakiegokolwiek klubu przerywamy TUTAJ, własnym komunikatem.
+         * Bez tego użytkownik dostałby surowy błąd bazy o naruszeniu NOT NULL,
+         * z którego nie wynika, że wystarczy założyć klub.
+         *
+         * TODO(club-scope): po Sesji 2 `clubId` przychodzi z trasy i staje się
+         * parametrem obowiązkowym.
+         */
+        $clubId ??= Clubs::tenantDefault();
+        if ($clubId === null) {
+            throw new \RuntimeException(
+                'Import wymaga klubu: załóż klub, zanim wgrasz eksport.'
+            );
+        }
+
         $pdo = Db::pdo();
         $pdo->beginTransaction();
         try {
             Db::run(
-                'INSERT INTO matches (owner_id, season_id, status, created_at)
-                 VALUES (:owner, NULL, :status, :now)',
-                ['owner' => $ownerId, 'status' => 'draft', 'now' => Stats::now()]
+                'INSERT INTO matches (owner_id, club_id, season_id, status, created_at)
+                 VALUES (:owner, :club, NULL, :status, :now)',
+                [
+                    'owner'  => $ownerId,
+                    'club'   => $clubId,
+                    'status' => 'draft',
+                    'now'    => Stats::now(),
+                ]
             );
             $matchId = (int) $pdo->lastInsertId();
 

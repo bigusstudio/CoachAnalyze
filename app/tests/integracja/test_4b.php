@@ -112,7 +112,8 @@ check('brak klubu = brak wpisu (nie zmyślamy)', Clubs::engineConfig(null, null)
 
 // ---------------------------------------------------------------- usuwanie
 echo "\n== usuwanie ==\n";
-Db::run('INSERT INTO matches (owner_id, club_home_id, status) VALUES (1, ?, ?)', [$id, 'done']);
+Db::run('INSERT INTO matches (owner_id, club_id, club_home_id, status) VALUES (1, ?, ?, ?)',
+    [$id, $id, 'done']);
 $r = Clubs::delete($id, 1);
 check('klub użyty w meczu nie da się usunąć', $r['ok'] === false && $r['error'] === 'club.err.in_use');
 $r2 = Clubs::delete($id2, 1);

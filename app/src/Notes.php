@@ -26,6 +26,25 @@ final class Notes
     {
         $scope = in_array($data['scope'] ?? '', self::SCOPES, true) ? $data['scope'] : 'match';
 
+        /*
+         * KLUB NOTATKI — podany wprost albo wywiedziony z meczu.
+         *
+         * Do migracji 012 `club_id` wypełniały wyłącznie notatki o zasięgu
+         * klubowym; meczowe i zdarzeniowe zostawiały je puste, choć klub był
+         * znany przez mecz. Backfill w 012 uzupełnił historię, a to miejsce
+         * pilnuje, żeby nowe notatki nie odtwarzały starej dziury — inaczej
+         * lista notatek klubu gubiłaby wszystko, co powstało po migracji.
+         *
+         * Wcześniej stał tu warunek, którego obie gałęzie robiły to samo.
+         */
+        $clubId = $data['club_id'] ?? null;
+        $matchId = $scope === 'club' ? null : ($data['match_id'] ?? null);
+
+        if ($clubId === null && $matchId !== null) {
+            $mecz = Db::one('SELECT club_id FROM matches WHERE id = :id', ['id' => (int) $matchId]);
+            $clubId = $mecz === null ? null : ($mecz['club_id'] ?? null);
+        }
+
         Db::run(
             'INSERT INTO notes (owner_id, scope, match_id, club_id, event_ref, title, body,
                                 tags_json, created_at)
@@ -33,8 +52,8 @@ final class Notes
             [
                 'owner' => $ownerId,
                 'scope' => $scope,
-                'match' => $scope === 'club' ? null : ($data['match_id'] ?? null),
-                'club'  => $scope === 'match' ? ($data['club_id'] ?? null) : ($data['club_id'] ?? null),
+                'match' => $matchId,
+                'club'  => $clubId,
                 'event' => $scope === 'event' ? ($data['event_ref'] ?? null) : null,
                 'title' => $data['title'] !== '' ? $data['title'] : null,
                 'body'  => $data['body'],
@@ -135,10 +154,30 @@ final class Notes
      *
      * @return list<array<string,mixed>>
      */
-    public static function search(string $query, ?string $scope = null, ?string $tag = null): array
-    {
+    public static function search(
+        string $query,
+        ?string $scope = null,
+        ?string $tag = null,
+        ?int $tenant = null
+    ): array {
         $where = [];
         $params = [];
+
+        /*
+         * TENANT — klub, do którego notatka należy. Kolumna `club_id` istnieje
+         * od migracji 001, ale do migracji 012 była wypełniana WYŁĄCZNIE dla
+         * notatek o zasięgu klubowym; notatki meczowe i zdarzeniowe miały ją
+         * pustą, choć klub dało się wywieść z meczu. Backfill w 012 to
+         * ujednolicił i od teraz filtr obejmuje wszystkie trzy zasięgi.
+         *
+         * TODO(club-scope): wyszukiwarka notatek w panelu woła to bez tenanta —
+         * kontekst klubu wchodzi w Sesji 2 i wtedy parametr przestaje być
+         * opcjonalny.
+         */
+        if ($tenant !== null) {
+            $where[] = 'n.club_id = :tenant';
+            $params['tenant'] = $tenant;
+        }
 
         $query = trim($query);
         if ($query !== '') {

@@ -297,11 +297,28 @@ function wykonajRender(int $jobId, int $importId, array $import): void
     $meta = wczytajMeta($dir . '/meta.json');
 
     if ($wynik['exit'] === 0 && is_file($reportPath)) {
+        /*
+         * TENANT RAPORTU — przepisany z meczu, nie zgadywany.
+         *
+         * Kolumna `reports.club_id` (migracja 012) jest denormalizacją: da się
+         * dojść do klubu przez `match_id`, ale lista raportów klubu filtruje
+         * właśnie po niej i nie ma dotykać drugiej tabeli. Raport zapisany bez
+         * tej wartości nie wywali się na bazie — po prostu zniknie z listy
+         * swojego klubu, a to gorsze niż błąd, bo nikt tego nie zauważy.
+         *
+         * `template_version` zostaje NULL: templaty wchodzą do generowania
+         * dopiero w Sesji 5. NULL znaczy „raport sprzed ery templatów" i taki
+         * on w tej chwili jest.
+         */
+        $mecz = Db::one('SELECT club_id FROM matches WHERE id = :id', ['id' => $matchId]);
+        $clubId = $mecz === null ? null : ($mecz['club_id'] ?? null);
+
         Db::run(
-            'INSERT INTO reports (match_id, html_path, params_json, engine_version, generated_at)
-             VALUES (:mid, :path, :params, :ver, :now)',
+            'INSERT INTO reports (match_id, club_id, html_path, params_json, engine_version, generated_at)
+             VALUES (:mid, :club, :path, :params, :ver, :now)',
             [
                 'mid'    => $matchId,
+                'club'   => $clubId,
                 'path'   => $reportPath,
                 'params' => json_encode([
                     'sections' => $meta['sections_available'] ?? [],

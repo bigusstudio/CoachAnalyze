@@ -39,13 +39,33 @@ final class Matches
     }
 
     /**
-     * @param array{club?:int|null, season?:int|null, sort?:string|null, page?:int} $filters
+     * @param array{tenant?:int|null, club?:int|null, season?:int|null, sort?:string|null, page?:int} $filters
      * @return array{rows:list<array<string,mixed>>, total:int, page:int, pages:int, per_page:int}
      */
     public static function search(array $filters = []): array
     {
         $where = [];
         $params = [];
+
+        /*
+         * TENANT — właściciel analizy. To NIE JEST to samo co filtr `club` niżej
+         * i te dwa nie mają się zlać w jeden.
+         *
+         *   tenant → `m.club_id`      : czyje to mecze (kto zamówił analizę)
+         *   club   → club_home/away   : kto grał w meczu (dowolna ze stron)
+         *
+         * Dziś dla całej historii `club_id = club_home_id`, więc różnicy nie
+         * widać. Zobaczy ją pierwszy mecz scoutingowy — analiza dwóch obcych
+         * drużyn ma tenanta, ale żadna ze stron nim nie jest.
+         *
+         * TODO(club-scope): gdy kontekst klubu wejdzie do adresu
+         * (`/klub/{id}/mecze`, Sesja 2), ten filtr przestaje być opcjonalny
+         * i staje się obowiązkowym warunkiem każdego wywołania.
+         */
+        if (!empty($filters['tenant'])) {
+            $where[] = 'm.club_id = :tenant';
+            $params['tenant'] = (int) $filters['tenant'];
+        }
 
         if (!empty($filters['club'])) {
             // Klub po dowolnej stronie — operator myśli „mecze Hutnika",

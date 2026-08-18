@@ -43,6 +43,23 @@ final class Reports
         $warunki = [];
         $params  = [];
 
+        /*
+         * TENANT — właściciel raportu, kolumna `r.club_id` (migracja 012).
+         * Osobny wymiar niż filtr `club` niżej: tenant mówi, CZYJ jest raport,
+         * a `club` — kto grał w meczu. Opis rozdziału: `Matches::search()`.
+         *
+         * Filtrujemy po `r.club_id`, a nie przez złączenie z `matches` —
+         * denormalizacja w `reports` istnieje właśnie po to, żeby lista
+         * raportów klubu nie musiała dotykać drugiej tabeli.
+         *
+         * TODO(club-scope): po wejściu kontekstu klubu w adres (Sesja 2)
+         * warunek staje się obowiązkowy dla każdego wywołania.
+         */
+        if (!empty($filters['tenant'])) {
+            $warunki[] = 'r.club_id = :tenant';
+            $params['tenant'] = (int) $filters['tenant'];
+        }
+
         // Filtr po klubie łapie mecz z OBU stron. Klub bywa raz „nasz", raz
         // rywalem (mecze sparingowe między własnymi drużynami klubu), a operator
         // pytający „pokaż raporty Hutnika" chce jednego i drugiego.

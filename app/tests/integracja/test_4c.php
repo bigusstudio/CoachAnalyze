@@ -90,9 +90,11 @@ Db::run('DELETE FROM matches');
 $sezonA = Seasons::detect('2026-08-01', 1);
 $sezonB = Seasons::detect('2025-08-01', 1);
 for ($i = 1; $i <= 25; $i++) {
-    Db::run('INSERT INTO matches (owner_id, season_id, club_home_id, club_away_id, played_at, status)
-             VALUES (1, ?, ?, ?, ?, ?)',
-        [$i <= 15 ? $sezonA : $sezonB, $i % 2 === 0 ? 1 : 2, $i % 2 === 0 ? 2 : 1,
+    // `club_id` = strona „nasza", jak w backfillu migracji 012.
+    Db::run('INSERT INTO matches (owner_id, club_id, season_id, club_home_id, club_away_id, played_at, status)
+             VALUES (1, ?, ?, ?, ?, ?, ?)',
+        [$i % 2 === 0 ? 1 : 2,
+         $i <= 15 ? $sezonA : $sezonB, $i % 2 === 0 ? 1 : 2, $i % 2 === 0 ? 2 : 1,
          sprintf('2026-%02d-%02d', ($i % 12) + 1, ($i % 27) + 1),
          ['done', 'failed', 'queued', 'draft', 'running'][$i % 5]]);
 }

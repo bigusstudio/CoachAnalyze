@@ -64,14 +64,60 @@ final class Clubs
     }
 
     /**
+     * Domyślny tenant — klub, do którego trafia praca, gdy kontekst klubu nie
+     * został jeszcze wybrany w interfejsie.
+     *
+     * PO CO TO ISTNIEJE: `matches.club_id` jest NOT NULL od migracji 012, a
+     * import startuje dziś z ekranu bez wyboru klubu. Zwracamy klub oznaczony
+     * jako własna drużyna — w instalacji jednoklubowej to jedyny sensowny
+     * właściciel analizy, a taka jest produkcja w chwili tej migracji.
+     *
+     * Przy kilku klubach własnych rozstrzyga najstarszy, żeby wynik był
+     * powtarzalny — losowanie „któregoś" dawałoby mecze rozrzucone po klubach
+     * bez żadnej reguły.
+     *
+     * TODO(club-scope): po Sesji 2 klub przychodzi z adresu (`/klub/{id}/import`)
+     * i ta metoda przestaje być używana w ścieżce importu. Zostaje jako awaryjne
+     * domknięcie dla zadań uruchamianych poza kontekstem żądania.
+     */
+    public static function tenantDefault(): ?int
+    {
+        $row = Db::one(
+            'SELECT id FROM clubs WHERE is_own_team = 1 ORDER BY id LIMIT 1'
+        );
+        if ($row !== null) {
+            return (int) $row['id'];
+        }
+        // Brak klubu własnego: bierzemy pierwszy istniejący, żeby instalacja bez
+        // odhaczonego „nasza drużyna" nie stanęła na imporcie.
+        $any = Db::one('SELECT id FROM clubs ORDER BY id LIMIT 1');
+        return $any === null ? null : (int) $any['id'];
+    }
+
+    /**
+     * Klub po kluczu z adresu publicznego.
+     *
+     * Osobno od `find()`, bo `club_key` jest tym, co widzi świat zewnętrzny,
+     * a `id` tym, co widzi baza. Trasy publiczne nie mają prawa przyjmować `id`.
+     *
+     * @return array<string,mixed>|null
+     */
+    public static function findByKey(string $clubKey): ?array
+    {
+        return Db::one('SELECT * FROM clubs WHERE club_key = :k', ['k' => $clubKey]);
+    }
+
+    /**
      * @param array<string,mixed> $data
      */
     public static function create(int $ownerId, array $data): int
     {
         Db::run(
             'INSERT INTO clubs (owner_id, club_key, name, short_name, color_primary,
-                                color_secondary, crest_path, is_own_team, aliases_json, created_at)
-             VALUES (:owner, :key, :name, :short, :c1, :c2, :crest, :own, :aliases, :now)',
+                                color_secondary, crest_path, is_own_team, aliases_json,
+                                details, created_at)
+             VALUES (:owner, :key, :name, :short, :c1, :c2, :crest, :own, :aliases,
+                     :details, :now)',
             [
                 'owner'   => $ownerId,
                 'key'     => self::generateKey(),
@@ -82,6 +128,7 @@ final class Clubs
                 'crest'   => $data['crest_path'] ?? null,
                 'own'     => !empty($data['is_own_team']) ? 1 : 0,
                 'aliases' => self::encodeAliases($data['aliases'] ?? []),
+                'details' => self::encodeDetails($data['details'] ?? []),
                 'now'     => Stats::now(),
             ]
         );
@@ -100,7 +147,8 @@ final class Clubs
     {
         Db::run(
             'UPDATE clubs SET name = :name, short_name = :short, color_primary = :c1,
-                              color_secondary = :c2, is_own_team = :own, aliases_json = :aliases
+                              color_secondary = :c2, is_own_team = :own, aliases_json = :aliases,
+                              updated_at = :now
               WHERE id = :id',
             [
                 'name'    => $data['name'],
@@ -109,6 +157,7 @@ final class Clubs
                 'c2'      => $data['color_secondary'] ?: null,
                 'own'     => !empty($data['is_own_team']) ? 1 : 0,
                 'aliases' => self::encodeAliases($data['aliases'] ?? []),
+                'now'     => Stats::now(),
                 'id'      => $id,
             ]
         );
@@ -119,6 +168,26 @@ final class Clubs
     {
         Db::run('UPDATE clubs SET crest_path = :p WHERE id = :id', ['p' => $path, 'id' => $id]);
         Audit::log('club.crest', $userId, 'club', $id);
+    }
+
+    /**
+     * Pola opisowe klubu (miasto, liga, sezon bieżący).
+     *
+     * OSOBNA METODA, nie kolejne pole w `update()`, i to jest ta sama decyzja
+     * co przy `setCrest()`. Gdyby `details` siedziały w `update()`, każdy
+     * formularz, który ich nie przesyła — a dziś nie przesyła ich żaden —
+     * kasowałby je przy zapisie nazwy albo barw. Pole, którego nie ma
+     * w formularzu, nie ma prawa zniknąć z bazy przy zapisie tego formularza.
+     *
+     * @param array<string,mixed> $details
+     */
+    public static function setDetails(int $id, array $details, int $userId): void
+    {
+        Db::run(
+            'UPDATE clubs SET details = :d, updated_at = :now WHERE id = :id',
+            ['d' => self::encodeDetails($details), 'now' => Stats::now(), 'id' => $id]
+        );
+        Audit::log('club.details', $userId, 'club', $id);
     }
 
     /**
@@ -236,6 +305,38 @@ final class Clubs
         }
         $decoded = json_decode($raw, true);
         return is_array($decoded) ? array_values(array_filter(array_map('strval', $decoded))) : [];
+    }
+
+    /**
+     * Pola opisowe jako tablica. Kształt jest CELOWO otwarty — miasto, liga,
+     * sezon i cokolwiek dojdzie później. To dane opisowe: nie wchodzą do metryk
+     * i żadna liczba w raporcie od nich nie zależy.
+     *
+     * @return array<string,mixed>
+     */
+    public static function decodeDetails(mixed $raw): array
+    {
+        if (!is_string($raw) || $raw === '') {
+            return [];
+        }
+        $decoded = json_decode($raw, true);
+        return is_array($decoded) ? $decoded : [];
+    }
+
+    /** @param array<string,mixed> $details */
+    public static function encodeDetails(array $details): ?string
+    {
+        $clean = [];
+        foreach ($details as $key => $value) {
+            if (is_string($value)) {
+                $value = trim($value);
+            }
+            // Puste pole formularza to brak danych, nie pusty napis do zapisania.
+            if ($value !== '' && $value !== null) {
+                $clean[(string) $key] = $value;
+            }
+        }
+        return $clean === [] ? null : json_encode($clean, JSON_UNESCAPED_UNICODE);
     }
 
     /** @param list<string>|string $aliases */
