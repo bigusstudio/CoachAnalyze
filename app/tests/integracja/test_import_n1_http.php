@@ -371,6 +371,28 @@ $html = is_file((string) $raport['html_path']) ? (string) file_get_contents((str
 check('plik raportu powstał', $html !== '');
 check('stopka niesie wersję templatu', str_contains($html, 'templat v2'));
 
+/*
+ * WYBÓR RYWALA MUSI PRZEŻYĆ GENEROWANIE.
+ *
+ * USTERKA Z PRODUKCJI: `queueBuild()` woła `Imports::assignClubs()` tuż przed
+ * renderem, a ta pisała obie kolumny klubów bezwarunkowo. Eksport niesie tylko
+ * nazwę „KLUB A" (kolumna `team` bywa wypełniona wybiórczo — pułapka nr 5),
+ * więc `club_away_id` wracało do NULL i raport pokazywał „nieznana" po stronie
+ * przeciwnika — mimo że operator wybrał go w formularzu meta krok wcześniej.
+ *
+ * Asercje wyżej tego nie łapały, bo sprawdzały kolumnę ZARAZ PO ZAPISIE META,
+ * a wybór ginął dopiero przy generowaniu. Dlatego sprawdzamy ją PONOWNIE tutaj,
+ * po przejściu przez silnik.
+ */
+$meczPoRenderze = Db::one('SELECT club_home_id, club_away_id FROM matches WHERE id = :m',
+    ['m' => $matchId]);
+check('rywal z formularza meta PRZEŻYŁ generowanie',
+    (int) $meczPoRenderze['club_away_id'] === (int) $rywal['id'],
+    'club_away_id: ' . var_export($meczPoRenderze['club_away_id'], true)
+    . ', oczekiwano: ' . (int) $rywal['id']);
+check('nasza drużyna nadal przypisana',
+    (int) $meczPoRenderze['club_home_id'] === 1);
+
 // ---------------------------------------------------------------- badge
 echo "\n== krok 5: badge wersji w bibliotece klubu ==\n";
 

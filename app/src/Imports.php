@@ -257,7 +257,10 @@ final class Imports
      * Dopasowanie nazw z eksportu do klubów i przypisanie ich do meczu.
      *
      * Wołane przy imporcie ORAZ tuż przed renderem — operator mógł w międzyczasie
-     * założyć brakujący klub na ekranie pokrycia i wrócić.
+     * założyć brakujący klub na ekranie pokrycia i wrócić. Właśnie dlatego
+     * funkcja WYPEŁNIA puste pola, a nie nadpisuje istniejące: drugie wywołanie
+     * ma dopowiedzieć to, czego przy pierwszym nie wiedzieliśmy, a nie cofnąć
+     * decyzję podjętą pomiędzy nimi.
      *
      * Eksport LiveTag NIE niesie informacji o tym, kto był gospodarzem, i nie
      * udajemy jej. Klub oznaczony „mój" trafia do `club_home_id`, drugi do
@@ -285,17 +288,68 @@ final class Imports
             }
         }
 
+        /*
+         * ═══════════════════════════════════════════════════════════════════
+         * WYPEŁNIAMY PUSTE POLA. NIGDY NIE NADPISUJEMY JUŻ USTAWIONYCH.
+         *
+         * USTERKA Z PRODUKCJI: operator wybierał rywala w formularzu meczu,
+         * a kliknięcie „Generuj" kasowało ten wybór. Powód: `queueBuild()` woła
+         * tę funkcję tuż przed renderem, a ona pisała OBIE kolumny bezwarunkowo.
+         * Eksport LiveTag ma kolumnę `team` wypełnioną wybiórczo (pułapka nr 5),
+         * więc przy jednej wykrytej nazwie `club_away_id` wracało do NULL —
+         * i raport pokazywał „nieznana" po stronie przeciwnika mimo poprawnie
+         * wypełnionej mety.
+         *
+         * Objaw był podstępny, bo formularz zapisywał się poprawnie: wybór ginął
+         * dopiero krok dalej, w akcji, która z wyborem rywala nie ma nic wspólnego.
+         *
+         * Zasada odtąd: dane wykryte w eksporcie UZUPEŁNIAJĄ to, czego nie wiemy,
+         * i nie mają prawa unieważnić decyzji człowieka. Korekta błędnego
+         * dopasowania jest nadal możliwa — formularz meta (`Matches::saveMeta()`)
+         * zapisuje `club_away_id` bezwarunkowo, bo to jawne polecenie operatora.
+         * ═══════════════════════════════════════════════════════════════════
+         */
+        $obecny = Db::one(
+            'SELECT club_home_id, club_away_id FROM matches WHERE id = :id',
+            ['id' => $matchId]
+        );
+        if ($obecny === null) {
+            return;
+        }
+
+        $domTeraz    = $obecny['club_home_id'] !== null ? (int) $obecny['club_home_id'] : null;
+        $wyjazdTeraz = $obecny['club_away_id'] !== null ? (int) $obecny['club_away_id'] : null;
+
         // Gdy żaden klub nie jest oznaczony jako „mój", pierwszy dopasowany
         // idzie na pozycję gospodarza — kolejność z eksportu jest tu jedyną,
         // jaką mamy, i lepsza niż zostawienie obu pól pustych.
-        if ($own === null && $other !== null) {
+        //
+        // Promocja ma sens WYŁĄCZNIE przy pustym gospodarzu. Gdy gospodarz już
+        // jest, dopasowany klub jest kandydatem na rywala, a nie na drugiego
+        // gospodarza — inaczej wykryta nazwa przepadałaby bez śladu.
+        if ($own === null && $other !== null && $domTeraz === null) {
             $own = $other;
             $other = null;
         }
 
+        $dom    = $domTeraz    ?? $own;
+        $wyjazd = $wyjazdTeraz ?? $other;
+
+        // Ten sam klub po obu stronach byłby meczem z samym sobą. Przy kolizji
+        // ustępuje strona wykryta, bo to ona jest zgadywana.
+        if ($wyjazd !== null && $wyjazd === $dom) {
+            $wyjazd = $wyjazdTeraz;
+        }
+
+        // Bez zmiany nie ruszamy bazy: ta funkcja chodzi przy każdym imporcie
+        // i przy każdym generowaniu, a zapis bez różnicy to tylko szum.
+        if ($dom === $domTeraz && $wyjazd === $wyjazdTeraz) {
+            return;
+        }
+
         Db::run('UPDATE matches SET club_home_id = :h, club_away_id = :a WHERE id = :id', [
-            'h'  => $own,
-            'a'  => $other,
+            'h'  => $dom,
+            'a'  => $wyjazd,
             'id' => $matchId,
         ]);
     }
