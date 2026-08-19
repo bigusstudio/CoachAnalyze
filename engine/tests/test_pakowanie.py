@@ -12,6 +12,12 @@ Sprawdzamy dwie rzeczy, które już raz zatrzymały wdrożenie albo mogą je zat
    przy pierwszym raporcie.
 2. Szablon jest wewnątrz pakietu i pasuje do wzorca `package-data`. Szablon obok
    pakietu instaluje się nigdzie, a `render` przestaje go znajdować poza repozytorium.
+
+ZGODNOŚĆ WERSJI `pyproject.toml` ↔ `__init__.py` STOI OSOBNO, w `test_wersja.py`.
+Powód: cały ten moduł pomija się na Pythonie starszym niż 3.11 (`tomllib`),
+a wersja zmienia się przy niemal każdej sesji. Bramka, która milczy tam, gdzie
+pracujemy, przepuściła rozjazd aż do wdrożenia — i to się zdarzyło naprawdę.
+Tamten test czyta `pyproject.toml` wyrażeniem regularnym i chodzi wszędzie.
 """
 
 import pathlib
@@ -64,13 +70,6 @@ def test_wykrywanie_pakietow_jest_wylaczone(konfiguracja):
         "odmawia budowy, gdy obok pakietu leży katalog z danymi"
     )
     assert "packages" not in konfiguracja.get("tool", {}).get("setuptools", {}).get("dynamic", {})
-
-
-def test_wersja_pakietu_zgadza_sie_z_silnikiem(konfiguracja):
-    """Wersja silnika trafia do każdego raportu — dwa źródła prawdy rozjadą się cicho."""
-    from coachanalyze import __version__
-
-    assert konfiguracja["project"]["version"] == __version__
 
 
 def test_szablon_lezy_wewnatrz_pakietu():

@@ -111,7 +111,14 @@ zestaw() {
 
   if [ "$kod" -eq 0 ]; then
     ZIELONE=$(( ZIELONE + 1 ))
+    # Pytest ma własny format podsumowania — pokazujemy jego ostatnią linię
+    # zamiast „(bez podsumowania)". Linie SKIPPED z `-rs` idą pod spodem:
+    # pominięcie ma być widoczne w każdym przebiegu, nie tylko przy awarii.
+    if [ -z "$podsumowanie" ]; then
+      podsumowanie=$(printf '%s' "$wyjscie" | grep -E '[0-9]+ (passed|failed)' | tail -1)
+    fi
     printf 'OK    %s\n' "${podsumowanie:-(bez podsumowania)}"
+    printf '%s' "$wyjscie" | grep -E '^SKIPPED' | sed 's/^SKIPPED/        pominięto:/' | head -5
   else
     CZERWONE=$(( CZERWONE + 1 ))
     NIEUDANE+=("$etykieta")
@@ -184,10 +191,23 @@ fi
 
 PYTHON="$KORZEN/venv/bin/python"
 if [ -x "$PYTHON" ]; then
+  # PYTEST SILNIKA — dotąd tego tu NIE BYŁO, mimo że nagłówek obiecuje „cały
+  # zestaw testów". Sto siedemdziesiąt testów silnika chodziło wyłącznie ręcznie,
+  # więc przebieg runnera mógł być zielony przy zepsutym silniku.
+  #
+  # `-rs` NIE JEST OZDOBNIKIEM: pytest melduje pominięty MODUŁ jako jedno
+  # „1 skipped", bez powodu. Tak zniknęła bramka pakowania (`tomllib` wymaga
+  # Pythona 3.11, venv ma 3.9) — siedem testów naraz, a w podsumowaniu jedna
+  # niewinna liczba. Rozjazd wersji w `pyproject.toml` dojechał przez to do
+  # wdrożenia. Z `-rs` powód pominięcia stoi w wyjściu każdego przebiegu.
+  zestaw "pytest silnika" env PYTHONPATH="$KORZEN/engine" \
+      "$PYTHON" -m pytest "$KORZEN/engine/tests" -q -rs
+
   # Paczka bywa w venv niezainstalowana — silnik dostaje PYTHONPATH na engine/,
   # tak samo jak robi to sam test.
   zestaw "test_kolejka" env PYTHONPATH="$KORZEN/engine" php "$TUTAJ/test_kolejka.php"
 else
+  pomin "pytest silnika" "brak $PYTHON"
   pomin "test_kolejka" "brak $PYTHON"
 fi
 
