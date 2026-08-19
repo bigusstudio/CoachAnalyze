@@ -170,6 +170,8 @@ return [
     'xg.quality.good' => 'dobra sytuacja',
     'xg.quality.avg'  => 'przeciętna sytuacja',
     'xg.quality.low'  => 'niska jakość — strzał z dystansu lub z ostrego kąta',
+    // Podpowiedź na kropce boiska — bez skryptu, zwykły atrybut `title`.
+    'xg.marker.title'     => 'xG %s · %s',
     'xg.list.title'   => 'Dodane strzały',
     'xg.list.empty'   => 'Nie dodano jeszcze żadnego strzału.',
     'xg.col.position' => 'Pozycja',

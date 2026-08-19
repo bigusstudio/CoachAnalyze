@@ -25,6 +25,46 @@ use CoachAnalyze\XgCalc;
 $user = Auth::currentUser();
 $moze = Users::can($user, 'generate');
 ?>
+<?php /*
+  WSPÓLNY PRZODEK boiska i listy — potrzebny regułom parującym niżej.
+*/ ?>
+<div class="xg">
+
+<?php if ($shots !== []): ?>
+  <?php /*
+    PODŚWIETLENIE W OBIE STRONY, BEZ JEDNEJ LINII SKRYPTU.
+
+    Wymaganie brzmi: najechanie na kropkę podświetla wiersz listy i odwrotnie.
+    CSS nie skojarzy dwóch elementów po wspólnej wartości atrybutu — trzeba
+    wskazać konkretną parę, więc reguły powstają tu, po jednej na strzał.
+    `:has()` na wspólnym przodku sprawia, że jedna reguła obsługuje OBA
+    kierunki naraz: wskazanie któregokolwiek z pary wyróżnia oba.
+
+    Dlaczego nie skrypt: §9 CLAUDE.md dopuszcza JavaScript w panelu wyłącznie
+    do chmurek i wskaźnika pracy, a rozszerzenie tej listy wymaga osobnego
+    uzgodnienia. Podświetlenie na hover da się zrobić bez niego, więc robimy
+    je bez niego.
+
+    W bloku NIE MA ANI JEDNEJ BARWY — te siedzą w `app.css` pod klasą
+    `.is-wyrozniony`. Tutaj są wyłącznie selektory.
+  */ ?>
+  <style>
+    <?php foreach ($shots as $s): $id = (int) $s['id']; ?>
+    /* Wskazanie KTÓREGOKOLWIEK z pary wyróżnia oba. `:focus-within` dokłada
+       obsługę klawiatury: wiersz ma odnośniki, więc da się go osiągnąć tabem. */
+    .xg:has([data-strzal="<?= $id ?>"]:hover) .xg-wiersz[data-strzal="<?= $id ?>"] > td,
+    .xg:has([data-strzal="<?= $id ?>"]:focus-within) .xg-wiersz[data-strzal="<?= $id ?>"] > td {
+      background-color: var(--info-tlo);
+    }
+    .xg:has([data-strzal="<?= $id ?>"]:hover) .xg-znacznik[data-strzal="<?= $id ?>"],
+    .xg:has([data-strzal="<?= $id ?>"]:focus-within) .xg-znacznik[data-strzal="<?= $id ?>"] {
+      transform: scale(1.6);
+      z-index: 2;
+    }
+    <?php endforeach; ?>
+  </style>
+<?php endif; ?>
+
 <h1 class="h1"><?= View::e(View::t('xg.title')) ?></h1>
 
 <?php if (!empty($notice)): ?>
@@ -75,9 +115,43 @@ $moze = Users::can($user, 'generate');
         </label>
       </div>
 
-      <?php /* Obrazek JEST przyciskiem: klik = wysłanie punkt_x/punkt_y. */ ?>
-      <input type="image" name="punkt" src="<?= View::e(View::asset('/assets/boisko.svg')) ?>"
-             alt="<?= View::e(View::t('xg.pitch.alt')) ?>" width="525" height="340">
+      <?php /*
+        Obrazek JEST przyciskiem: klik = wysłanie punkt_x/punkt_y.
+
+        `width`/`height` to PRZESTRZEŃ WSPÓŁRZĘDNYCH, nie rozmiar wyświetlania.
+        Boisko rozciąga do szerokości karty `transform: scale()` z app.css, a to
+        zachowuje układ współrzędnych zgłaszany przez `input type="image"` —
+        sprawdzone w przeglądarce. Gdyby zamiast tego użyć `width: 100%`, te same
+        105×68 metrów opisywałaby inna liczba pikseli przy każdej szerokości okna
+        i ten sam klik dawałby inną wartość xG. Atrybutów NIE WOLNO stąd usunąć
+        ani zmienić bez poprawienia `XgCalc::PX_NA_METR`.
+
+        Znaczniki dodanych strzałów leżą w tym samym kontenerze, pozycjonowane
+        w procentach — dzięki temu trzymają swoje miejsce przy każdej szerokości.
+      */ ?>
+      <div class="xg-boisko">
+        <input class="xg-boisko__pole" type="image" name="punkt"
+               src="<?= View::e(View::asset('/assets/boisko.svg')) ?>"
+               alt="<?= View::e(View::t('xg.pitch.alt')) ?>" width="525" height="340">
+
+        <?php foreach ($shots as $s): ?>
+          <?php
+            // Metry -> procent boiska. 105 x 68 m to ten sam prostokąt, co
+            // `aspect-ratio` kontenera, więc procent jest tu miarą dokładną.
+            $lewo = max(0.0, min(100.0, ((float) $s['x'] / 105) * 100));
+            $gora = max(0.0, min(100.0, ((float) $s['y'] / 68) * 100));
+          ?>
+          <span class="xg-znacznik xg-znacznik--<?= View::e((string) $s['body_part']) ?>"
+                data-strzal="<?= (int) $s['id'] ?>"
+                style="left: <?= number_format($lewo, 3, '.', '') ?>%;
+                       top: <?= number_format($gora, 3, '.', '') ?>%"
+                title="<?= View::e(View::t(
+                    'xg.marker.title',
+                    number_format((float) $s['xg'], 2, ',', ''),
+                    View::t('xg.body.' . $s['body_part'])
+                )) ?>"></span>
+        <?php endforeach; ?>
+      </div>
     </form>
 
     <?php if ($last !== null): ?>
@@ -155,7 +229,9 @@ $moze = Users::can($user, 'generate');
       </thead>
       <tbody>
         <?php foreach ($shots as $s): ?>
-          <tr>
+          <?php /* `data-strzal` paruje wiersz z kropką na boisku — patrz
+                   reguły wygenerowane na górze widoku. */ ?>
+          <tr class="xg-wiersz" data-strzal="<?= (int) $s['id'] ?>">
             <td><strong><?= View::e(number_format((float) $s['xg'], 2, ',', '')) ?></strong></td>
             <td class="num"><?= View::e(number_format((float) $s['x'], 1, ',', '')) ?> ×
                 <?= View::e(number_format((float) $s['y'], 1, ',', '')) ?> m</td>
@@ -179,3 +255,4 @@ $moze = Users::can($user, 'generate');
     <p class="hint"><strong><?= View::e(View::t('xg.sum', number_format($sum, 2, ',', ''))) ?></strong></p>
   <?php endif; ?>
 </section>
+</div>

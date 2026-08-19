@@ -23,6 +23,10 @@
   --blad-tekst:     #8C1D13;
   --info-tlo:       #E8F1FB;
   --info-tekst:     #14405F;
+  --murawa:        #20402A;
+  --murawa-siatka: #FFFFFF;
+  --strzal:        #E8722C;
+  --strzal-obrys:  #FFFFFF;
   --cien:           0 1px 2px rgb(27 36 48 / 8%), 0 8px 24px rgb(27 36 48 / 6%);
   --promien:        10px;
 }
@@ -43,6 +47,10 @@
     --info-tekst:   #BBD8F0;
     --ok-obram:     #3FA46A;
     --ok-tekst:     #7FD3A3;
+    --murawa:        #20402A;
+    --murawa-siatka: #FFFFFF;
+    --strzal:        #E8722C;
+    --strzal-obrys:  #FFFFFF;
     --cien:         0 1px 2px rgb(0 0 0 / 40%), 0 8px 24px rgb(0 0 0 / 30%);
   }
 }
@@ -63,6 +71,10 @@
   --info-tekst:   #BBD8F0;
   --ok-obram:     #3FA46A;
   --ok-tekst:     #7FD3A3;
+  --murawa:        #20402A;
+  --murawa-siatka: #FFFFFF;
+  --strzal:        #E8722C;
+  --strzal-obrys:  #FFFFFF;
   --cien:         0 1px 2px rgb(0 0 0 / 40%), 0 8px 24px rgb(0 0 0 / 30%);
 }
 
@@ -966,4 +978,100 @@ form.chmurka__zamknij button:hover { color: var(--tekst); }
   .wskaznik--processing .wskaznik__etap.is-teraz .wskaznik__puls {
     animation: none;
   }
+}
+
+/* --- kalkulator xG: boisko na pełną szerokość karty ----------------------
+   ═══════════════════════════════════════════════════════════════════════
+   DLACZEGO `transform: scale()`, A NIE `width: 100%`.
+
+   Boisko jest przyciskiem formularza (`input type="image"`), a przeglądarka
+   wysyła współrzędne kliknięcia w układzie PUDEŁKA UKŁADU tego elementu.
+   `width: 100%` zmieniłoby to pudełko, więc te same 105×68 metrów opisywałaby
+   inna liczba pikseli przy każdej szerokości okna — i ten sam klik dawałby
+   inną wartość xG na laptopie niż na monitorze.
+
+   `transform` skaluje WYŁĄCZNIE obraz: pudełko układu zostaje 525×340, a
+   przeglądarka przelicza trafienie z powrotem do tej przestrzeni. Sprawdzone
+   w przeglądarce: klik w wizualny środek boiska rozciągniętego do 900 px
+   zwraca 263×169, czyli środek przestrzeni 525×340.
+
+   Skala to iloraz dwóch długości, czego `calc()` nie umie policzyć wprost.
+   `tan(atan2(a, b))` daje dokładnie `a / b` jako liczbę bez jednostki —
+   to standardowa droga w CSS Values 4.
+   ═══════════════════════════════════════════════════════════════════════ */
+.xg-boisko {
+  container-type: inline-size;
+  position: relative;
+  /* Proporcje boiska: 525/340 == 105 m / 68 m. Kontener rezerwuje miejsce,
+     bo element przeskalowany `transform` nie zajmuje go w układzie. */
+  aspect-ratio: 525 / 340;
+  overflow: hidden;
+  border-radius: var(--promien);
+  border: 1px solid var(--obramowanie);
+
+  /* Murawa + SIATKA POMOCNICZA, obie POD obrazkiem z liniami boiska.
+     Co 1/10 długości i 1/8 szerokości — siatka prowadzi oko, nic nie mierzy
+     i do niczego nie przyciąga. Klik pozostaje swobodny. */
+  background-color: var(--murawa);
+  background-image:
+    repeating-linear-gradient(
+      to right,
+      color-mix(in srgb, var(--murawa-siatka) 14%, transparent) 0 1px,
+      transparent 1px 10%
+    ),
+    repeating-linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--murawa-siatka) 14%, transparent) 0 1px,
+      transparent 1px 12.5%
+    );
+}
+
+.xg-boisko__pole {
+  display: block;
+  transform-origin: 0 0;
+  /* Bez obsługi `atan2` zostaje skala 1:1 — boisko renderuje się w naturalnym
+     rozmiarze. Węższe, ale ani jedna współrzędna nie jest przez to błędna. */
+  transform: scale(1);
+}
+
+@supports (transform: scale(tan(atan2(100px, 50px)))) {
+  .xg-boisko__pole { transform: scale(tan(atan2(100cqi, 525px))); }
+}
+
+/* --- trwałe znaczniki dodanych strzałów ---------------------------------
+   Pozycja w PROCENTACH boiska, nie w pikselach: wraz z `aspect-ratio`
+   kontenera znacznik trzyma się swojego miejsca przy każdej szerokości. */
+.xg-znacznik {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  border-radius: 50%;
+  background: var(--strzal);
+  border: 2px solid color-mix(in srgb, var(--strzal-obrys) 85%, transparent);
+  box-shadow: var(--cien);
+  pointer-events: none;
+}
+
+/*
+ * NOGA KONTRA GŁÓWKA — obrysem, nie wypełnieniem.
+ *
+ * Raport koduje kształtem WYNIK strzału (● celny, ○ niecelny, ◆ zablokowany)
+ * i tamtej semantyki nie wolno ruszać (CLAUDE.md §3, pułapka 6). Użycie ●/○
+ * do rozróżnienia nogi i główki czytałoby się dla kogoś, kto zna raport, jako
+ * „celny/niecelny" — czyli jako inna informacja niż w rzeczywistości.
+ * Dlatego główka dostaje podwójny obrys, a nie pusty środek.
+ */
+.xg-znacznik--head {
+  outline: 2px solid var(--strzal);
+  outline-offset: 2px;
+}
+
+/* Podświetlenie działa w OBIE strony, ale reguły parujące konkretną kropkę
+   z konkretnym wierszem generuje widok (`xg_calc.php`): CSS nie skojarzy dwóch
+   elementów po wspólnej wartości atrybutu bez wskazania pary. Tutaj zostaje
+   tylko to, co jest wspólne dla wszystkich znaczników. */
+
+@media (prefers-reduced-motion: no-preference) {
+  .xg-znacznik { transition: transform 120ms ease-out; }
 }

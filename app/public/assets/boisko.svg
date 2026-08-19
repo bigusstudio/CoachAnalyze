@@ -4,8 +4,17 @@
     kliknięcie wysyła współrzędne w pikselach. Skala: 5 px = 1 m, boisko 105×68,
     atak W PRAWO (współrzędne eksportu są znormalizowane kierunkowo — pułapka 2).
     Zero skryptów — czysty HTML + SVG (CLAUDE.md §9).
+
+    BEZ WŁASNEGO TŁA, ŚWIADOMIE. Murawę i siatkę pomocniczą rysuje CSS pod tym
+    obrazkiem (`.xg-boisko` w app.css), dzięki czemu siatka leży POD liniami
+    boiska i nie konkuruje z wierzchołkami pól. Nieprzezroczysty prostokąt tła
+    zasłoniłby ją w całości.
+
+    Rozmiar 525x340 jest PRZESTRZENIĄ WSPÓŁRZĘDNYCH, nie rozmiarem wyświetlania:
+    obrazek skalujemy `transform: scale()`, a to zachowuje układ współrzędnych
+    zgłaszany przez `input type=image` (sprawdzone w przeglądarce). Dzięki temu
+    boisko jest responsywne, a wartości xG nie zmieniają się z szerokością okna.
   -->
-  <rect x="0" y="0" width="525" height="340" fill="#20402a"/>
   <g fill="none" stroke="#e8f2ea" stroke-width="2" opacity="0.85">
     <rect x="1" y="1" width="523" height="338"/>
     <line x1="262.5" y1="1" x2="262.5" y2="339"/>

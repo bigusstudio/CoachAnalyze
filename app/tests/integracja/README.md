@@ -26,7 +26,7 @@ zielone, `1` jakiś zestaw nie przeszedł, `2` zły argument.
 w podsumowaniu jako POMINIĘTY, z powodem. Zestaw cicho pominięty jest gorszy
 niż zestaw czerwony, bo wygląda jak zielony.
 
-Stan wyjściowy przy pisaniu tego pliku: **36 zestawów, 1500 asercji, 0 błędów**.
+Stan wyjściowy przy pisaniu tego pliku: **37 zestawów, 1533 asercje, 0 błędów**.
 
 ## Uruchamianie pojedynczo
 
