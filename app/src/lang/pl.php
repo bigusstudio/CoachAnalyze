@@ -143,6 +143,43 @@ return [
     'index.edit.versioning' => 'Zapis tworzy nową wersję hasła. Poprzednie wersje zostają — historia '
         . 'metodyki musi być odtwarzalna.',
     'index.edit.submit'    => 'Zapisz wersję klubową',
+    // --- własne hasła klubowe (M1) ---
+    //
+    // Hasła systemowe są stałą w kodzie (`IndexTerms::DOMYSLNE`) — świeża
+    // instalacja ma komplet bez kroku wypełniania danych. Tabela trzyma
+    // WYŁĄCZNIE wersje klubowe: nadpisania systemowych i hasła własne.
+    'index.new.link'      => 'Nowe hasło klubu',
+    'index.new.title'     => 'Nowe hasło indeksu',
+    'index.new.why'       => 'Hasło widoczne w indeksie klubu %s i przy jego raportach. Hasła systemowe zostają bez zmian.',
+    'index.created'       => 'Hasło zapisane.',
+
+    'index.field.slug'    => 'Identyfikator (slug)',
+    'index.field.slug.hint' => 'Stoi w adresie hasła i jest trwały — puste pole wyznaczy go z nazwy. Zmiana nazwy go nie rusza, żeby odsyłacz wysłany sztabowi nie przestał działać.',
+    'index.field.concept.hint' => 'Pojęcie kanoniczne, do którego przypięty jest wskaźnik (np. shot, entry_sbz). Puste = hasło własne bez powiązania.',
+
+    // Nadpisanie systemowego jest funkcją, nie wypadkiem — ale ma być świadome.
+    'index.new.collision' => 'Identyfikator „%s" należy do hasła systemowego. Zapis NADPISZE je dla tego klubu — hasło systemowe zostanie schowane, a czytelnicy zobaczą Waszą definicję. Potwierdź, jeśli o to chodzi.',
+    'index.new.collision.confirm' => 'Tak, świadomie nadpisuję hasło systemowe',
+
+    'index.mark.system'   => 'systemowe',
+    'index.mark.club'     => 'klubowe',
+    'index.mark.club.public' => 'definicja klubu',
+    'index.mark.override' => 'nadpisuje hasło systemowe',
+    'index.mark.override.hint' => 'Klub zastąpił hasło systemowe własną definicją. Usunięcie wersji klubowej przywraca systemową.',
+
+    'index.override.system' => 'Hasło systemowe, które to nadpisuje',
+    'index.override.hint' => 'Treść domyślna produktu — do porównania z definicją klubu wyżej.',
+
+    'index.delete'        => 'Usuń hasło',
+    'index.delete.restore' => 'Usuń nadpisanie',
+    'index.deleted'       => 'Hasło klubowe usunięte.',
+    'index.deleted.restored' => 'Nadpisanie usunięte — obowiązuje znowu hasło systemowe.',
+
+    'index.err.name_definition' => 'Hasło musi mieć nazwę i definicję.',
+    'index.err.slug'      => 'Z tej nazwy nie da się wyznaczyć identyfikatora — wpisz go ręcznie.',
+    'index.err.slug_taken' => 'Ten identyfikator jest już zajęty w tym klubie.',
+    'index.err.not_club'  => 'To hasło nie ma wersji klubowej — nie ma czego usuwać.',
+
     'index.saved'          => 'Hasło zapisane jako nowa wersja klubowa.',
     'index.err.missing'    => 'Takie hasło nie istnieje w indeksie.',
     'index.err.no_club'    => 'Brak klubu, dla którego można zapisać wersję hasła. Załóż klub w panelu.',

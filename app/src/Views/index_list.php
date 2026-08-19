@@ -25,6 +25,15 @@ use CoachAnalyze\View;
 
 <p class="hint hint--block"><?= View::e(View::t('index.intro')) ?></p>
 
+<?php if ($club !== null): ?>
+  <p>
+    <?php /* Hasła systemowe są stałą w kodzie; tutaj klub dopisuje własne. */ ?>
+    <a class="btn" href="/indeks/nowe?klub=<?= (int) $club['id'] ?>">
+      <?= View::e(View::t('index.new.link')) ?>
+    </a>
+  </p>
+<?php endif; ?>
+
 <form method="get" action="/indeks" class="filters">
   <label class="field field--slim">
     <span class="field__label"><?= View::e(View::t('index.search')) ?></span>
@@ -77,9 +86,26 @@ use CoachAnalyze\View;
             </td>
             <td><code class="tag-nazwa"><?= View::e((string) $t['concept']) ?></code></td>
             <td>
-              <?= !empty($t['is_default'])
-                  ? View::e(View::t('index.version.default'))
-                  : View::e(View::t('index.version.club', (int) $t['version'])) ?>
+              <?php /*
+                TRZY STANY, NIE DWA. „Klubowe" i „nadpisuje systemowe" to nie to
+                samo: pierwsze dokłada wskaźnik, drugie podmienia metodykę
+                produktu pod tą samą nazwą. Czytelnik musi je rozróżnić, zanim
+                weźmie definicję za obowiązującą w całym produkcie.
+              */ ?>
+              <?php if (!empty($t['is_default'])): ?>
+                <span class="tag"><?= View::e(View::t('index.mark.system')) ?></span>
+              <?php elseif (!empty($t['overrides_default'])): ?>
+                <span class="tag tag--older" title="<?= View::e(View::t('index.mark.override.hint')) ?>">
+                  <?= View::e(View::t('index.mark.override')) ?>
+                </span>
+              <?php else: ?>
+                <span class="tag tag--done"><?= View::e(View::t('index.mark.club')) ?></span>
+              <?php endif; ?>
+              <span class="hint">
+                <?= !empty($t['is_default'])
+                    ? View::e(View::t('index.version.default'))
+                    : View::e(View::t('index.version.club', (int) $t['version'])) ?>
+              </span>
             </td>
           </tr>
         <?php endforeach; ?>

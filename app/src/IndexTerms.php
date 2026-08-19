@@ -191,6 +191,10 @@ final class IndexTerms
 
         if ($wlasne !== null) {
             $wlasne['is_default'] = false;
+            // Hasło klubowe pod slugiem systemowym NADPISUJE hasło systemowe.
+            // To świadoma funkcja, nie kolizja — ale musi być widoczna, żeby
+            // nikt nie czytał własnej definicji jako metodyki produktu.
+            $wlasne['overrides_default'] = self::isDefaultSlug($slug);
             return $wlasne;
         }
 
@@ -206,6 +210,7 @@ final class IndexTerms
             'created_by' => null,
             'created_at' => null,
             'is_default' => true,
+            'overrides_default' => false,
         ];
     }
 
@@ -217,13 +222,192 @@ final class IndexTerms
     public static function all(?int $clubId): array
     {
         $out = [];
+
+        // NAJPIERW SYSTEMOWE, w kolejności ze stałej — to ona jest kolejnością
+        // prezentacji i nie ma się zmieniać od tego, co klub dopisał.
         foreach (array_keys(self::DOMYSLNE) as $slug) {
             $haslo = self::find($clubId, $slug);
             if ($haslo !== null) {
                 $out[] = $haslo;
             }
         }
+
+        /*
+         * POTEM WŁASNE HASŁA KLUBU.
+         *
+         * Wcześniej ta pętla kończyła się na slugach z `DOMYSLNE`, więc klub mógł
+         * NADPISAĆ hasło systemowe, ale nie mógł dodać własnego: wiersz z nowym
+         * slugiem leżał w tabeli i nigdzie się nie pokazywał. To jest ta luka,
+         * przez którą „indeks klubu" był w praktyce indeksem systemowym.
+         */
+        foreach (self::clubSlugs($clubId) as $slug) {
+            if (isset(self::DOMYSLNE[$slug])) {
+                continue;   // Już poszło wyżej jako nadpisanie systemowego.
+            }
+            $haslo = self::find($clubId, $slug);
+            if ($haslo !== null) {
+                $out[] = $haslo;
+            }
+        }
+
         return $out;
+    }
+
+    /**
+     * Slugi haseł, które klub ma we własnej tabeli — bez powtórzeń wersji.
+     *
+     * Sortowanie po nazwie NAJNOWSZEJ wersji byłoby tu zapytaniem z podzapytaniem
+     * na każdy slug; lista haseł klubu jest krótka, więc porządkujemy po slugu
+     * i to wystarcza, żeby kolejność była stabilna między wejściami.
+     *
+     * @return list<string>
+     */
+    public static function clubSlugs(?int $clubId): array
+    {
+        if ($clubId === null) {
+            return [];
+        }
+        return array_map(
+            static fn(array $w): string => (string) $w['slug'],
+            Db::all(
+                'SELECT DISTINCT slug FROM index_terms WHERE club_id = :club ORDER BY slug',
+                ['club' => $clubId]
+            )
+        );
+    }
+
+    /** Hasło systemowe spod slugu — do podglądu przy nadpisaniu. */
+    public static function defaultFor(string $slug): ?array
+    {
+        $domyslne = self::DOMYSLNE[$slug] ?? null;
+        if ($domyslne === null) {
+            return null;
+        }
+        return $domyslne + ['slug' => $slug, 'version' => 0, 'is_default' => true];
+    }
+
+    /** Czy slug należy do słownika systemowego (stała w kodzie, nie tabela). */
+    public static function isDefaultSlug(string $slug): bool
+    {
+        return isset(self::DOMYSLNE[$slug]);
+    }
+
+    /**
+     * Slug z nazwy hasła — polskie znaki na łacińskie, reszta na myślniki.
+     *
+     * Slug identyfikuje hasło TRWALE i stoi w adresie publicznym
+     * (`/r/{club_key}/i/{slug}`), więc nie może zawierać niczego, co wymagałoby
+     * kodowania. Nadajemy go raz, przy tworzeniu; edycja nazwy go nie rusza —
+     * inaczej odsyłacz wysłany sztabowi przestałby działać po literówce
+     * poprawionej pół roku później.
+     */
+    public static function slugFromName(string $nazwa): string
+    {
+        $zamiana = [
+            'ą' => 'a', 'ć' => 'c', 'ę' => 'e', 'ł' => 'l', 'ń' => 'n',
+            'ó' => 'o', 'ś' => 's', 'ź' => 'z', 'ż' => 'z',
+        ];
+        $s = mb_strtolower(trim($nazwa), 'UTF-8');
+        $s = strtr($s, $zamiana);
+        $s = (string) preg_replace('/[^a-z0-9]+/', '-', $s);
+        return trim(substr($s, 0, 60), '-');
+    }
+
+    /**
+     * Nowe hasło WŁASNE klubu.
+     *
+     * Odrębne od `saveVersion()`, bo tam pojęcie kanoniczne bierze się
+     * z hasła istniejącego, a tutaj podaje je operator. Zwraca slug.
+     *
+     * @param array<string,mixed> $pola
+     * @throws \RuntimeException gdy dane nie pozwalają zapisać hasła
+     */
+    public static function createTerm(int $clubId, array $pola, int $userId): string
+    {
+        $nazwa = trim((string) ($pola['name'] ?? ''));
+        $definicja = trim((string) ($pola['definition'] ?? ''));
+        if ($nazwa === '' || $definicja === '') {
+            throw new \RuntimeException('index.err.name_definition');
+        }
+
+        $slug = trim((string) ($pola['slug'] ?? ''));
+        $slug = $slug !== '' ? self::slugFromName($slug) : self::slugFromName($nazwa);
+        if ($slug === '') {
+            throw new \RuntimeException('index.err.slug');
+        }
+
+        // Slug musi być wolny W OBRĘBIE KLUBU. Powtórzony trafiłby na tę samą
+        // pozycję listy i nadpisywał się przy każdej edycji.
+        if (in_array($slug, self::clubSlugs($clubId), true)) {
+            throw new \RuntimeException('index.err.slug_taken');
+        }
+
+        $concept = trim((string) ($pola['concept'] ?? ''));
+        $concept = $concept !== '' ? mb_substr($concept, 0, 40) : 'custom';
+
+        $tekst = static fn(string $klucz): ?string =>
+            trim((string) ($pola[$klucz] ?? '')) !== '' ? trim((string) $pola[$klucz]) : null;
+
+        Db::run(
+            'INSERT INTO index_terms
+                (club_id, slug, concept, name, definition, formula, example,
+                 interpretation, source, estimated_note, version, created_by, created_at)
+             VALUES (:club, :slug, :concept, :name, :def, :formula, :example,
+                     :interp, :source, :estnote, 1, :by, :now)',
+            [
+                'club'    => $clubId,
+                'slug'    => $slug,
+                'concept' => $concept,
+                'name'    => mb_substr($nazwa, 0, 120),
+                'def'     => $definicja,
+                'formula' => $tekst('formula'),
+                'example' => $tekst('example'),
+                'interp'  => $tekst('interpretation'),
+                'source'  => $tekst('source'),
+                'estnote' => $tekst('estimated_note'),
+                'by'      => $userId,
+                'now'     => Stats::now(),
+            ]
+        );
+
+        Audit::log('index.created', $userId, 'club', $clubId, [
+            'slug'      => $slug,
+            'overrides' => self::isDefaultSlug($slug),
+        ]);
+        return $slug;
+    }
+
+    /**
+     * Usunięcie hasła klubowego — WSZYSTKICH jego wersji.
+     *
+     * ═══════════════════════════════════════════════════════════════════════
+     * TO JEDYNE MIEJSCE, W KTÓRYM HISTORIA HASŁA ZNIKA — i jest to świadome.
+     *
+     * Wersjonowanie istnieje po to, żeby pytanie „czemu raport z marca opisywał
+     * ten wskaźnik inaczej" miało odpowiedź. Usunięcie jest jednak jawną
+     * decyzją operatora, a jego sensem jest POWRÓT DO HASŁA SYSTEMOWEGO —
+     * zostawienie wersji w tabeli oznaczałoby, że nadpisanie dalej obowiązuje.
+     *
+     * Ślad zostaje w `audit_log` wraz z liczbą usuniętych wersji.
+     * ═══════════════════════════════════════════════════════════════════════
+     */
+    public static function deleteTerm(int $clubId, string $slug, int $userId): bool
+    {
+        $ile = Db::run(
+            'DELETE FROM index_terms WHERE club_id = :club AND slug = :slug',
+            ['club' => $clubId, 'slug' => $slug]
+        )->rowCount();
+
+        if ($ile > 0) {
+            Audit::log('index.deleted', $userId, 'club', $clubId, [
+                'slug'     => $slug,
+                'wersje'   => $ile,
+                // Po usunięciu nadpisania wraca hasło systemowe; przy haśle
+                // własnym nie wraca nic i pozycja znika z listy.
+                'restored' => self::isDefaultSlug($slug),
+            ]);
+        }
+        return $ile > 0;
     }
 
     /**

@@ -766,8 +766,31 @@ switch (true) {
         showIndexList();
         break;
 
+    /*
+     * WŁASNE HASŁA KLUBU (M1). Trasa stoi PRZED wzorcem `/indeks/{slug}`,
+     * bo „nowe" pasowałoby do niego jako slug i zamiast formularza dałoby 404.
+     */
+    case $path === '/indeks/nowe' && $method === 'GET':
+        requireCan($user, 'index');
+        showIndexNew();
+        break;
+
+    case $path === '/indeks/nowe' && $method === 'POST':
+        requireCan($user, 'index');
+        requireCsrf();
+        createIndexTerm((int) $user['id']);
+        break;
+
     case preg_match('#^/indeks/([a-z0-9-]{1,60})$#', $path, $m) === 1 && $method === 'GET':
         showIndexTerm($m[1]);
+        break;
+
+    case preg_match('#^/indeks/([a-z0-9-]{1,60})/usun$#', $path, $m) === 1 && $method === 'POST':
+        // Usunięcie hasła klubowego przywraca systemowe — decyzja metodyczna,
+        // ta sama bramka co edycja.
+        requireCan($user, 'index');
+        requireCsrf();
+        deleteIndexTerm($m[1], (int) $user['id']);
         break;
 
     case preg_match('#^/indeks/([a-z0-9-]{1,60})/edytuj$#', $path, $m) === 1 && $method === 'GET':
@@ -2252,8 +2275,119 @@ function showIndexTerm(string $slug): void
         'active' => 'index',
         'term'   => $haslo,
         'club'   => $klub,
+        // Wersja systemowa DO PODGLĄDU, gdy klub ją nadpisał — bez niej nie da
+        // się porównać własnej metodyki z metodyką produktu.
+        'systemowe' => !empty($haslo['overrides_default'])
+            ? \CoachAnalyze\IndexTerms::defaultFor($slug)
+            : null,
         'notice' => Session::flash('notice'),
+        'error'  => Session::flash('error'),
     ]);
+}
+
+/**
+ * Formularz NOWEGO hasła klubowego.
+ *
+ * Hasła systemowe są stałą w kodzie i tu ich nie tworzymy — ten ekran dopisuje
+ * pozycję do indeksu KLUBU, obok systemowych.
+ */
+function showIndexNew(): void
+{
+    $klub = indeksKlub();
+    if ($klub === null) {
+        Session::flash('error', View::t('index.err.no_club'));
+        redirect('/indeks');
+    }
+
+    View::page('index_form', [
+        'title'  => View::t('index.new.title'),
+        'active' => 'index',
+        'term'   => null,          // null = tryb tworzenia
+        'club'   => $klub,
+        'draft'  => Session::flash('index_draft'),
+        'kolizja' => Session::flash('index_kolizja'),
+        'error'  => Session::flash('error'),
+    ]);
+}
+
+/**
+ * Zapis nowego hasła klubowego.
+ *
+ * SLUG KOLIDUJĄCY Z SYSTEMOWYM WYMAGA POTWIERDZENIA. Nadpisanie hasła
+ * systemowego jest świadomą funkcją (klub opisuje wskaźnik własną metodyką),
+ * ale nie ma się zdarzać przypadkiem: bez jawnego potwierdzenia wracamy na
+ * formularz z ostrzeżeniem. Świadome tak, ciche nie.
+ */
+function createIndexTerm(int $userId): void
+{
+    $klub = indeksKlub();
+    if ($klub === null) {
+        Session::flash('error', View::t('index.err.no_club'));
+        redirect('/indeks');
+    }
+
+    $pola = [
+        'name'           => (string) ($_POST['name'] ?? ''),
+        'slug'           => (string) ($_POST['slug'] ?? ''),
+        'concept'        => (string) ($_POST['concept'] ?? ''),
+        'definition'     => (string) ($_POST['definition'] ?? ''),
+        'formula'        => (string) ($_POST['formula'] ?? ''),
+        'example'        => (string) ($_POST['example'] ?? ''),
+        'interpretation' => (string) ($_POST['interpretation'] ?? ''),
+        'source'         => (string) ($_POST['source'] ?? ''),
+        'estimated_note' => (string) ($_POST['estimated_note'] ?? ''),
+    ];
+
+    $slug = trim($pola['slug']) !== ''
+        ? \CoachAnalyze\IndexTerms::slugFromName($pola['slug'])
+        : \CoachAnalyze\IndexTerms::slugFromName($pola['name']);
+
+    if ($slug !== ''
+        && \CoachAnalyze\IndexTerms::isDefaultSlug($slug)
+        && empty($_POST['potwierdzam_nadpisanie'])) {
+        // Wracamy z treścią formularza, żeby operator nie wpisywał jej od nowa.
+        Session::flash('index_draft', $pola);
+        Session::flash('index_kolizja', $slug);
+        redirect('/indeks/nowe?klub=' . (int) $klub['id']);
+    }
+
+    try {
+        $slug = \CoachAnalyze\IndexTerms::createTerm((int) $klub['id'], $pola, $userId);
+    } catch (\Throwable $e) {
+        // Wyjątek niesie KLUCZ tekstu, nie zdanie — komunikaty zostają w pl.php.
+        $klucz = $e->getMessage();
+        Session::flash('index_draft', $pola);
+        Session::flash('error', View::t(str_starts_with($klucz, 'index.err.') ? $klucz : 'index.err.save'));
+        redirect('/indeks/nowe?klub=' . (int) $klub['id']);
+    }
+
+    Session::flash('notice', View::t('index.created'));
+    redirect('/indeks/' . $slug . '?klub=' . (int) $klub['id']);
+}
+
+/** Usunięcie hasła klubowego — przy slugu systemowym przywraca hasło systemowe. */
+function deleteIndexTerm(string $slug, int $userId): void
+{
+    $klub = indeksKlub();
+    if ($klub === null) {
+        Session::flash('error', View::t('index.err.no_club'));
+        redirect('/indeks');
+    }
+
+    $bylSystemowy = \CoachAnalyze\IndexTerms::isDefaultSlug($slug);
+    $usuniete = \CoachAnalyze\IndexTerms::deleteTerm((int) $klub['id'], $slug, $userId);
+
+    Session::flash(
+        $usuniete ? 'notice' : 'error',
+        $usuniete
+            ? View::t($bylSystemowy ? 'index.deleted.restored' : 'index.deleted')
+            : View::t('index.err.not_club')
+    );
+
+    // Po skasowaniu hasła własnego nie ma dokąd wracać — zostaje lista.
+    redirect($usuniete && !$bylSystemowy
+        ? '/indeks?klub=' . (int) $klub['id']
+        : '/indeks/' . $slug . '?klub=' . (int) $klub['id']);
 }
 
 function showIndexEdit(string $slug): void

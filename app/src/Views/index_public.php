@@ -16,7 +16,19 @@ use CoachAnalyze\View;
 <main class="auth">
   <article class="auth__box auth__box--wide">
     <h1 class="auth__title"><?= View::e((string) $term['name']) ?></h1>
-    <p class="auth__subtitle"><?= View::e(View::t('index.public.subtitle')) ?></p>
+    <p class="auth__subtitle">
+      <?= View::e(View::t('index.public.subtitle')) ?>
+      <?php /*
+        POCHODZENIE DEFINICJI, także dla czytelnika z zewnątrz. Prezes czytający
+        hasło musi wiedzieć, czy patrzy na metodykę produktu, czy na definicję
+        napisaną przez własny klub — bez tego bierze jedno za drugie.
+        Nazwy klubu tu NIE MA: strona publiczna nie zdradza niczego ponad treść.
+      */ ?>
+      ·
+      <?= View::e(View::t(!empty($term['is_default'])
+          ? 'index.mark.system'
+          : 'index.mark.club.public')) ?>
+    </p>
 
     <?php if (($term['estimated_note'] ?? null) !== null): ?>
       <p class="alert" role="note">
