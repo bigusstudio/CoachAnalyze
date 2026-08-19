@@ -3,6 +3,51 @@
 Format: [wersja silnika] — data — opis.
 Każda zmiana, która modyfikuje wyjście silnika, MUSI mieć tu wpis wraz z powodem.
 
+## [0.11.0] — 2026-08-19
+### Kontrakt CLI: `--template` — templat raportu klubu jako wejście pipeline'u
+Sesja 5 przebudowy. Silnik przyjmuje config templatu zbudowany w konfiguratorze
+(Sesje 3+4) i liczy według niego, zamiast wyłącznie według słownika domyślnego
+i profilu kreatora.
+
+- **`--template ŚCIEŻKA`** w komendzie `build`, OPCJONALNY. Bez niego cały
+  pipeline zachowuje się dokładnie jak w 0.10.0 — co do bajtu w wyjściu renderu.
+- `variables[].source → canon` tłumaczone na profil mapowań, który rozumie
+  `canon.build()`. Templat wygrywa z profilem kreatora: jest nowszy i zatwierdzony
+  przez człowieka. Zmienna `canon: null` daje regułę z jawnym `None`, a NIE brak
+  wpisu — dzięki temu tag jest silnikowi ZNANY i nie ląduje w `unmapped_tags`.
+  Różnica jest istotna: brak wpisu to usterka do naprawienia, jawne `null`
+  to decyzja do uszanowania.
+- `team_us_rule.markers` steruje przypisaniem „naszej" drużyny. Korekta literówki
+  `MASZA`/`NASZA` dla kolumny `team` jest odtąd DANĄ TEMPLATU, nie regułą wpisaną
+  w silnik — kolejny klub może mieć własną literówkę bez zmiany kodu. Nazwa klubu
+  z konfiguracji wygrywa z markerem, bo jest konkretniejsza.
+- **Coverage templat × eksport**: `sections_enabled` trafia do `build_sections`,
+  które i tak dokłada powód do każdej sekcji bez danych. Sekcja włączona
+  w templacie, ale niemożliwa dla tego eksportu, znika z HTML-a i zostaje
+  z powodem w `sections_unavailable`. **Generowanie NIGDY nie pada z tego powodu.**
+- `config.template_version` + `config.generated_at` → dyskretna stopka
+  „templat vN · wygenerowano DATA". Bez wersji stopki nie ma.
+
+### `meta.json`: paleta tablicy kodowej (`palette`)
+Paleta z pliku projektu LiveTag (po korekcie jasności `to_hex`) była dotąd
+wyłącznie WEJŚCIEM do ostrzeżeń i nigdzie nie wychodziła. Konfigurator nie miał
+więc jak zaproponować barw zmiennych i schodził na barwy klubu. PHP nie może jej
+policzyć sam: uruchomienie silnika z warstwy żądań blokuje `disable_functions`,
+a przepisanie `to_hex` byłoby przeniesieniem arytmetyki koloru do PHP.
+`null` przy imporcie bez pliku projektu — to poprawny stan, nie brak danych.
+
+### Filtrowanie sekcji w wyjściu — MOSTEK PRZEJŚCIOWY do S5b
+`render.drop_sections()` wycina blok `<section>` z GOTOWEGO HTML-a, bo szablon
+raportu ma nazwy tagów i etykiety wpisane na sztywno w JS i nie da się nim
+sterować konfiguracją. To rozwiązanie tymczasowe, opisane w kodzie i w spec
+(sekcja S5b): docelowo szablon ma być sterowany templatem, co wymaga
+przebazowania wzorca złotego i decyzji klienta.
+
+**`display_label`, `color` i generyczny renderer dla `canon: null` NIE DZIAŁAJĄ
+jeszcze w raporcie** — z tego samego powodu. Konfigurator je zapisuje, silnik
+przenosi do templatu, ale szablon ich nie czyta. Interfejs mówi o tym wprost,
+zamiast pozwolić operatorowi myśleć, że ustawił coś, co nie zadziała.
+
 ## [0.10.0] — 2026-08-19
 ### `meta.json`: pełny słownik eksportu (`dictionary`)
 Konfigurator raportu klubu (Sesja 3 przebudowy) buduje templat z pierwszego importu

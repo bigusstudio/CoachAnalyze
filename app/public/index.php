@@ -540,6 +540,21 @@ switch (true) {
         saveConfiguratorTemplate((int) $m[1], (int) $user['id']);
         break;
 
+    case preg_match('#^/klub/(\d+)/konfigurator/gotowe$#', $path, $m) === 1 && $method === 'GET':
+        showConfiguratorDone((int) $m[1]);
+        break;
+
+    case preg_match('#^/klub/(\d+)/konfigurator/przyklad$#', $path, $m) === 1 && $method === 'POST':
+        // Przykładowy raport to zwykłe generowanie — ta sama bramka.
+        requireCan($user, 'generate');
+        requireCsrf();
+        queueSampleReport((int) $m[1], (int) $user['id']);
+        break;
+
+    case preg_match('#^/klub/(\d+)/templaty$#', $path, $m) === 1 && $method === 'GET':
+        showTemplateHistory((int) $m[1]);
+        break;
+
     case preg_match('#^/klub/(\d+)/konfigurator/porzuc$#', $path, $m) === 1 && $method === 'POST':
         requireCan($user, 'mappings');
         requireCsrf();
@@ -2663,14 +2678,106 @@ function saveConfiguratorTemplate(int $id, int $userId): void
 
     \CoachAnalyze\Configurator::clearDraft($id);
 
-    Session::flash('notice', View::t(
-        'conf.saved',
-        $wersja,
-        count($zmienne),
-        \CoachAnalyze\Configurator::podsumowanie($config)['canon'],
-        count($sekcje)
-    ));
-    redirect('/klub/' . $id);
+    redirect('/klub/' . $id . '/konfigurator/gotowe');
+}
+
+/**
+ * Podsumowanie po zapisie templatu (Sesja 4 pkt 6) + CTA przykładowego raportu.
+ *
+ * Wszystko liczone Z BAZY, nie z sesji: ekran przeżywa odświeżenie i wejście
+ * z zakładki, a nie znika po jednym wyświetleniu jak `flash`.
+ */
+function showConfiguratorDone(int $id): void
+{
+    $club = resolveTenant($id);
+    if ($club === null) {
+        tenantNotFound();
+        return;
+    }
+
+    $templat = \CoachAnalyze\ReportTemplates::current($id);
+    if ($templat === null) {
+        redirect('/klub/' . $id . '/konfigurator');
+    }
+
+    $config = \CoachAnalyze\ReportTemplates::decodeConfig($templat['config']);
+
+    View::page('configurator_gotowe', [
+        'title'          => View::t('conf.done.title'),
+        'active'         => 'clubs',
+        'club'           => $club,
+        'crumb'          => View::t('conf.crumb'),
+        'wersja'         => (int) $templat['version'],
+        'podsumowanie'   => \CoachAnalyze\Configurator::podsumowanie($config),
+        // Przykładowy raport powstaje na NAJNOWSZYM imporcie klubu — czyli
+        // na tym założycielskim, dopóki nie doszedł kolejny mecz.
+        'import'         => configuratorLatestImport($id),
+        'notice'         => Session::flash('notice'),
+        'error'          => Session::flash('error'),
+    ]);
+}
+
+/**
+ * Najnowszy import klubu — źródło przykładowego raportu.
+ *
+ * Po tenancie (`matches.club_id`), nie po stronie boiska: przykładowy raport
+ * ma powstać z materiału TEGO klubu.
+ *
+ * @return array<string,mixed>|null
+ */
+function configuratorLatestImport(int $clubId): ?array
+{
+    return \CoachAnalyze\Db::one(
+        'SELECT i.* FROM imports i
+           JOIN matches m ON m.id = i.match_id
+          WHERE m.club_id = :club AND i.coverage_json IS NOT NULL
+          ORDER BY i.id DESC LIMIT 1',
+        ['club' => $clubId]
+    );
+}
+
+/**
+ * Przykładowy raport przez ISTNIEJĄCĄ KOLEJKĘ.
+ *
+ * Zero osobnej ścieżki kodu (spec Sesji 5 pkt 4): to zwykłe zadanie
+ * `build_report`, a `is_sample` służy wyłącznie oznaczeniu wyniku w interfejsie.
+ */
+function queueSampleReport(int $id, int $userId): void
+{
+    $club = resolveTenant($id);
+    if ($club === null) {
+        tenantNotFound();
+        return;
+    }
+
+    $import = configuratorLatestImport($id);
+    if ($import === null) {
+        Session::flash('error', View::t('conf.sample.no_import'));
+        redirect('/klub/' . $id . '/konfigurator/gotowe');
+    }
+
+    $jobId = Imports::queueBuild((int) $import['id'], $userId, true);
+    Session::flash('notice', View::t('conf.sample.queued'));
+    redirect('/zadania/' . $jobId);
+}
+
+/** Historia wersji templatu — lista z datą, bez diffa (spec Sesji 4 pkt 5). */
+function showTemplateHistory(int $id): void
+{
+    $club = resolveTenant($id);
+    if ($club === null) {
+        tenantNotFound();
+        return;
+    }
+
+    View::page('template_history', [
+        'title'   => View::t('tpl.history.title'),
+        'active'  => 'clubs',
+        'club'    => $club,
+        'crumb'   => View::t('tpl.history.crumb'),
+        'wersje'  => \CoachAnalyze\ReportTemplates::history($id),
+        'biezaca' => \CoachAnalyze\ReportTemplates::currentVersion($id),
+    ]);
 }
 
 /** Porzucenie stanu roboczego. Import i mecz ZOSTAJĄ — skasowane byłyby utratą danych. */

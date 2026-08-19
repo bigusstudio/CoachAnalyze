@@ -386,3 +386,146 @@ def test_golden_slownik_obejmuje_caly_eksport(case):
     # 5. Porządek deterministyczny: malejąco po liczbie wystąpień.
     liczby = [p["count"] for p in slownik["tags"]]
     assert liczby == sorted(liczby, reverse=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# BRAMKA SESJI 5: templat jako wejscie pipeline'u
+#
+# Templat odwzorowujacy dzisiejszy raport 1:1 MUSI dac wyjscie funkcjonalnie
+# rowne temu bez templatu. Dopoki to nie przechodzi, templat nie jest droga
+# do tego samego raportu, tylko do innego — a wtedy przelaczenie produkcji na
+# templaty zmienia liczby, ktorych nikt nie prosil o zmiane.
+#
+# „Funkcjonalnie rowne", nie „co do bajtu": stopka ze stemplem wersji jest
+# celowa roznica, a sekcje moga zniknac, gdy eksport nie niesie dla nich danych.
+# Bajt w bajt pilnuje osobny test, dla sciezki BEZ templatu.
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def templat_odwzorowujacy():
+    """Templat 1:1 wobec dzisiejszego zachowania silnika.
+
+    Zmienne pokrywaja domyslny slownik silnika tymi samymi pojeciami, wiec
+    warstwa kanoniczna ma nie zauwazyc roznicy. Sekcje: komplet.
+    """
+    zmienne = [
+        ("STRZAŁ", "shot"),
+        ("ZDOBYCIE SBZ", "entry_sbz"),
+        ("III STREFA", "entry_third"),
+        ("STRATA", "loss"),
+        ("ODBIÓR", "recovery"),
+        ("PIERWSZY KONTAKT", "duel"),
+        ("1x1 OFF", "duel"),
+        ("1x1 DEF.", "duel"),
+        ("SKUTECZNY", "press"),
+        ("NISKUTECZNY", "press"),
+    ]
+    return {
+        "schema_version": 1,
+        "team_us_rule": {"markers": ["NASZA", "MASZA"]},
+        "sections_enabled": list(coverage.ALL_SECTIONS),
+        "variables": [
+            {
+                "id": "v_{:03d}".format(i + 1),
+                "source": {"type": "tag", "raw": raw},
+                "canon": canon_value,
+                "display_label": raw.title(),
+                "color": "#8899AA",
+                "sections": ["bilans", "tl_bilans"],
+                "visible": True,
+            }
+            for i, (raw, canon_value) in enumerate(zmienne)
+        ],
+    }
+
+
+@pytest.mark.parametrize("case", load_cases(), ids=lambda c: c["id"])
+def test_bramka_s5_templat_nie_zmienia_liczb(case):
+    """Ten sam eksport, z templatem i bez — te same liczby w pokryciu."""
+    src = wymagaj_csv(case)
+    frame = parse.prep_frame(str(src))
+
+    bez = canon.build(frame)
+    z_templatem = canon.build(frame, report_template=templat_odwzorowujacy())
+
+    assert len(bez["events"]) == len(z_templatem["events"]) == case["coverage"]["events"]
+
+    # Pojecie kanoniczne zdarzenie po zdarzeniu — nie sama suma. Dwie rozne
+    # pomylki potrafia dac te sama liczbe.
+    rozne = [
+        i for i, (a, b) in enumerate(zip(bez["events"], z_templatem["events"]))
+        if a["concept"] != b["concept"]
+    ]
+    assert rozne == [], "templat zmienil pojecie dla {} zdarzen".format(len(rozne))
+
+    meta_bez = coverage.build_meta(frame, bez)
+    meta_z = coverage.build_meta(frame, z_templatem)
+
+    for klucz in ("events", "shots", "sbz", "third", "duels", "xg_parsed", "xg_sum",
+                  "unanalysed", "no_team"):
+        assert meta_bez["coverage"][klucz] == meta_z["coverage"][klucz], (
+            "{} rozjechalo sie po wlaczeniu templatu".format(klucz)
+        )
+
+    assert meta_z["coverage"]["xg_sum"] == case["coverage"]["xg_sum"]
+    assert frame["half_split"] == case["half_split"], "polowa ~45,5' bez zmian"
+
+
+@pytest.mark.parametrize("case", load_cases(), ids=lambda c: c["id"])
+def test_bramka_s5_render_z_templatem_ma_te_same_sekcje(case):
+    """Templat z kompletem sekcji nie usuwa niczego, co eksport niesie."""
+    src = wymagaj_csv(case)
+    frame = parse.prep_frame(str(src))
+    paleta = parse.prep_palette(str(GOLDEN / case["json"]))
+
+    templat = templat_odwzorowujacy()
+    canon_result = canon.build(frame, report_template=templat)
+    meta = coverage.build_meta(frame, canon_result, config={"sections": templat["sections_enabled"]})
+
+    html, raport = render.render(
+        frame, palette=paleta, canon_result=canon_result,
+        config={"drop_sections": [s["id"] for s in meta["sections_unavailable"]]},
+    )
+
+    # Eksport referencyjny nie niesie pozycji III STREFY (pulapka 3), wiec ta
+    # jedna sekcja ma zniknac — z powodem, nie po cichu.
+    niedostepne = {s["id"]: s["reason"] for s in meta["sections_unavailable"]}
+    assert raport["sections_dropped"] == list(niedostepne), (
+        "render usunal co innego, niz orzekl raport pokrycia"
+    )
+    for powod in niedostepne.values():
+        assert powod.strip(), "kazda usunieta sekcja niesie powod"
+
+    for sid in templat["sections_enabled"]:
+        obecna = 'id="{}"'.format(render.SECTION_DOM_ID[sid]) in html
+        assert obecna == (sid not in niedostepne), (
+            "sekcja {} jest w HTML-u niezgodnie z raportem pokrycia".format(sid)
+        )
+
+    assert raport["unresolved_placeholders"] == []
+
+
+def test_bramka_s5_mapowanie_sekcji_pokrywa_wszystkie():
+    """Kazda sekcja silnika ma odpowiednik w szablonie — inaczej filtrowanie
+    po cichu pomijaloby te, ktorej nie ma w mapie."""
+    assert set(render.SECTION_DOM_ID) == set(coverage.ALL_SECTIONS)
+
+
+@pytest.mark.parametrize("case", load_cases(), ids=lambda c: c["id"])
+def test_bramka_s5_brak_templatu_nie_zmienia_nic(case):
+    """Sciezka BEZ templatu ma zostac nietknieta co do bajtu.
+
+    Duplikuje intencje testu odtworzenia raportu produkcyjnego, ale sprawdza ja
+    wprost wobec zmian z Sesji 5: `drop_sections` i stempel maja byc martwe,
+    dopoki nikt ich nie wlaczy.
+    """
+    src = wymagaj_csv(case)
+    frame = parse.prep_frame(str(src))
+    paleta = parse.prep_palette(str(GOLDEN / case["json"]))
+
+    a, raport_a = render.render(frame, palette=paleta)
+    b, raport_b = render.render(frame, palette=paleta, config={})
+
+    assert a == b
+    assert raport_a["sections_dropped"] == []
+    assert "templat v" not in a, "stempel bez wersji nie ma prawa sie pojawic"

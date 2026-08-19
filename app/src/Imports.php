@@ -307,7 +307,7 @@ final class Imports
         return array_values(array_map('strval', (array) ($coverage['teams'] ?? [])));
     }
 
-    public static function queueBuild(int $importId, int $userId): int
+    public static function queueBuild(int $importId, int $userId, bool $isSample = false): int
     {
         $import = self::find($importId);
         if ($import === null) {
@@ -325,6 +325,15 @@ final class Imports
                 'payload' => json_encode([
                     'import_id' => $importId,
                     'match_id'  => (int) $import['match_id'],
+                    /*
+                     * `is_sample` — przykładowy raport z konfiguratora.
+                     * ZERO OSOBNEJ ŚCIEŻKI KODU: to zwykłe zadanie `build_report`
+                     * w tej samej kolejce, a flaga służy wyłącznie oznaczeniu
+                     * wyniku w interfejsie. Osobny tryb generowania znaczyłby
+                     * drugi pipeline do utrzymania i drugie miejsce, w którym
+                     * liczby mogą się rozjechać.
+                     */
+                    'is_sample' => $isSample,
                 ], JSON_UNESCAPED_UNICODE),
                 'status'  => 'queued',
                 'now'     => Stats::now(),

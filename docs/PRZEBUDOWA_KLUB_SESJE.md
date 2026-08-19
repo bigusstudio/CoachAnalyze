@@ -322,6 +322,135 @@ wymagają silnika albo generowania:
    z datą, bez diffa). Dane są — `ReportTemplates::history()` istnieje od
    Sesji 1 — brakuje ekranu. Naturalnie razem z badge'em wersji z Sesji 7.
 
+### PUNKT OPERACYJNY — przy deployu Sesji 5: podbić HSTS
+
+**Podbić `Strict-Transport-Security` z `max-age=86400` na `max-age=31536000`
+(doba → rok).**
+
+To nie jest zadanie programistyczne, tylko krok wdrożeniowy — dlatego stoi
+osobno, a nie wśród punktów 6–8.
+
+**Dlaczego dopiero teraz.** Doba została wybrana świadomie przy włączaniu HSTS
+jako **okno wycofania**: gdyby certyfikat albo przekierowanie na HTTPS się
+posypało, błąd sam wygasa po dobie zamiast blokować panel na rok. Do wdrożenia
+Sesji 5 HTTPS ma za sobą kilka spokojnych tygodni i kontrolę po każdym deployu,
+więc okno przestaje być potrzebne.
+
+**Cztery miejsca niosą tę wartość — wszystkie muszą pójść razem**, inaczej
+kontrola po wdrożeniu zapali się na czerwono albo, gorzej, przepuści rozjazd:
+
+| Plik | Co zmienić |
+|---|---|
+| `app/public/.htaccess` | reguła `Header always set Strict-Transport-Security "max-age=86400"` |
+| `app/public/.htaccess` | **komentarz nad nią** — uzasadnia dobę jako okno wycofania i po zmianie przeczyłby regule |
+| `deploy/deploy.sh` | para `"Strict-Transport-Security=max-age=86400"` w pętli kontroli nagłówków |
+| `app/tests/test_layout.php` | dwie asercje: wzorzec na regułach czynnych oraz `str_contains` na poleceniach deployu |
+
+**Czego NIE zmieniać przy okazji:** `includeSubDomains` i `preload` zostają
+wyłączone. Ta decyzja jest niezależna od `max-age` i ma własny powód —
+certyfikat to wildcard `*.coachanalyze.pl`, a pod tą domeną żyją subdomeny poza
+zasięgiem tego pliku. Asercja `HSTS bez includeSubDomains i bez preload`
+w `test_layout` zostaje bez zmian i ma dalej przechodzić.
+
+**Kontrola po zmianie:** `deploy.sh` sprawdza nagłówek na żywo, więc zielone
+wdrożenie jest tu dowodem. Ręcznie:
+`curl -sI https://app.coachanalyze.pl/login | grep -i strict-transport`
+
+---
+
+## SESJA 5b — szablon raportu sterowany templatem (DECYZJA DO PODJĘCIA)
+
+> **Ta sekcja istnieje po to, żeby decyzja zapadła na konkretach.** Sesja 5
+> została świadomie zawężona: silnik rozumie templat, ale RAPORT nadal nie
+> pokazuje etykiet ani barw z konfiguratora. Poniżej dokładnie dlaczego, co
+> trzeba zmienić i czym to grozi.
+
+### Dlaczego S5 nie mogła tego dowieźć
+
+`engine/coachanalyze/templates/dashboard_template.html` **liczy metryki sam,
+w JS, po nazwach tagów klienta wpisanych na sztywno**:
+
+```js
+['STRZAŁY',             cntT(qs,'STRZAŁ',HUT),     cntT(qs,'STRZAŁ',POG), 0],
+['ZDOBYCIE III STREFY', cntT(qs,'III STREFA',HUT), cntT(qs,'III STREFA',POG), 0],
+['WYGRANY I KONTAKT',   cntN(qs,'PIERWSZY KONTAKT','WYGRANY')],
+```
+
+Etykieta (`'STRZAŁY'`) i nazwa tagu (`'STRZAŁ'`) są literałami w kodzie. Nie ma
+żadnego hooka konfiguracyjnego — `grep` po `CONFIG|CFG|window.` nie znajduje nic.
+`display_label` i `color` z templatu **nie mają gdzie zadziałać**.
+
+Skutek uboczny, który istnieje JUŻ DZIŚ, niezależnie od przebudowy: klub, który
+nazywa tagi inaczej niż Hutnik, dostaje raport z zerami w bilansie. Templat miał
+to naprawić — i to jest właściwy powód, żeby S5b w ogóle rozważać.
+
+### Co dokładnie trzeba zmienić w szablonie
+
+| # | Zmiana | Skala |
+|---|---|---|
+| 1 | Nowy blok `/*__TPL__*/` wstrzykiwany przez `render.inject()` — zmienne templatu, sekcje, markery | ~10 linii w szablonie, ~20 w `render.py` |
+| 2 | `rows` i `neut` w bilansie budowane z `TPL.variables` zamiast literałów | ~30 linii JS |
+| 3 | Etykiety osi i legend z `display_label` | ~15 linii JS |
+| 4 | Barwy pasów i punktów z `color` zmiennej zamiast palety wbudowanej | ~20 linii JS |
+| 5 | Generyczny renderer dla `canon: null`: licznik w bilansie + pas na osi czasu | ~40 linii JS, NOWY kod |
+| 6 | Sekcje ukrywane po stronie szablonu zamiast wycinania z wyjścia | usuwa `drop_sections` z `render.py` |
+
+Punkt 6 kasuje mostek oznaczony w kodzie `PRZEJSCIOWE do S5b`.
+
+### Plan przebazowania wzorca złotego
+
+To jest najtrudniejsza część i nie jest techniczna.
+
+`test_golden_render_odtwarza_raport_produkcyjny` porównuje wyjście z wzorcem
+**linia w linię**, dopuszczając różnicę wyłącznie w linii `const DATA`. Docstring
+nazywa to KRYTERIUM ODBIORU. **Każda zmiana szablonu zapala ten test na czerwono.**
+
+Wzorzec (`golden/livetag_dashboard_noname_1.html`) to prawdziwy raport klienta
+po anonimizacji, leżący poza repozytorium (dane meczowe, CLAUDE.md §7).
+
+Kolejność, której nie wolno skrócić (CLAUDE.md §2 — aktualizacja wzorca wyłącznie
+jawną komendą i NIGDY w tym samym commicie co zmiana logiki):
+
+1. Zmiana szablonu w gałęzi roboczej, test złoty czerwony — i to jest poprawne.
+2. Wygenerowanie NOWEGO wzorca z tego samego eksportu referencyjnego, w wariancie
+   `noname` (bez nazw i herbów klubowych).
+3. **Porównanie wizualne stary/nowy przez człowieka**, sekcja po sekcji.
+4. Akceptacja klienta — to jego raport się zmienia.
+5. Podmiana wzorca OSOBNYM commitem, z wpisem w `CHANGELOG.md` i podbiciem
+   `szablon_generacja` w manifeście (test tego pilnuje).
+
+### Ryzyko wizualne per sekcja
+
+| Sekcja | Ryzyko | Dlaczego |
+|---|---|---|
+| `bilans` | **wysokie** | Etykiety wierszy przestają być literałami. Klub przyzwyczajony do „ZDOBYCIE III STREFY" zobaczy to, co wpisał w konfiguratorze |
+| `mapy` | średnie | Barwy punktów z `color` zmiennej zamiast palety — układ bez zmian |
+| `tl_sbz`, `tl_iii`, `tl_bilans` | średnie | Barwy i etykiety pasów; geometria osi nietknięta |
+| `duels` | **wysokie** | Ta sama zmiana co w bilansie, plus generyczne zmienne dochodzą jako nowe wiersze |
+| `noteam` | niskie | Sekcja i tak grupuje po surowym tagu |
+
+Największe ryzyko: **raport, w którym klub zobaczy inne nazwy niż te, do których
+przywykł** — nie dlatego, że coś się zepsuło, tylko dlatego, że sam je wpisał
+w konfiguratorze miesiąc wcześniej i zdążył zapomnieć.
+
+### Szacunek pracy
+
+| Część | Szacunek |
+|---|---|
+| Zmiany w szablonie (punkty 1–6) | 1 sesja |
+| Przebazowanie wzorca + porównanie wizualne | 0,5 sesji, w tym praca człowieka |
+| Testy: render sterowany templatem, generyczny renderer, regresja per sekcja | 0,5 sesji |
+| **Razem** | **~2 sesje**, z twardą zależnością od akceptacji klienta między krokiem 3 a 5 |
+
+### Do czasu decyzji
+
+Konfigurator **mówi wprost**, że etykiety i barwy jeszcze nie wchodzą do raportu
+(podsumowanie zapisu templatu i CTA przykładowego raportu). Sekcje, bindingi
+kanoniczne i coverage działają już teraz. Zero cichego rozjazdu między tym, co
+operator ustawia, a tym, co widzi.
+
+---
+
 ### Kryteria akceptacji
 - Raport generuje się wyłącznie z sekcjami z templatu, z etykietami i kolorami usera.
 - Templat z wyłączoną sekcją map → map nie ma w HTML, bez błędu.

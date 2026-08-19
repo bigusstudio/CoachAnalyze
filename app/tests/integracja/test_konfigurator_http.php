@@ -310,8 +310,8 @@ $zapis = http('POST', '/klub/1/konfigurator/zapisz', ['form' => [
     'vsections' => $sekcjeZmiennych,
     'visible' => array_fill_keys($idy, '1'),
 ]]);
-check('zapis przechodzi i wraca do huba klubu',
-    $zapis['status'] === 302 && $zapis['location'] === '/klub/1',
+check('zapis przechodzi i wraca na ekran podsumowania',
+    $zapis['status'] === 302 && $zapis['location'] === '/klub/1/konfigurator/gotowe',
     $zapis['status'] . ' → ' . (string) $zapis['location']);
 
 ca_test_db($baza);
@@ -339,6 +339,98 @@ check('draft skasowany — konfigurator wraca do formularza',
     $ponownie['status'] === 200 && str_contains($ponownie['body'], 'name="csv"'));
 check('konfigurator ostrzega o istniejącym templacie',
     str_contains($ponownie['body'], 'ma już templat'));
+
+
+// ---------------------------------------------------------------- Sesja 5
+echo "\n== Sesja 5: podsumowanie, uczciwa nota, przyklad, historia ==\n";
+
+$gotowe = http('GET', '/klub/1/konfigurator/gotowe');
+check('ekran podsumowania odpowiada', $gotowe['status'] === 200, 'status ' . $gotowe['status']);
+check('podsumowanie podaje wersje templatu', str_contains($gotowe['body'], 'Templat v1'));
+
+/*
+ * UCZCIWA NOTA. Operator ustawil etykiety i barwy, a raport ich jeszcze nie
+ * pokaze (szablon hardkoduje etykiety w JS — S5b). Bez tej noty wygladaloby to
+ * jak usterka i zjadloby czyjs czas na szukanie nieistniejacego bledu.
+ */
+check('podsumowanie MOWI WPROST, ze etykiety i barwy jeszcze nie dzialaja',
+    str_contains($gotowe['body'], 'jeszcze nie w raporcie'),
+    'zero cichego rozjazdu miedzy tym, co operator ustawia, a tym, co widzi');
+check('podsumowanie mowi, co dziala JUZ TERAZ',
+    str_contains($gotowe['body'], 'Działa już teraz'));
+
+check('podsumowanie przezywa odswiezenie (liczone z bazy, nie z flash)',
+    http('GET', '/klub/1/konfigurator/gotowe')['status'] === 200);
+
+// --- przykladowy raport przez ISTNIEJACA kolejke ---
+$csrfG = csrfZ($gotowe['body']);
+check('ekran podsumowania niesie CTA przykladowego raportu',
+    str_contains($gotowe['body'], '/klub/1/konfigurator/przyklad'));
+
+ca_test_db($baza);
+$przedZadaniami = (int) Db::one("SELECT COUNT(*) AS c FROM jobs WHERE type = 'build_report'")['c'];
+
+$przyklad = http('POST', '/klub/1/konfigurator/przyklad', ['form' => ['csrf' => $csrfG]]);
+check('przykladowy raport przyjety i prowadzi do stanu zadania',
+    $przyklad['status'] === 302
+    && preg_match('#^/zadania/(\d+)$#', (string) $przyklad['location'], $mj) === 1,
+    $przyklad['status'] . ' → ' . (string) $przyklad['location']);
+
+ca_test_db($baza);
+$poZadaniach = (int) Db::one("SELECT COUNT(*) AS c FROM jobs WHERE type = 'build_report'")['c'];
+check('powstalo dokladnie jedno zadanie renderu', $poZadaniach === $przedZadaniami + 1);
+
+$zadanie = Db::one("SELECT payload_json FROM jobs WHERE type = 'build_report' ORDER BY id DESC LIMIT 1");
+$payload = json_decode((string) $zadanie['payload_json'], true);
+check('zadanie niesie flage is_sample', ($payload['is_sample'] ?? null) === true,
+    (string) $zadanie['payload_json']);
+check('to ZWYKLE zadanie build_report, bez osobnej sciezki',
+    isset($payload['import_id'], $payload['match_id']));
+
+// --- render z templatem przez prawdziwy silnik ---
+check('cron wygenerowal przykladowy raport', cron() === 0);
+
+ca_test_db($baza);
+$raport = Db::one('SELECT * FROM reports ORDER BY id DESC LIMIT 1');
+check('raport zapisany', $raport !== null);
+check('STEMPEL: reports.template_version niesie wersje templatu',
+    $raport !== null && (int) $raport['template_version'] === 1,
+    'template_version: ' . var_export($raport['template_version'] ?? null, true));
+
+$params = json_decode((string) ($raport['params_json'] ?? ''), true);
+check('params_json oznacza raport jako przykladowy',
+    ($params['is_sample'] ?? null) === true,
+    'flaga sluzy wylacznie oznaczeniu w UI');
+
+$htmlRaportu = is_file((string) $raport['html_path'])
+    ? (string) file_get_contents((string) $raport['html_path']) : '';
+check('plik raportu powstal', $htmlRaportu !== '');
+check('STOPKA: raport niesie dyskretny stempel templatu',
+    str_contains($htmlRaportu, 'templat v1'),
+    'pytanie „czemu raport z marca ma inna liczbe" ma miec odpowiedz w raporcie');
+
+// Templat wlaczyl komplet sekcji, wiec zadna nie ma zniknac z tego eksportu.
+check('sekcja bilansu jest w raporcie', str_contains($htmlRaportu, 'id="sec-bilans"'));
+
+// --- plik templatu jako dowod ---
+$dirZadania = $magazyn . '/jobs/' . (int) $payload['import_id'];
+$templatePliki = glob($magazyn . '/jobs/*/template.json') ?: [];
+check('templat zapisany do katalogu zadania jako dowod',
+    $templatePliki !== [],
+    'z czego powstal ten konkretny raport ma byc widoczne na dysku');
+if ($templatePliki !== []) {
+    $zPliku = json_decode((string) file_get_contents($templatePliki[0]), true);
+    check('plik templatu to TRESC KOLUMNY bez przeksztalcen',
+        ($zPliku['schema_version'] ?? null) === 1 && isset($zPliku['variables']),
+        'przepakowanie po drodze odbieraloby dowodowi wartosc');
+}
+
+// --- historia wersji ---
+$historia = http('GET', '/klub/1/templaty');
+check('historia wersji odpowiada', $historia['status'] === 200, 'status ' . $historia['status']);
+check('historia pokazuje wersje 1', str_contains($historia['body'], 'v1'));
+check('historia oznacza wersje biezaca', str_contains($historia['body'], 'aktualna'));
+check('historia rywala daje 404', http('GET', '/klub/2/templaty')['status'] === 404);
 
 echo "\n=== OK: {$ok}, BŁĘDÓW: {$fail} ===\n";
 exit($fail === 0 ? 0 : 1);

@@ -86,6 +86,9 @@ final class EngineRunner
         foreach ([
             '--json'        => $paths['json'] ?? null,
             '--config'      => $paths['config'] ?? null,
+            // Templat raportu klubu (Sesja 5). Pusty = klub przed
+            // konfiguratorem; silnik zachowuje sie wtedy jak przed ta sesja.
+            '--template'    => $paths['template'] ?? null,
             '--out-html'    => $paths['out_html'] ?? null,
             '--out-meta'    => $paths['out_meta'] ?? null,
             '--out-canon'   => $paths['out_canon'] ?? null,

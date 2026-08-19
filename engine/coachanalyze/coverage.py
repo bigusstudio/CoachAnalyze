@@ -339,4 +339,16 @@ def build_meta(frame, canon_result, config=None, has_json=False, palette=None, o
         # czego silnik nie rozpoznał. Zasila konfigurator raportu klubu
         # (Sesja 3 przebudowy). Patrz `build_dictionary`.
         "dictionary": build_dictionary(frame),
+        # PALETA Z PLIKU PROJEKTU LiveTag — barwy tablicy kodowej, po korekcie
+        # jasnosci (`to_hex`). Do tej pory byla wylacznie WEJSCIEM do ostrzezen
+        # i nigdzie nie wychodzila, wiec konfigurator raportu nie mial jak
+        # zaproponowac barw zmiennych i schodzil na barwy klubu.
+        #
+        # PHP NIE MOZE JEJ POLICZYC SAM: uruchomienie silnika z warstwy zadan
+        # blokuje `disable_functions`, a przepisanie `to_hex` byloby przeniesieniem
+        # arytmetyki koloru do PHP (pilnuje tego `app/tests/integracja/test_4b.php`).
+        #
+        # `None` przy imporcie bez pliku projektu — to poprawny stan, nie brak
+        # danych do uzupelnienia. Konfigurator schodzi wtedy na barwy klubu.
+        "palette": palette,
     }

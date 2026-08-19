@@ -36,6 +36,7 @@ use CoachAnalyze\Mailer;
 use CoachAnalyze\Mappings;
 use CoachAnalyze\Matches;
 use CoachAnalyze\Notifications;
+use CoachAnalyze\ReportTemplates;
 use CoachAnalyze\PasswordReset;
 use CoachAnalyze\RedisClient;
 use CoachAnalyze\Stats;
@@ -190,7 +191,7 @@ function przetworz(int $jobId): void
     try {
         match ((string) $job['type']) {
             'inspect'      => wykonajInspekcje($jobId, $importId, $import),
-            'build_report' => wykonajRender($jobId, $importId, $import),
+            'build_report' => wykonajRender($jobId, $importId, $import, $payload),
             default        => zakoncz($jobId, 4, 'Nieznany typ zadania: ' . $job['type']),
         };
     } catch (\Throwable $e) {
@@ -223,7 +224,13 @@ function wykonajInspekcje(int $jobId, int $importId, array $import): void
 }
 
 /** Pełny render HTML wraz z artefaktami. */
-function wykonajRender(int $jobId, int $importId, array $import): void
+/**
+ * @param array<string,mixed> $payload  ładunek zadania. `is_sample` MUSI tu
+ *   dojść parametrem — w tej funkcji nie ma zasięgu dyspozytora, a odwołanie
+ *   do nieistniejącej zmiennej dawało po cichu `false` i raport przykładowy
+ *   nie był niczym oznaczony. Złapał to dopiero przelot HTTP.
+ */
+function wykonajRender(int $jobId, int $importId, array $import, array $payload = []): void
 {
     $matchId = (int) $import['match_id'];
     $dir = Storage::jobDir($jobId);
@@ -256,6 +263,39 @@ function wykonajRender(int $jobId, int $importId, array $import): void
         ];
     }
 
+    // Tenant meczu — właściciel analizy, a więc i właściciel templatu.
+    // Potrzebny PRZED wywołaniem silnika, bo od niego zależy `--template`.
+    $meczTenant = Db::one('SELECT club_id FROM matches WHERE id = :id', ['id' => $matchId]);
+    $clubIdTenanta = $meczTenant === null || $meczTenant['club_id'] === null
+        ? null
+        : (int) $meczTenant['club_id'];
+
+    /*
+     * TEMPLAT RAPORTU KLUBU (Sesja 5) — serializowany do pliku roboczego zadania.
+     *
+     * Bierzemy AKTUALNĄ wersję (MAX version) i zapisujemy JĄ, a nie odsyłacz do
+     * bazy: silnik nie chodzi do bazy (D4), a plik zostaje w katalogu zadania
+     * jako dowód, z czego powstał ten konkretny raport. Pytanie „dlaczego raport
+     * z marca pokazuje inną liczbę" ma dzięki temu odpowiedź na dysku, nie tylko
+     * w historii wersji.
+     *
+     * Zapisujemy TREŚĆ KOLUMNY BEZ PRZEKSZTAŁCEŃ. Przepakowanie po drodze
+     * znaczyłoby, że plik roboczy i wiersz w bazie mogą się różnić, a wtedy
+     * dowód przestaje być dowodem.
+     *
+     * Brak templatu (klub przed konfiguratorem) to POPRAWNY STAN: `--template`
+     * nie leci, a pipeline zachowuje się dokładnie tak jak przed Sesją 5.
+     */
+    $templat = $clubIdTenanta !== null ? ReportTemplates::current($clubIdTenanta) : null;
+    $templatePath = null;
+    $templateVersion = null;
+
+    if ($templat !== null && !empty($templat['config'])) {
+        $templatePath = $dir . '/template.json';
+        file_put_contents($templatePath, (string) $templat['config']);
+        $templateVersion = (int) $templat['version'];
+    }
+
     $configPath = $dir . '/config.json';
     file_put_contents($configPath, json_encode([
         'match_id'        => $matchId,
@@ -282,12 +322,17 @@ function wykonajRender(int $jobId, int $importId, array $import): void
         // ostrzeżenie XG_MODEL, widoczne na ekranie pokrycia.
         'options'         => ['contrast_fix' => true, 'engine_locale' => 'pl_PL', 'xg_model' => true]
             + $opcjeIndeksu,
+        // STEMPEL WERSJI w stopce raportu. NULL przy klubie bez templatu —
+        // wtedy stopki nie ma i wyjście jest bajt w bajt jak przed Sesją 5.
+        'template_version' => $templateVersion,
+        'generated_at'     => Stats::now(),
     ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
 
     $wynik = EngineRunner::build([
         'csv'         => (string) $import['csv_path'],
         'json'        => $import['json_path'] ?: null,
         'config'      => $configPath,
+        'template'    => $templatePath,
         'out_html'    => $reportPath,
         'out_meta'    => $dir . '/meta.json',
         'out_canon'   => $dir . '/canon.json',
@@ -306,16 +351,17 @@ function wykonajRender(int $jobId, int $importId, array $import): void
          * tej wartości nie wywali się na bazie — po prostu zniknie z listy
          * swojego klubu, a to gorsze niż błąd, bo nikt tego nie zauważy.
          *
-         * `template_version` zostaje NULL: templaty wchodzą do generowania
-         * dopiero w Sesji 5. NULL znaczy „raport sprzed ery templatów" i taki
-         * on w tej chwili jest.
+         * `template_version` niesie wersję templatu użytą przy generowaniu
+         * (Sesja 5). NULL znaczy „klub nie ma jeszcze templatu" — raport
+         * powstał wtedy na słowniku domyślnym i profilu kreatora, dokładnie
+         * jak przed tą sesją. To fakt historyczny, nie brak do uzupełnienia.
          */
-        $mecz = Db::one('SELECT club_id FROM matches WHERE id = :id', ['id' => $matchId]);
-        $clubId = $mecz === null ? null : ($mecz['club_id'] ?? null);
+        $clubId = $clubIdTenanta;
 
         Db::run(
-            'INSERT INTO reports (match_id, club_id, html_path, params_json, engine_version, generated_at)
-             VALUES (:mid, :club, :path, :params, :ver, :now)',
+            'INSERT INTO reports (match_id, club_id, html_path, params_json, engine_version,
+                                  template_version, generated_at)
+             VALUES (:mid, :club, :path, :params, :ver, :tplv, :now)',
             [
                 'mid'    => $matchId,
                 'club'   => $clubId,
@@ -323,8 +369,17 @@ function wykonajRender(int $jobId, int $importId, array $import): void
                 'params' => json_encode([
                     'sections' => $meta['sections_available'] ?? [],
                     'job_id'   => $jobId,
+                    /*
+                     * `is_sample` — przykładowy raport z konfiguratora.
+                     * Siedzi w `params_json`, a NIE we własnej kolumnie: to
+                     * wyłącznie oznaczenie dla interfejsu, a nowa kolumna
+                     * znaczyłaby migrację do ręcznego odpalenia na produkcji
+                     * dla flagi, od której nie zależy ani jedna liczba.
+                     */
+                    'is_sample' => !empty($payload['is_sample']),
                 ], JSON_UNESCAPED_UNICODE),
                 'ver'    => $meta['engine_version'] ?? null,
+                'tplv'   => $templateVersion,
                 'now'    => Stats::now(),
             ]
         );

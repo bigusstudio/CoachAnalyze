@@ -161,5 +161,6 @@ $szczegoly = \CoachAnalyze\Clubs::decodeDetails($club['details'] ?? null);
     <h2 class="h2"><?= View::e(View::t('mapping.club.title')) ?></h2>
     <p class="hint"><?= View::e(View::t('club.hub.template_hint', ReportTemplates::currentVersion((int) $club['id']))) ?></p>
     <a class="link" href="/kluby/<?= (int) $club['id'] ?>/mapowania"><?= View::e(View::t('mapping.club.link')) ?></a>
+    <a class="link" href="/klub/<?= (int) $club['id'] ?>/templaty"><?= View::e(View::t('tpl.history.link')) ?></a>
   </section>
 <?php endif; ?>

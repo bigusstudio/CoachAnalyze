@@ -402,6 +402,78 @@ def index_block(index_base, links):
     )
 
 
+# Sekcje raportu -> identyfikatory `<section id="...">` w szablonie.
+#
+# Dwie listy nazw tej samej rzeczy to zawsze ryzyko rozjazdu, wiec mapowanie
+# stoi w JEDNYM miejscu, a test pilnuje, ze pokrywa cale `ALL_SECTIONS`.
+SECTION_DOM_ID = {
+    "bilans": "sec-bilans",
+    "mapy": "sec-mapy",
+    "tl_sbz": "sec-tlsbz",
+    "tl_iii": "sec-tl3",
+    "tl_bilans": "sec-tlm",
+    "duels": "sec-duels",
+    "noteam": "sec-noteam",
+}
+
+
+def drop_sections(html, section_ids):
+    """Usuniecie sekcji z GOTOWEGO HTML-a.
+
+    ┌──────────────────────────────────────────────────────────────────────┐
+    │ PRZEJSCIOWE do S5b — MOSTEK, NIE DOCELOWE ROZWIAZANIE.               │
+    │                                                                      │
+    │ Szablon raportu ma nazwy tagow i etykiety wpisane na sztywno w JS,   │
+    │ wiec nie da sie nim sterowac konfiguracja. Do czasu przepisania go   │
+    │ na wariant sterowany templatem (S5b, wymaga przebazowania wzorca     │
+    │ zlotego i decyzji klienta) sekcje wylaczone w templacie wycinamy     │
+    │ z WYJSCIA, a nie z szablonu.                                         │
+    │                                                                      │
+    │ Ograniczenie jest realne i trzeba je znac: wycinamy sam blok         │
+    │ `<section>`, a JS szablonu nadal liczy dla niego dane i probuje      │
+    │ pisac do nieistniejacych wezlow. Szablon jest na to odporny          │
+    │ (`getElementById` zwraca null i konczy sie cicho), ale to zaleznosc  │
+    │ od cudzej odpornosci, a nie projekt.                                 │
+    └──────────────────────────────────────────────────────────────────────┘
+
+    Zwraca (html, usuniete[]). Pusta lista sekcji zostawia HTML nietkniety.
+    """
+    usuniete = []
+    for sid in section_ids or ():
+        dom_id = SECTION_DOM_ID.get(sid)
+        if not dom_id:
+            continue
+        poczatek = html.find('<section id="{}"'.format(dom_id))
+        if poczatek == -1:
+            continue
+        koniec = html.find("</section>", poczatek)
+        if koniec == -1:
+            continue
+        html = html[:poczatek] + html[koniec + len("</section>"):]
+        usuniete.append(sid)
+    return html, usuniete
+
+
+def stamp_block(template_version, generated_at):
+    """Dyskretna stopka „templat vN · wygenerowano DATA", doklejana przed </body>.
+
+    Odpowiada na pytanie „dlaczego raport z marca pokazuje inna liczbe"
+    (CLAUDE.md §7) bez wchodzenia w tresc raportu. Styl w atrybutach, nie
+    w arkuszu — tak samo jak `index_block`: doklejka nie moze zalezec od klas
+    szablonu ani go modyfikowac.
+    """
+    if template_version is None:
+        return ""
+    import html as html_mod
+    opis = "templat v{}".format(int(template_version))
+    if generated_at:
+        opis += " · wygenerowano {}".format(html_mod.escape(str(generated_at)))
+    return (
+        '<div style="margin:24px 0 8px;text-align:center;font:11px/1.4 system-ui,sans-serif;'
+        'opacity:.45">{}</div>'.format(opis)
+    )
+
+
 def render(frame, palette=None, metrics=None, canon_result=None, config=None, template_path=None):
     """(html, raport). Raport idzie do logu wykonawcy, nigdy do przeglądarki.
 
@@ -425,7 +497,24 @@ def render(frame, palette=None, metrics=None, canon_result=None, config=None, te
         if blok and "</body>" in html:
             html = html.replace("</body>", blok + "\n</body>", 1)
 
+    # Sekcje wylaczone w templacie ALBO niedostepne dla tego eksportu.
+    # Lista przychodzi gotowa z `config.drop_sections` — decyzje „czego brakuje
+    # i dlaczego" podejmuje `coverage.build_sections`, a nie render.
+    #
+    # GENEROWANIE NIGDY NIE PADA Z TEGO POWODU: brak danych na sekcje to stan
+    # normalny (pulapka 3 — III STREFA bywa bez wspolrzednych), a nie awaria.
+    html, sekcje_usuniete = drop_sections(html, (config or {}).get("drop_sections"))
+
+    # Stempel wersji templatu. Bez wersji — bez stopki i bajt w bajt jak dotad.
+    stempel = stamp_block(
+        (config or {}).get("template_version"),
+        (config or {}).get("generated_at"),
+    )
+    if stempel and "</body>" in html:
+        html = html.replace("</body>", stempel + "\n</body>", 1)
+
     return html, {
+        "sections_dropped": sekcje_usuniete,
         "template": template_path or default_template_path(),
         "events": len(data["events"]),
         "bytes": len(html.encode("utf-8")),

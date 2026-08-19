@@ -16,6 +16,8 @@ KLUCZE_META = {
     # klubu (Sesja 3 przebudowy). Klucz DOŁOŻONY, nic nie zostało usunięte:
     # to rozszerzenie kontraktu, nie jego zmiana.
     "dictionary",
+    # `palette` — barwy tablicy kodowej dla konfiguratora (Sesja 5).
+    "palette",
 }
 
 KLUCZE_COVERAGE = {

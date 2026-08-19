@@ -12,6 +12,7 @@ na treści etykiety — to jedyne realne źródło cichych błędów w liczbach.
 
 import json
 
+from . import report_template as tpl
 from . import xg as xg_mod
 
 # Pojęcia bazowe z docs/MODEL_KANONICZNY.md. Nowa etykieta w eksporcie to
@@ -103,7 +104,7 @@ def _norm_team(value):
     return " ".join(str(value).split()).casefold()
 
 
-def build_team_lookup(teams):
+def build_team_lookup(teams, markers=None):
     """{'us': {'name': ..., 'short': ..., 'source_names': [...]}, ...} -> {nazwa: strona}.
 
     Silnik nie odgaduje nazw klubów — dostaje je w konfiguracji (KONTRAKT_CLI.md).
@@ -114,6 +115,18 @@ def build_team_lookup(teams):
     pola każda zmiana zapisu w LiveTag wymagałaby zmiany nazwy klubu w aplikacji.
     """
     lookup = {}
+
+    # MARKERY Z TEMPLATU — napisy oznaczajace „nasza" druzyne w kolumnie `team`
+    # (`team_us_rule.markers`, Sesja 5). Wchodza PIERWSZE, zeby konfiguracja
+    # klubow mogla je nadpisac: nazwa klubu jest konkretniejsza niz marker.
+    #
+    # Tu mieszka korekta literowki MASZA/NASZA dla kolumny druzyny. Jest DANA
+    # TEMPLATU, nie regula wpisana w silnik — kolejny klub moze miec wlasna
+    # literowke i nie wymaga to zmiany kodu.
+    for marker in markers or ():
+        if marker:
+            lookup[_norm_team(marker)] = "us"
+
     for side in ("us", "them"):
         cfg = (teams or {}).get(side) or {}
         for key in ("name", "short"):
@@ -182,7 +195,7 @@ def to_records(events, match_id=None):
     return records
 
 
-def build(frame, mapping_profile=None, teams=None, xg_model=False):
+def build(frame, mapping_profile=None, teams=None, xg_model=False, report_template=None):
     """raw_frame -> {'events': canonical_events[], 'report': {...}}.
 
     Zdarzenia z nierozpoznanym tagiem NIE ZNIKAJĄ: trafiają do wyniku z
@@ -194,9 +207,16 @@ def build(frame, mapping_profile=None, teams=None, xg_model=False):
     odpowiednika wśród pojęć bazowych i celowo pozostaje nierozpoznany do czasu
     decyzji człowieka — zgadywanie pojęcia zmieniłoby liczby w raporcie.
     """
+    # TEMPLAT WYGRYWA Z PROFILEM KREATORA, bo jest nowszy i zostal jawnie
+    # zatwierdzony przez czlowieka w konfiguratorze. Brak templatu (`None`)
+    # zostawia dotychczasowa sciezke nietknieta — patrz report_template.py.
+    z_templatu = tpl.mapping_profile(report_template)
+    if z_templatu is not None:
+        mapping_profile = z_templatu
+
     profile = resolve_profile(mapping_profile)
     tag_rules, label_rules = profile["tags"], profile["labels"]
-    team_lookup = build_team_lookup(teams)
+    team_lookup = build_team_lookup(teams, tpl.team_markers(report_template))
 
     events = []
     unmapped_tags, unmapped_labels, teams_detected, unknown_teams = {}, {}, {}, {}

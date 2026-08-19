@@ -411,6 +411,37 @@ return [
     'conf.save'            => 'Zapisz templat',
     'conf.saved'           => 'Templat v%d zapisany · %d zmiennych (%d kanonicznych) · %d sekcji.',
 
+    // --- podsumowanie po zapisie, przykładowy raport, historia (Sesja 5) ---
+    'conf.done.title'      => 'Templat zapisany',
+    'conf.done.saved'      => 'Templat v%d zapisany',
+    'conf.done.variables'  => 'Zmiennych',
+    'conf.done.canon'      => 'W tym kanonicznych',
+    'conf.done.custom'     => 'Niestandardowych',
+    'conf.done.sections'   => 'Sekcji',
+
+    // UCZCIWA NOTA. Operator ustawił etykiety i barwy — musi wiedzieć, że
+    // jeszcze nie wejdą do raportu, inaczej uzna to za usterkę.
+    'conf.done.partial.title' => 'Etykiety i barwy — jeszcze nie w raporcie',
+    'conf.done.partial.body'  => 'Etykiety wyświetlane i barwy zmiennych wejdą do raportu po aktualizacji szablonu. Szablon ma dziś nazwy tagów wpisane na stałe i nie da się nim sterować templatem; zmiana wymaga osobnej decyzji, bo zmienia wygląd raportu, który klub już zatwierdził.',
+    'conf.done.partial.works' => 'Działa już teraz: sekcje raportu, pojęcia kanoniczne (bindingi) i raport pokrycia templat × eksport.',
+
+    'conf.sample.title'     => 'Przykładowy raport',
+    'conf.sample.hint'      => 'Powstanie z ostatniego importu tego klubu, przez zwykłą kolejkę — wynik zwykle do minuty.',
+    'conf.sample.submit'    => 'Wygeneruj przykładowy raport',
+    'conf.sample.queued'    => 'Przykładowy raport trafił do kolejki.',
+    'conf.sample.no_import' => 'Brak importu z policzonym pokryciem — wgraj eksport, zanim wygenerujesz przykład.',
+
+    'tpl.history.title'   => 'Historia wersji templatu',
+    'tpl.history.crumb'   => 'Historia templatu',
+    'tpl.history.link'    => 'Historia wersji templatu',
+    'tpl.history.hint'    => 'Starsze wersje zostają, ale nie są renderowalne — regeneracja idzie zawsze pod wersję najnowszą. Numer służy do wykrycia, że raport jest starszy niż templat.',
+    'tpl.history.version' => 'Wersja',
+    'tpl.history.when'    => 'Zapisano',
+    'tpl.history.who'     => 'Kto',
+    'tpl.history.current' => 'aktualna',
+    'tpl.history.system'  => 'system',
+    'tpl.history.empty'   => 'Ten klub nie ma jeszcze templatu. Zbuduj go w konfiguratorze.',
+
     'conf.err.import_gone'      => 'Import, na którym stał konfigurator, już nie istnieje. Zacznij od wgrania eksportu.',
     'conf.err.no_variables'     => 'Templat bez zmiennych nie ma czego renderować.',
     'conf.err.no_sections'      => 'Włącz co najmniej jedną sekcję raportu.',

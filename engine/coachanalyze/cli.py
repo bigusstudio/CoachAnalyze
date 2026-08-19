@@ -7,7 +7,7 @@ import argparse
 import json
 import sys
 
-from . import __version__, canon, coverage, metrics, render
+from . import __version__, canon, coverage, metrics, render, report_template
 from .errors import EngineError, MissingColumns
 from .sources.livetag import parse
 
@@ -21,6 +21,9 @@ def build_parser() -> argparse.ArgumentParser:
     b.add_argument("--csv", required=True)
     b.add_argument("--json", dest="json_path")
     b.add_argument("--config", required=True)
+    # Templat raportu klubu (Sesja 5). OPCJONALNY — bez niego pipeline zachowuje
+    # sie dokladnie tak, jak przed ta sesja, co do bajtu w wyjsciu renderu.
+    b.add_argument("--template", dest="template_path")
     b.add_argument("--out-html", required=True)
     b.add_argument("--out-meta", required=True)
     b.add_argument("--out-canon")
@@ -129,13 +132,23 @@ def log_render(report):
 def cmd_build(args) -> int:
     """Pełne przetworzenie: parsowanie, model kanoniczny, metryki, render HTML."""
     config = load_config(args.config)
+    templat = report_template.load(getattr(args, "template_path", None))
     frame = parse.prep_frame(args.csv)
     palette = parse.prep_palette(args.json_path) if args.json_path else None
+
+    # SEKCJE Z TEMPLATU nadpisuja te z konfiguracji zadania. `build_sections`
+    # i tak dolozy powod do kazdej, ktorej dane nie pozwalaja narysowac —
+    # coverage templat x eksport nie jest wiec osobnym mechanizmem, tylko tym
+    # samym, ktoremu podajemy inna liste zyczen.
+    sekcje = report_template.sections_enabled(templat)
+    if sekcje is not None:
+        config = dict(config, sections=sekcje)
 
     canon_result = canon.build(
         frame,
         mapping_profile=config.get("mapping_profile"),
         teams=config.get("teams"),
+        report_template=templat,
         # Model xG — OPT-IN z konfiguracji (M3). Domyślnie wyłączony: sam fakt
         # istnienia modelu nie może zmienić liczby w żadnym raporcie.
         xg_model=bool((config.get("options") or {}).get("xg_model")),
@@ -152,6 +165,18 @@ def cmd_build(args) -> int:
         write_canon(args.out_canon, canon_result, config, len(frame["events"]))
     if args.out_metrics:
         write_json(args.out_metrics, metrics_pack)
+
+    # COVERAGE TEMPLAT x EKSPORT. Sekcja wlaczona w templacie, ale bez danych
+    # w TYM eksporcie, znika z HTML-a i zostaje z powodem w raporcie pokrycia.
+    # Decyzje podejmuje `build_sections` (jedno miejsce), render tylko wykonuje.
+    #
+    # Robimy to WYLACZNIE przy templacie: bez niego wyjscie ma byc bajt w bajt
+    # takie jak dotad, na czym stoi test zloty.
+    if templat is not None:
+        config = dict(
+            config,
+            drop_sections=[s["id"] for s in meta["sections_unavailable"]],
+        )
 
     html, report = render.render(
         frame, palette=palette, metrics=metrics_pack,
