@@ -31,6 +31,20 @@ final class TemplateDiff
     public const NA_STALE = 'na_stale';
 
     /**
+     * Cofnięcie „na stałe" — pozycja wraca do pytania przy następnym imporcie.
+     *
+     * Dostępne WYŁĄCZNIE w trybie rewizji. Na zwykłym ekranie nowych tagów nie
+     * ma czego cofać: pozycje zignorowane na stałe są tam z definicji pominięte,
+     * bo operator poprosił, żeby o nie nie pytać.
+     */
+    public const COFNIJ = 'cofnij';
+
+    /** Stany pozycji w trybie rewizji — do oznaczenia na ekranie. */
+    public const STAN_NOWA     = 'nowa';
+    public const STAN_POMINIETA = 'pominieta';
+    public const STAN_NA_STALE = 'na_stale';
+
+    /**
      * Porównanie słownika importu z templatem i listą zignorowanych.
      *
      * DOPASOWANIE PRZEZ RÓWNOŚĆ PEŁNEJ NAZWY, nigdy przez zawieranie —
@@ -88,6 +102,48 @@ final class TemplateDiff
             'ignorowane' => $pominiete,
             'ma_templat' => $config !== null && ($config['variables'] ?? null) !== null,
         ];
+    }
+
+    /**
+     * Pozycje do REWIZJI MAPOWANIA — wszystko, co nie weszło do templatu.
+     *
+     * ═══════════════════════════════════════════════════════════════════════
+     * CZYM REWIZJA RÓŻNI SIĘ OD ZWYKŁEGO EKRANU NOWYCH TAGÓW.
+     *
+     * Zwykły diff pyta o pozycje, o które jeszcze nie pytał, i świadomie
+     * POMIJA te zignorowane na stałe — o to właśnie prosił operator, klikając
+     * „nie pytaj więcej". Rewizja jest wejściem z drugiej strony: operator sam
+     * przychodzi z ekranu pokrycia, bo zobaczył, że coś wypada z analizy,
+     * i chce to zmienić. Wtedy ukrywanie przed nim własnych decyzji byłoby
+     * dokładnie odwrotnością tego, po co przyszedł.
+     *
+     * Dlatego lista obejmuje OBA zbiory, każdy z widocznym stanem:
+     *   - pominięte w tym imporcie (nic nie zapisano — wrócą przy następnym),
+     *   - zignorowane na stałe (wpis w `club_ignored_tags`, do cofnięcia).
+     *
+     * `$diffDone` rozstrzyga, czy pozycja bez decyzji jest „nowa", czy
+     * „pominięta": jedno i drugie wygląda w bazie tak samo — brakiem wpisu.
+     * Odróżnia je wyłącznie to, czy operator widział już ten ekran.
+     * ═══════════════════════════════════════════════════════════════════════
+     *
+     * @param array{nowe: list<array<string,mixed>>, ignorowane: list<array<string,mixed>>} $diff
+     * @return list<array<string,mixed>>  pozycje z dodanym kluczem `stan`
+     */
+    public static function pozycjeRewizji(array $diff, bool $diffDone): array
+    {
+        $out = [];
+
+        foreach ((array) ($diff['nowe'] ?? []) as $poz) {
+            $poz['stan'] = $diffDone ? self::STAN_POMINIETA : self::STAN_NOWA;
+            $out[] = $poz;
+        }
+
+        foreach ((array) ($diff['ignorowane'] ?? []) as $poz) {
+            $poz['stan'] = self::STAN_NA_STALE;
+            $out[] = $poz;
+        }
+
+        return $out;
     }
 
     /**

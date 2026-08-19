@@ -20,6 +20,7 @@ use CoachAnalyze\View;
  * @var array<string,mixed>|null  $report
  * @var string|null               $notice
  * @var array<string,mixed>|null  $pozaTemplatem  diff wobec templatu (Sesja 6)
+ * @var string|null               $revWersja  wersja templatu podbita w rewizji
  * @var array<string,mixed>|null  $meczMeta
  */
 $liczby = [
@@ -149,6 +150,20 @@ $liczby = [
 
     Bez tej sekcji raport pokrycia sugeruje kompletność, której nie ma.
   */ ?>
+  <?php
+    /*
+     * Adres rewizji mapowania dla pojedynczej pozycji. Chip w tej sekcji ma
+     * prowadzić WPROST do tego taga, a nie do listy, na której trzeba go szukać.
+     *
+     * Rewizja ma sens wyłącznie dla klubu z templatem — bez niego decyzje
+     * o tagach zapadają w kreatorze mapowań i tam kieruje istniejący odsyłacz.
+     */
+    $rewizjaMozliwa = !empty($pozaTemplatem);
+    $adresRewizji = function (string $typ, string $nazwa) use ($import): string {
+        $k = \CoachAnalyze\TemplateDiff::kluczHtml($typ, $nazwa);
+        return '/import/' . (int) $import['id'] . '/diff?rewizja=1&tag=' . $k . '#poz-' . $k;
+    };
+  ?>
   <?php if (($excluded['unrecognised'] ?? []) === [] && ($excluded['ignored'] ?? []) === []): ?>
     <p class="empty"><?= View::e(View::t('coverage.excluded.none')) ?></p>
   <?php else: ?>
@@ -185,10 +200,28 @@ $liczby = [
       <h3 class="h3"><?= View::e(View::t('coverage.excluded.ignored')) ?></h3>
       <p class="tagi">
         <?php foreach ($excluded['ignored'] as $tag): ?>
-          <code class="tag-nazwa tag-nazwa--pominiety"><?= View::e((string) $tag) ?></code>
+          <?php if ($rewizjaMozliwa): ?>
+            <?php /* Chip klikalny — prowadzi do rewizji z fokusem na tym tagu. */ ?>
+            <a class="tag-nazwa tag-nazwa--pominiety"
+               href="<?= View::e($adresRewizji('tag', (string) $tag)) ?>"
+               title="<?= View::e(View::t('rev.chip.hint')) ?>"><?= View::e((string) $tag) ?></a>
+          <?php else: ?>
+            <code class="tag-nazwa tag-nazwa--pominiety"><?= View::e((string) $tag) ?></code>
+          <?php endif; ?>
         <?php endforeach; ?>
       </p>
       <p class="hint"><?= View::e(View::t('coverage.excluded.ignored.hint')) ?></p>
+      <?php if ($rewizjaMozliwa): ?>
+        <?php /* DROGA WYJŚCIA PRZY LIŚCIE, nie do wyszukania w panelu.
+                 Sekcja mówiła dotąd „te zdarzenia nie wchodzą do liczb"
+                 i na tym kończyła — operator musiał sam znaleźć, gdzie to
+                 zmienić. */ ?>
+        <p>
+          <a class="btn btn--ghost" href="/import/<?= (int) $import['id'] ?>/diff?rewizja=1">
+            <?= View::e(View::t('rev.act.open')) ?>
+          </a>
+        </p>
+      <?php endif; ?>
     <?php endif; ?>
   <?php endif; ?>
 </section>
@@ -208,13 +241,10 @@ $liczby = [
       <h3 class="h3"><?= View::e(View::t('diff.new')) ?></h3>
       <p class="tagi">
         <?php foreach ($pozaTemplatem['nowe'] as $poz): ?>
-          <code class="tag-nazwa"><?= View::e((string) $poz['name']) ?></code>
+          <a class="tag-nazwa"
+             href="<?= View::e($adresRewizji((string) $poz['type'], (string) $poz['name'])) ?>"
+             title="<?= View::e(View::t('rev.chip.hint')) ?>"><?= View::e((string) $poz['name']) ?></a>
         <?php endforeach; ?>
-      </p>
-      <p class="hint">
-        <a class="link" href="/import/<?= (int) $import['id'] ?>/diff">
-          <?= View::e(View::t('diff.title')) ?>
-        </a>
       </p>
     <?php endif; ?>
 
@@ -222,12 +252,32 @@ $liczby = [
       <h3 class="h3"><?= View::e(View::t('diff.ignored')) ?></h3>
       <p class="tagi">
         <?php foreach ($pozaTemplatem['ignorowane'] as $poz): ?>
-          <code class="tag-nazwa tag-nazwa--pominiety"><?= View::e((string) $poz['name']) ?></code>
+          <a class="tag-nazwa tag-nazwa--pominiety"
+             href="<?= View::e($adresRewizji((string) $poz['type'], (string) $poz['name'])) ?>"
+             title="<?= View::e(View::t('rev.chip.hint')) ?>"><?= View::e((string) $poz['name']) ?></a>
         <?php endforeach; ?>
       </p>
     <?php endif; ?>
+
+    <p>
+      <a class="btn btn--ghost" href="/import/<?= (int) $import['id'] ?>/diff?rewizja=1">
+        <?= View::e(View::t('rev.act.open')) ?>
+      </a>
+      <span class="hint"><?= View::e(View::t('rev.act.open.hint')) ?></span>
+    </p>
   </section>
 <?php endif; ?>
+
+  <?php if (!empty($revWersja)): ?>
+    <?php /*
+      TEMPLAT WŁAŚNIE URÓSŁ W REWIZJI, a raport dla tego meczu stoi na
+      poprzedniej wersji. Bez tego zdania operator widzi odświeżony podział
+      i uznaje sprawę za załatwioną — a liczby w raporcie zostają stare.
+    */ ?>
+    <p class="notice" role="status">
+      <?= View::e(View::t('rev.regenerate.hint', (int) $revWersja)) ?>
+    </p>
+  <?php endif; ?>
 
   <form method="post" action="/import/<?= (int) $import['id'] ?>/generuj">
     <input type="hidden" name="csrf" value="<?= View::e(Session::csrfToken()) ?>">

@@ -135,6 +135,32 @@ final class IgnoredTags
         Audit::log('club.tag_unignored', $userId, 'club', $clubId, ['id' => $id]);
     }
 
+    /**
+     * Cofnięcie decyzji PO NAZWIE — droga z ekranu rewizji mapowania.
+     *
+     * `forget()` bierze identyfikator wiersza, bo tam operator klika w konkretną
+     * pozycję listy klubu. Rewizja zna wyłącznie typ i nazwę z eksportu i nie ma
+     * powodu ich najpierw rozwiązywać na identyfikator — porównanie jest tu tym
+     * samym porównaniem, co w `has()`: RÓWNOŚĆ PEŁNEJ NAZWY, nigdy zawieranie
+     * (CLAUDE.md §3, pułapka 7).
+     */
+    public static function remove(int $clubId, string $sourceType, string $rawName, int $userId): bool
+    {
+        $usuniete = Db::run(
+            'DELETE FROM club_ignored_tags
+              WHERE club_id = :club AND source_type = :type AND raw_name = :name',
+            ['club' => $clubId, 'type' => self::normalizeType($sourceType), 'name' => $rawName]
+        )->rowCount() > 0;
+
+        if ($usuniete) {
+            Audit::log('club.tag_unignored', $userId, 'club', $clubId, [
+                'source_type' => self::normalizeType($sourceType),
+                'raw_name'    => $rawName,
+            ]);
+        }
+        return $usuniete;
+    }
+
     /** Nieznany typ traktujemy jak tag — kolumna jest ENUM i odrzuciłaby śmieć. */
     private static function normalizeType(string $sourceType): string
     {

@@ -467,6 +467,28 @@ return [
     'diff.saved.version'  => 'Templat zapisany jako wersja %d. Zignorowanych na stałe: %d.',
     'diff.saved.no_version' => 'Templat bez zmian — nic nie dopisano. Zignorowanych na stałe: %d.',
     'diff.required'       => 'W tym imporcie są tagi, o których templat jeszcze nie wie. Zdecyduj o nich przed wygenerowaniem raportu.',
+    // --- rewizja mapowania z ekranu pokrycia ---
+    //
+    // TEN SAM EKRAN CO DIFF, inne wejście: operator przychodzi poprawić własną
+    // wcześniejszą decyzję, więc widzi także pozycje zignorowane na stałe.
+    'rev.title'           => 'Rewizja mapowania',
+    'rev.crumb'           => 'Rewizja mapowania',
+    'rev.lead'            => 'Wszystko, co nie weszło do templatu klubu: pozycje pominięte w tym imporcie i zignorowane na stałe. Przy każdej widać obecny stan i liczbę zdarzeń. Zatwierdzenie tworzy JEDNĄ nową wersję templatu.',
+    'rev.act.open'        => 'Zmień mapowanie',
+    'rev.act.open.hint'   => 'Otwiera ten sam ekran, co przy nowych tagach — tym razem z pozycjami, o których już zdecydowano.',
+    'rev.act.keep'        => 'Zostaw jak jest',
+    'rev.act.undo'        => 'Cofnij „na stałe"',
+    'rev.chip.hint'       => 'Otwórz rewizję mapowania na tej pozycji',
+    'rev.submit'          => 'Zatwierdź rewizję',
+
+    'rev.stan.nowa'       => 'nowa',
+    'rev.stan.pominieta'  => 'pominięta w tym imporcie',
+    'rev.stan.na_stale'   => 'zignorowana na stałe',
+
+    'rev.saved.restored'  => 'Cofnięto „na stałe": %d.',
+    'rev.saved.regenerate' => 'Raport tego meczu nadal stoi na poprzedniej wersji — wygeneruj go ponownie, żeby policzył się z nowym templatem.',
+    'rev.regenerate.hint' => 'Templat klubu ma teraz wersję %d, a raport tego meczu powstał na starszej. Wygeneruj ponownie, żeby zdarzenia z dopisanych tagów weszły do liczb.',
+
     'diff.err.no_club'    => 'Mecz nie ma przypisanego klubu, więc nie ma do czego dopisać templatu.',
 
     'cov.excluded.template' => 'Poza templatem klubu',

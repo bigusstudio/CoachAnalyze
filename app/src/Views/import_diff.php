@@ -19,6 +19,20 @@ use CoachAnalyze\View;
  * @var list<array<string,mixed>> $nowe   z podpowiedziami
  * @var list<string>              $concepts
  * @var list<string>              $qualifiers
+ * @var bool|null                 $rewizja  tryb rewizji mapowania z pokrycia
+ * @var string|null               $fokus    skrót pozycji do wyróżnienia
+ */
+$rewizja = $rewizja ?? false;
+$fokus   = $fokus ?? null;
+
+/*
+ * TEN SAM EKRAN, DWA WEJŚCIA (żadnego drugiego ekranu mapowania).
+ *
+ *   diff     — import przyniósł pozycje, o które jeszcze nie pytaliśmy,
+ *   rewizja  — operator sam przyszedł z pokrycia poprawić wcześniejszą decyzję.
+ *
+ * Różni je zbiór pozycji (rewizja pokazuje też zignorowane na stałe), zestaw
+ * akcji przy pozycji już zignorowanej i teksty. Reszta jest wspólna.
  */
 $znaczniki = [
     Suggester::PEWNA         => 'tag--done',
@@ -26,7 +40,7 @@ $znaczniki = [
     Suggester::ZGADYWANA     => 'tag--older',
 ];
 ?>
-<h1 class="h1"><?= View::e(View::t('diff.title')) ?></h1>
+<h1 class="h1"><?= View::e(View::t($rewizja ? 'rev.title' : 'diff.title')) ?></h1>
 
 <?php if (!empty($error)): ?>
   <p class="alert" role="alert"><?= View::e($error) ?></p>
@@ -49,9 +63,9 @@ $znaczniki = [
   </div>
 </section>
 
-<p class="hint"><?= View::e(View::t('diff.lead')) ?></p>
+<p class="hint"><?= View::e(View::t($rewizja ? 'rev.lead' : 'diff.lead')) ?></p>
 
-<form method="post" action="/import/<?= (int) $import['id'] ?>/diff">
+<form method="post" action="/import/<?= (int) $import['id'] ?>/diff<?= $rewizja ? '?rewizja=1' : '' ?>">
   <input type="hidden" name="csrf" value="<?= View::e(Session::csrfToken()) ?>">
 
   <section class="panel">
@@ -62,10 +76,20 @@ $znaczniki = [
         $dozwolone = $typ === 'label' ? $qualifiers : $concepts;
         $podp = $poz['suggestion'] ?? ['canon' => null, 'confidence' => Suggester::BRAK, 'reason' => null];
       ?>
-      <div class="zmienna">
+      <?php $stan = (string) ($poz['stan'] ?? ''); ?>
+      <?php /* Kotwica pozwala wejść wprost na tag klikniętego chipa
+               z ekranu pokrycia; `is-fokus` wyróżnia go po wejściu. */ ?>
+      <div class="zmienna<?= $fokus === $k ? ' is-fokus' : '' ?>" id="poz-<?= View::e($k) ?>">
         <div class="zmienna__glowa">
           <code class="tag-nazwa"><?= View::e((string) $poz['name']) ?></code>
           <span class="tag"><?= View::e(View::t('conf.src.' . $typ)) ?></span>
+          <?php if ($rewizja && $stan !== ''): ?>
+            <?php /* OBECNY STAN POZYCJI. W rewizji operator musi wiedzieć,
+                     co jest dziś, zanim zdecyduje, co ma być. */ ?>
+            <span class="tag <?= $stan === TemplateDiff::STAN_NA_STALE ? 'tag--older' : '' ?>">
+              <?= View::e(View::t('rev.stan.' . $stan)) ?>
+            </span>
+          <?php endif; ?>
           <span class="muted">
             <?= $poz['count'] === null
                 ? View::e(View::t('common.dash'))
@@ -93,8 +117,10 @@ $znaczniki = [
           </p>
         <?php endif; ?>
 
-        <?php /* TRZY AKCJE. Domyślnie „pomiń w tym imporcie" — decyzja
-                 o dopisaniu do templatu ma być świadoma, nie domyślna. */ ?>
+        <?php /* Domyślnie „zostaw jak jest" — decyzja o dopisaniu do templatu
+                 ma być świadoma, nie domyślna. W rewizji pozycja zignorowana
+                 na stałe dostaje „cofnij" zamiast „zignoruj na stałe":
+                 proponowanie jej tego, co już jest, byłoby akcją bez skutku. */ ?>
         <div class="zmienna__sekcje">
           <label class="field--check">
             <input type="radio" name="decyzja[<?= View::e($k) ?>]"
@@ -104,13 +130,21 @@ $znaczniki = [
           <label class="field--check">
             <input type="radio" name="decyzja[<?= View::e($k) ?>]"
                    value="<?= View::e(TemplateDiff::POMIN) ?>" checked>
-            <span><?= View::e(View::t('diff.act.skip')) ?></span>
+            <span><?= View::e(View::t($rewizja ? 'rev.act.keep' : 'diff.act.skip')) ?></span>
           </label>
-          <label class="field--check">
-            <input type="radio" name="decyzja[<?= View::e($k) ?>]"
-                   value="<?= View::e(TemplateDiff::NA_STALE) ?>">
-            <span><?= View::e(View::t('diff.act.never')) ?></span>
-          </label>
+          <?php if ($rewizja && $stan === TemplateDiff::STAN_NA_STALE): ?>
+            <label class="field--check">
+              <input type="radio" name="decyzja[<?= View::e($k) ?>]"
+                     value="<?= View::e(TemplateDiff::COFNIJ) ?>">
+              <span><?= View::e(View::t('rev.act.undo')) ?></span>
+            </label>
+          <?php else: ?>
+            <label class="field--check">
+              <input type="radio" name="decyzja[<?= View::e($k) ?>]"
+                     value="<?= View::e(TemplateDiff::NA_STALE) ?>">
+              <span><?= View::e(View::t('diff.act.never')) ?></span>
+            </label>
+          <?php endif; ?>
         </div>
 
         <?php /* MINI-EDYTOR — pola działają tylko przy „dodaj do templatu".
@@ -161,7 +195,10 @@ $znaczniki = [
   </section>
 
   <div class="actions">
-    <button class="btn" type="submit"><?= View::e(View::t('diff.submit')) ?></button>
+    <button class="btn" type="submit"><?= View::e(View::t($rewizja ? 'rev.submit' : 'diff.submit')) ?></button>
     <span class="hint"><?= View::e(View::t('diff.submit.hint')) ?></span>
+    <?php if ($rewizja): ?>
+      <a class="link" href="/import/<?= (int) $import['id'] ?>"><?= View::e(View::t('common.back')) ?></a>
+    <?php endif; ?>
   </div>
 </form>

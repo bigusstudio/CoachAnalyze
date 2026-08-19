@@ -1075,3 +1075,10 @@ form.chmurka__zamknij button:hover { color: var(--tekst); }
 @media (prefers-reduced-motion: no-preference) {
   .xg-znacznik { transition: transform 120ms ease-out; }
 }
+
+/* Pozycja wskazana z chipa na ekranie pokrycia — wyróżniona po wejściu,
+   żeby po skoku do kotwicy było widać, o którą chodzi. */
+.zmienna.is-fokus {
+  border-color: var(--akcent);
+  background: var(--info-tlo);
+}

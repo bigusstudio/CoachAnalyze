@@ -1317,6 +1317,9 @@ function showCoverage(int $importId): void
         // pokrycia, który ich nie wymienia, sugeruje kompletność, której nie ma.
         'pozaTemplatem'       => $maTemplat ? configuratorDiff($import, $clubId) : null,
         'meczMeta'            => $mecz,
+        // Wersja templatu podbita właśnie w rewizji — ekran podpowiada wtedy
+        // przy „Generuj ponownie", że raport policzy się po nowemu (Sesja 7).
+        'revWersja'           => Session::flash('rev_wersja'),
         'notice'              => Session::flash('notice'),
     ]);
 }
@@ -3285,19 +3288,49 @@ function showTemplateDiff(int $importId): void
 
     $diff = configuratorDiff($import, $clubId);
 
-    if ($diff['nowe'] === []) {
+    /*
+     * TRYB REWIZJI — to samo wejście, szerszy zbiór pozycji.
+     *
+     * Operator przychodzi tu z ekranu pokrycia, bo zobaczył, że coś wypada
+     * z analizy. Wtedy pokazujemy TAKŻE pozycje zignorowane na stałe — na
+     * zwykłym ekranie nowych tagów są celowo pominięte, bo o to prosił.
+     *
+     * ŻADNEGO DRUGIEGO EKRANU MAPOWANIA: ta sama trasa, ten sam widok, ten sam
+     * zapis. Drugi ekran pytający o to samo znaczyłby dwa miejsca, w których
+     * zapadają decyzje o liczbach, i dwie okazje, żeby się rozjechały.
+     */
+    $rewizja = isset($_GET['rewizja']);
+
+    $pozycje = $rewizja
+        ? \CoachAnalyze\TemplateDiff::pozycjeRewizji($diff, !empty($import['diff_done_at']))
+        : $diff['nowe'];
+
+    // Poza rewizją pusty ekran nie ma po co istnieć — ekran pytający o nic
+    // uczy klikać „dalej" bez czytania.
+    if ($pozycje === []) {
         redirect('/import/' . $importId);
     }
 
+    /*
+     * FOKUS NA TAGU — z kliknięcia w chip na ekranie pokrycia. Wartość jest
+     * skrótem pozycji, nie nazwą; przepuszczamy wyłącznie kształt skrótu
+     * i sprawdzamy go wobec pozycji, które faktycznie pokazujemy.
+     */
+    $fokus = isset($_GET['tag']) && preg_match('/^[a-f0-9]{16}$/', (string) $_GET['tag']) === 1
+        ? (string) $_GET['tag']
+        : null;
+
     View::page('import_diff', [
-        'title'      => View::t('diff.title'),
+        'title'      => View::t($rewizja ? 'rev.title' : 'diff.title'),
         'active'     => 'clubs',
         'club'       => $tenant,
-        'crumb'      => View::t('diff.crumb'),
+        'crumb'      => View::t($rewizja ? 'rev.crumb' : 'diff.crumb'),
         'import'     => $import,
         'diff'       => $diff,
+        'rewizja'    => $rewizja,
+        'fokus'      => $fokus,
         'nowe'       => \CoachAnalyze\TemplateDiff::zPodpowiedziami(
-            $diff['nowe'], new \CoachAnalyze\HeuristicSuggester(), $clubId
+            $pozycje, new \CoachAnalyze\HeuristicSuggester(), $clubId
         ),
         'concepts'   => \CoachAnalyze\Mappings::POJECIA,
         'qualifiers' => \CoachAnalyze\Mappings::KWALIFIKATORY,
@@ -3353,13 +3386,20 @@ function saveTemplateDiff(int $importId, int $userId): void
 
     $diff = configuratorDiff($import, $clubId);
 
+    // Ten sam zapis obsługuje zwykły diff i rewizję — różni je wyłącznie zbiór
+    // pozycji, o które wolno decydować.
+    $rewizja = isset($_GET['rewizja']);
+    $pozycje = $rewizja
+        ? \CoachAnalyze\TemplateDiff::pozycjeRewizji($diff, !empty($import['diff_done_at']))
+        : $diff['nowe'];
+
     /*
      * MAPA KLUCZY BUDOWANA Z POZYCJI, KTÓRE WŁAŚNIE POKAZALIŚMY, nigdy
      * z żądania. Decyzja może więc dotyczyć wyłącznie pozycji faktycznie
      * obecnej w tym imporcie — podmiana pola w przeglądarce nie pozwala
      * dopisać do templatu tagu, którego w eksporcie nie było.
      */
-    $mapa = \CoachAnalyze\TemplateDiff::mapaKluczy($diff['nowe']);
+    $mapa = \CoachAnalyze\TemplateDiff::mapaKluczy($pozycje);
 
     $decyzje = [];
     $pola = [];
@@ -3379,12 +3419,37 @@ function saveTemplateDiff(int $importId, int $userId): void
 
     // „Zignoruj na stałe" NIE podbija wersji templatu — to nie jest zmiana
     // definicji raportu, tylko decyzja „nie pytaj mnie więcej o ten tag".
+    // Tak samo jej cofnięcie.
     $naStale = 0;
-    foreach ($diff['nowe'] as $poz) {
-        $klucz = \CoachAnalyze\TemplateDiff::klucz((string) $poz['type'], (string) $poz['name']);
-        if (($decyzje[$klucz] ?? '') === \CoachAnalyze\TemplateDiff::NA_STALE) {
-            \CoachAnalyze\IgnoredTags::add($clubId, (string) $poz['type'], (string) $poz['name'], $userId);
-            $naStale++;
+    $cofniete = 0;
+    foreach ($pozycje as $poz) {
+        $typ = (string) $poz['type'];
+        $nazwa = (string) $poz['name'];
+        $klucz = \CoachAnalyze\TemplateDiff::klucz($typ, $nazwa);
+
+        switch ($decyzje[$klucz] ?? '') {
+            case \CoachAnalyze\TemplateDiff::NA_STALE:
+                \CoachAnalyze\IgnoredTags::add($clubId, $typ, $nazwa, $userId);
+                $naStale++;
+                break;
+
+            case \CoachAnalyze\TemplateDiff::COFNIJ:
+                if (\CoachAnalyze\IgnoredTags::remove($clubId, $typ, $nazwa, $userId)) {
+                    $cofniete++;
+                }
+                break;
+
+            case \CoachAnalyze\TemplateDiff::DODAJ:
+                /*
+                 * Pozycja dopisana do templatu NIE MOŻE zostać na liście
+                 * zignorowanych. Sam templat wygrywa przy porównaniu
+                 * (`TemplateDiff::policz()` sprawdza go pierwszy), więc błędu
+                 * w liczbach by nie było — ale wpis zostałby jako sprzeczny
+                 * ślad decyzji i przy pierwszym usunięciu zmiennej z templatu
+                 * tag zniknąłby z analizy bez pytania.
+                 */
+                \CoachAnalyze\IgnoredTags::remove($clubId, $typ, $nazwa, $userId);
+                break;
         }
     }
 
@@ -3395,14 +3460,14 @@ function saveTemplateDiff(int $importId, int $userId): void
             ? \CoachAnalyze\ReportTemplates::decodeConfig($templat['config'])
             : \CoachAnalyze\Configurator::config([], \CoachAnalyze\Configurator::SEKCJE);
 
-        $nowy = \CoachAnalyze\TemplateDiff::nowyConfig($config, $diff['nowe'], $decyzje, $pola);
+        $nowy = \CoachAnalyze\TemplateDiff::nowyConfig($config, $pozycje, $decyzje, $pola);
 
         $bledy = \CoachAnalyze\Configurator::bledyConfigu($nowy);
         if ($bledy !== []) {
             Session::flash('error', implode(' ', array_map(
                 static fn(string $k): string => View::t($k), $bledy
             )));
-            redirect('/import/' . $importId . '/diff');
+            redirect('/import/' . $importId . '/diff' . ($rewizja ? '?rewizja=1' : ''));
         }
 
         $wersja = \CoachAnalyze\ReportTemplates::saveNewVersion($clubId, $nowy, $userId);
@@ -3412,9 +3477,31 @@ function saveTemplateDiff(int $importId, int $userId): void
     // a wrócić da się odsyłaczem z sekcji „Poza templatem klubu".
     Imports::markDiffDone($importId);
 
-    Session::flash('notice', $wersja !== null
+    /*
+     * PODPOWIEDŹ O PRZELICZENIU — tylko po rewizji i tylko gdy templat urósł.
+     *
+     * Rewizja jest z definicji poprawką po fakcie: raport dla tego meczu
+     * zwykle już istnieje i stoi na POPRZEDNIEJ wersji templatu. Bez tego
+     * zdania operator zobaczyłby odświeżony podział na ekranie pokrycia
+     * i uznał, że sprawa załatwiona — a raport nadal liczyłby po staremu.
+     */
+    $komunikat = $wersja !== null
         ? View::t('diff.saved.version', $wersja, $naStale)
-        : View::t('diff.saved.no_version', $naStale));
+        : View::t('diff.saved.no_version', $naStale);
+
+    if ($rewizja && $cofniete > 0) {
+        $komunikat .= ' ' . View::t('rev.saved.restored', $cofniete);
+    }
+    if ($rewizja && $wersja !== null) {
+        $komunikat .= ' ' . View::t('rev.saved.regenerate');
+    }
+
+    Session::flash('notice', $komunikat);
+    // Znacznik „templat urósł w rewizji" — ekran pokrycia podświetla dzięki
+    // niemu przycisk generowania zamiast zostawiać go wśród innych akcji.
+    if ($rewizja && $wersja !== null) {
+        Session::flash('rev_wersja', (string) $wersja);
+    }
 
     redirect('/import/' . $importId);
 }
