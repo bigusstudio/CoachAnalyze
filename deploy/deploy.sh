@@ -324,7 +324,7 @@ NAGLOWKI=$(curl -sI --max-time 15 "https://app.coachanalyze.pl/login" || echo ""
 # wydłuża okno, w którym awaria certyfikatu blokuje panel, a tego nie da się
 # cofnąć wdrożeniem, tylko czekaniem.
 for para in "X-Frame-Options=DENY" "Referrer-Policy=no-referrer" \
-            "X-Content-Type-Options=nosniff" "Strict-Transport-Security=max-age=86400"; do
+            "X-Content-Type-Options=nosniff" "Strict-Transport-Security=max-age=31536000"; do
   nazwa=${para%%=*}
   wartosc=${para#*=}
   if printf '%s' "$NAGLOWKI" | grep -qiE "^${nazwa}:[[:space:]]*${wartosc}[[:space:]]*$"; then

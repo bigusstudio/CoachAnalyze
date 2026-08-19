@@ -91,15 +91,21 @@ Options -Indexes -MultiViews
   # bardziej jednokierunkowy: wpis na listę wbudowaną w przeglądarki wychodzi
   # miesiącami i nie da się go cofnąć wdrożeniem.
   #
-  # `max-age=86400` (doba), nie rok. Przy pierwszym włączeniu HSTS-a to jest
-  # okno wycofania: gdyby certyfikat albo przekierowanie się posypało, błąd
-  # sam wygasa po dobie, zamiast blokować dostęp do panelu na rok. Podniesienie
-  # wartości to osobna decyzja, do podjęcia po kilku spokojnych tygodniach.
+  # `max-age=31536000` (rok). Podniesione z doby przy wdrożeniu Sesji 5.
+  #
+  # Doba była oknem wycofania przy PIERWSZYM włączeniu HSTS-a: gdyby certyfikat
+  # albo przekierowanie się posypało, błąd wygasał sam, zamiast blokować panel
+  # na rok. Po kilku spokojnych tygodniach i kontroli nagłówka przy każdym
+  # wdrożeniu (deploy.sh) okno przestało być potrzebne.
+  #
+  # UWAGA: tej wartości NIE DA SIĘ cofnąć wdrożeniem. Przeglądarka, która raz
+  # zobaczyła rok, trzyma go u siebie — obniżenie zadziała dopiero przy jej
+  # kolejnej wizycie, a dla nieodwiedzających wcale.
   #
   # Nagłówek wysyłany także po HTTP jest przez przeglądarki IGNOROWANY (tak mówi
   # RFC 6797) — nie ma tu czego warunkować, a `always` gwarantuje go również
   # przy odpowiedziach błędu.
-  Header always set Strict-Transport-Security "max-age=86400"
+  Header always set Strict-Transport-Security "max-age=31536000"
   # Raporty publiczne: bez indeksowania przez wyszukiwarki. Adres jest jedynym
   # zabezpieczeniem raportu, a odnośnik w wynikach szukania znosi je w całości.
   <If "%{REQUEST_URI} =~ m#^/r/#">

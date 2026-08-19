@@ -322,24 +322,30 @@ wymagają silnika albo generowania:
    z datą, bez diffa). Dane są — `ReportTemplates::history()` istnieje od
    Sesji 1 — brakuje ekranu. Naturalnie razem z badge'em wersji z Sesji 7.
 
-### PUNKT OPERACYJNY — przy deployu Sesji 5: podbić HSTS
+### PUNKT OPERACYJNY — HSTS podbity ✅ WYKONANE 2026-08-19
 
-**Podbić `Strict-Transport-Security` z `max-age=86400` na `max-age=31536000`
-(doba → rok).**
+**`Strict-Transport-Security` podniesiony z `max-age=86400` na `max-age=31536000`
+(doba → rok).** Zrobione wraz z wdrożeniem Sesji 5, we wszystkich czterech
+miejscach naraz. Sekcja zostaje jako zapis decyzji i jej powodu.
+
+> **TEJ WARTOŚCI NIE DA SIĘ COFNĄĆ WDROŻENIEM.** Przeglądarka, która raz
+> zobaczyła rok, trzyma go u siebie — obniżenie zadziała dopiero przy jej
+> kolejnej wizycie, a dla nieodwiedzających wcale. Gdyby certyfikat się
+> posypał, jedyną drogą jest jego naprawa, nie zmiana nagłówka.
 
 To nie jest zadanie programistyczne, tylko krok wdrożeniowy — dlatego stoi
 osobno, a nie wśród punktów 6–8.
 
-**Dlaczego dopiero teraz.** Doba została wybrana świadomie przy włączaniu HSTS
+**Dlaczego dopiero wtedy.** Doba została wybrana świadomie przy włączaniu HSTS
 jako **okno wycofania**: gdyby certyfikat albo przekierowanie na HTTPS się
 posypało, błąd sam wygasa po dobie zamiast blokować panel na rok. Do wdrożenia
 Sesji 5 HTTPS ma za sobą kilka spokojnych tygodni i kontrolę po każdym deployu,
 więc okno przestaje być potrzebne.
 
-**Cztery miejsca niosą tę wartość — wszystkie muszą pójść razem**, inaczej
-kontrola po wdrożeniu zapali się na czerwono albo, gorzej, przepuści rozjazd:
+**Cztery miejsca niosły tę wartość i wszystkie poszły razem** — inaczej
+kontrola po wdrożeniu zapaliłaby się na czerwono albo, gorzej, przepuściła rozjazd:
 
-| Plik | Co zmienić |
+| Plik | Co zostało zmienione |
 |---|---|
 | `app/public/.htaccess` | reguła `Header always set Strict-Transport-Security "max-age=86400"` |
 | `app/public/.htaccess` | **komentarz nad nią** — uzasadnia dobę jako okno wycofania i po zmianie przeczyłby regule |

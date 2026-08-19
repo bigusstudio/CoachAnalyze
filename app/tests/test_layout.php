@@ -384,9 +384,9 @@ if (is_file($htaccessPath)) {
      * dla reguły zakomentowanej — dokładnie ten błąd, przez który powstała
      * kontrola przekierowania HTTPS wyżej.
      */
-    check('HSTS ustawiony z max-age=86400',
-        preg_match('/^Header\s+always\s+set\s+Strict-Transport-Security\s+"max-age=86400"\s*$/m', $czynne) === 1,
-        'nagłówka nie ma albo ma inną wartość niż uzgodniona doba');
+    check('HSTS ustawiony z max-age=31536000',
+        preg_match('/^Header\s+always\s+set\s+Strict-Transport-Security\s+"max-age=31536000"\s*$/m', $czynne) === 1,
+        'nagłówka nie ma albo ma inną wartość niż uzgodniony rok');
 
     /*
      * BRAK `includeSubDomains` I `preload` JEST DECYZJĄ, NIE PRZEOCZENIEM.
@@ -556,7 +556,7 @@ if (is_file($deployPath)) {
     // HSTS ma być sprawdzany NA ŻYWO razem z resztą: reguła w repozytorium
     // niczego nie gwarantuje, jeśli hosting nie ma `mod_headers`.
     check('kontroluje HSTS po wdrożeniu',
-        str_contains($polecenia, 'Strict-Transport-Security=max-age=86400'),
+        str_contains($polecenia, 'Strict-Transport-Security=max-age=31536000'),
         'obecność reguły w pliku to nie to samo co nagłówek w odpowiedzi');
 
     /*
