@@ -3,6 +3,45 @@
 Format: [wersja silnika] — data — opis.
 Każda zmiana, która modyfikuje wyjście silnika, MUSI mieć tu wpis wraz z powodem.
 
+## [0.10.0] — 2026-08-19
+### `meta.json`: pełny słownik eksportu (`dictionary`)
+Konfigurator raportu klubu (Sesja 3 przebudowy) buduje templat z pierwszego importu
+i potrzebuje KOMPLETNEJ listy tego, co w pliku jest. `unmapped_tags` do tego nie
+wystarcza — niesie wyłącznie pozycje, których silnik NIE rozpoznał. `inspect` nie
+dostaje profilu klubu, więc tagi z domyślnego słownika (`STRZAŁ`, `ZDOBYCIE SBZ`,
+`III STREFA`, `STRATA`, `ODBIÓR`…) są rozpoznawane i z tamtej listy znikają.
+Na eksporcie referencyjnym to **9 z 11 tagów** — konfigurator pokazywałby prawie
+pustą listę dokładnie wtedy, gdy operator buduje z niej templat.
+
+- `meta.dictionary.tags`: `[{ "tag", "count", "samples" }]`
+- `meta.dictionary.labels`: `[{ "label", "count", "samples" }]`
+- `samples` niosą wyłącznie `b`, `team`, `labels` — najwyżej trzy na pozycję.
+  Bez współrzędnych, komentarza i xG: próbka ma odpowiedzieć „co to za tag",
+  a nie odtwarzać przebieg meczu.
+- Kolejność deterministyczna: malejąco po `count`, remisy alfabetycznie.
+
+Blok jest **czysto addytywny** — agregacja po zdarzeniach już sparsowanych, żadna
+wartość w `coverage`, w metrykach ani w renderze się nie zmienia. Wyjście testu
+złotego bez zmian.
+
+### Naprawa: `parse_xg` przewracał import na komentarzu bez liczby
+Wzorzec `([\d,\.]+)` dopasowywał także sam przecinek. `comment` jest polem
+swobodnym, więc „zmiana, potem strzał" — zwyczajny wpis trenera — dawał
+`float(".")` i `ValueError`, który kładł CAŁY import. Operator widział komunikat
+o konwersji na liczbę, z którego nie wynikało nic o przecinku w komentarzu.
+
+- Wzorzec `([\d,\.]*\d[\d,\.]*)` wymaga co najmniej jednej cyfry. Cyfra jest
+  wymagana W ŚRODKU, nie na początku: zapis `.5` parsował się dotąd na 0.5
+  i parsuje się dalej. `(\d[\d,\.]*)` zmieniłoby to po cichu na 5.0.
+- Dopasowanie, którego `float()` nie przyjmie (np. „1,2,3"), daje `None` zamiast
+  wyjątku i jest ZLICZANE: nowy `coverage.xg_unparsed` + ostrzeżenie
+  `XG_NIECZYTELNE`. Liczone osobno od `xg_missing`, bo „strzał bez xG"
+  i „xG było, ale zepsute" to dwie różne rzeczy dla analityka.
+- Komentarz bez ani jednej cyfry nie jest liczony — to opis, nie zepsute xG.
+
+Wyjście na eksporcie referencyjnym bez zmian: `xg_parsed` 29, `xg_sum` 4,4,
+`xg_missing` 0, nowy `xg_unparsed` 0. Test złoty zielony przed i po.
+
 ## [0.9.0] — 2026-08-11
 ### `meta.json`: liczby wystąpień nierozpoznanych tagów i etykiety towarzyszące
 Kreator mapowań pokazywał „—" zamiast liczby wystąpień, bo `inspect` zwracał same nazwy —
