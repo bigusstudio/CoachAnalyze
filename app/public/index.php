@@ -189,6 +189,40 @@ if ($path === '/powiadomienia/nowe') {
     exit;
 }
 
+/*
+ * WSKAŹNIK PRACY — stan zadania i stan partii przeliczeń.
+ *
+ * TA SAMA REGUŁA CO WYŻEJ i z tego samego powodu: `Auth::requireLogin()`
+ * przekierowuje na `/login`, a `fetch()` wykonałby to przekierowanie po cichu
+ * i skrypt dostałby stronę logowania jako „odpowiedź JSON". Brak sesji daje
+ * **404**, nie 401 ani 302 — 401 na istniejącej trasie potwierdza, że trasa
+ * istnieje.
+ *
+ * Punkty zwracają WYŁĄCZNIE DANE. Skrypt buduje z nich elementy przez
+ * `textContent`, tak samo jak przy chmurkach (CLAUDE.md §9).
+ */
+if (preg_match('#^/zadania/(\d+)/stan$#', $path, $m) === 1) {
+    if ($method !== 'GET' || Session::userId() === null) {
+        http_response_code(404);
+        header('Content-Type: text/plain; charset=utf-8');
+        echo 'Nie znaleziono.';
+        exit;
+    }
+    jobStatusFeed((int) $m[1]);
+    exit;
+}
+
+if (preg_match('#^/partia/([0-9a-f]{16})/stan$#', $path, $m) === 1) {
+    if ($method !== 'GET' || Session::userId() === null) {
+        http_response_code(404);
+        header('Content-Type: text/plain; charset=utf-8');
+        echo 'Nie znaleziono.';
+        exit;
+    }
+    batchStatusFeed($m[1]);
+    exit;
+}
+
 // --- od tego miejsca wszystko wymaga zalogowania --------------------------
 $user = Auth::requireLogin();
 
@@ -1783,6 +1817,41 @@ function notificationsFeed(int $userId): void
         // podejmuje klient — serwer mówi tylko, czy coś się dzieje.
         'working' => Notifications::hasActiveWork($userId),
     ], JSON_UNESCAPED_UNICODE);
+}
+
+/**
+ * Stan jednego zadania — dla wskaźnika pracy.
+ *
+ * Nagłówki jak przy chmurkach: bez buforowania i bez zgadywania typu treści.
+ * Odpowiedź jest krótka i ma być czytana co kilka sekund.
+ */
+function jobStatusFeed(int $jobId): void
+{
+    $stan = \CoachAnalyze\Jobs::publicStatus($jobId);
+
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-store');
+    header('X-Content-Type-Options: nosniff');
+
+    if ($stan === null) {
+        // Nieistniejące zadanie to 404, żeby skrypt przestał pytać, zamiast
+        // wracać co kilka sekund pod adres, pod którym nic nie ma.
+        http_response_code(404);
+        echo json_encode(['error' => 'not_found'], JSON_UNESCAPED_UNICODE);
+        return;
+    }
+
+    echo json_encode($stan, JSON_UNESCAPED_UNICODE);
+}
+
+/** Stan partii zbiorczego przeliczenia — licznik X/N i błędy per mecz. */
+function batchStatusFeed(string $batch): void
+{
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-store');
+    header('X-Content-Type-Options: nosniff');
+
+    echo json_encode(\CoachAnalyze\Rebuilds::batchStatus($batch), JSON_UNESCAPED_UNICODE);
 }
 
 /** Lista kont wraz z rolami i stanem. */

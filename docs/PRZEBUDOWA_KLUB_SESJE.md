@@ -656,22 +656,22 @@ przeżył zadania.
   świadomie i z migracją. Wraz z nią trzeba zaplanować sprzątanie porzuconych
   draftów; bez tego zostają w bazie na zawsze.
 
-- **Wskaźnik postępu partii przeliczeń bez odświeżania strony.** Ekran
-  `/klub/{id}/przelicz` odświeża się dziś przez `<meta http-equiv="refresh">`
-  co 10 s, dopóki coś w partii pracuje — tak samo jak ekran zadania i bez ani
-  jednej linii skryptu (CLAUDE.md §9).
+- ~~**Wskaźnik postępu partii przeliczeń bez odświeżania strony.**~~ **ZROBIONE**
+  (zadanie „wskaźnik pracy kolejki"). Jeden komponent obsługuje wszystkie
+  oczekiwania: generowanie po imporcie, przykładowy raport z konfiguratora,
+  przeliczenie pojedyncze i zbiorcze. Renderuje go serwer
+  (`app/src/Views/wskaznik.php`), a skrypt — nadal ten jeden, dopisany do
+  `powiadomienia.js` — odpytuje `/zadania/{id}/stan` i `/partia/{batch}/stan`.
 
-  **Nota do tego zadania (odroczone z Sesji 7):** `Notifications::hasActiveWork()`
-  liczy wyłącznie `matches.status IN ('queued','running')`, a przeliczenie
-  świadomie NIE rusza stanu meczu — mecz ma sprawny raport i ma zostać `done`.
-  Skutek: podczas przeliczania chmurki nie skracają odstępu odpytywania, więc
-  toast „Raport przeliczony" przychodzi do minuty zamiast do pięciu sekund.
-  Żeby to naprawić, trzeba dojść do `owner_id` zadania typu `rebuild_report`,
-  a ono ma w `payload_json` tylko `report_id`/`match_id` — czyli albo złączenie
-  przez `match_id` do `matches.owner_id` w zapytaniu `hasActiveWork()`, albo
-  dopisanie `owner_id` do ładunku przy kolejkowaniu (`Rebuilds::queue()`).
-  Drugie jest tańsze w odczycie, pierwsze nie duplikuje danych — decyzja należy
-  do tego zadania, nie do Sesji 7.
+  **Nota o `owner_id` rozstrzygnięta.** `Notifications::hasActiveWork()` liczyło
+  wyłącznie `matches.status`, a przeliczenie świadomie nie rusza stanu meczu.
+  Wybrano **dopisanie `owner_id` do ładunku** w `Rebuilds::queue()`: złączenie
+  przez `match_id` wymagałoby w zapytaniu funkcji JSON-owych SQL-a, a te różnią
+  się między MariaDB a SQLite (testy chodzą na drugim) — czyli zapytanie
+  działające na produkcji i wywracające się w CI. Zadania zakolejkowane przed
+  wdrożeniem tej zmiany nie mają tej wartości i po prostu nie przyspieszą
+  odpytywania; przy kilku pozycjach w kolejce to nie jest warte ścieżki
+  zapasowej.
 
 - **Klonowanie templatu** przy tworzeniu klubu („zacznij od templatu klubu X" / templat systemowy) — tanie, mocne przy demo sprzedażowym.
 - **Krok „test na drugim meczu"** w konfiguratorze — po zapisie v1 zachęta do wgrania drugiego eksportu dla walidacji pokrycia.

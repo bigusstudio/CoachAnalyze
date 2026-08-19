@@ -151,9 +151,17 @@ Teksty UI trzymamy w jednym miejscu (`app/src/lang/pl.php`), nie w szablonach �
 Panel powstał bez ani jednego skryptu i ta zasada obowiązuje dalej. **Raportu nie dotyczy
 żaden wyjątek**: szablon jest samowystarczalnym HTML-em i to jest cecha, nie brak (§8).
 
-Zatwierdzony wyjątek dotyczy **wyłącznie chmurek powiadomień**. Powód jest funkcjonalny:
-powiadomienie o gotowym raporcie, które pojawia się dopiero przy następnym przeładowaniu
-strony, nie jest powiadomieniem. Reszta panelu skryptu nie używa i nie ma używać.
+Zatwierdzony wyjątek dotyczy **informowania o pracy, która dzieje się w tle** — i niczego
+poza tym. Obejmuje dwie rzeczy, obsługiwane przez TEN SAM jeden plik:
+
+1. **Chmurki powiadomień.** Powiadomienie o gotowym raporcie, które pojawia się dopiero
+   przy następnym przeładowaniu strony, nie jest powiadomieniem.
+2. **Wskaźnik pracy kolejki** (dodany razem z regeneracją raportów). Operacje idą przez
+   crona i trwają od kilkunastu sekund do kilku minut; ekran, który tego nie pokazuje,
+   każe zgadywać, czy cokolwiek się dzieje.
+
+Reszta panelu skryptu nie używa i nie ma używać. **Rozszerzenie tej listy wymaga
+osobnego uzgodnienia** — tak jak wymagało go dopisanie punktu drugiego.
 
 ### Granice wyjątku — nienegocjowalne
 
@@ -161,14 +169,37 @@ strony, nie jest powiadomieniem. Reszta panelu skryptu nie używa i nie ma używ
 |---|---|
 | **Jeden plik**, `app/public/assets/powiadomienia.js`, ładowany na końcu z `defer` | Drugi plik znaczy, że wyjątek się rozlał i „panel bez JS" przestaje być prawdą |
 | **Zero zależności zewnętrznych** | Ta sama zasada, która wyrzuciła `pandas` z silnika i PECL-owy `redis` z PHP |
-| **Panel musi działać bez skryptu** | Chmurki renderuje serwer (`layout.php`); przy wyłączonym JS pokazują się przy przeładowaniu, licznik działa jak dotąd. Skrypt **przyspiesza**, nie warunkuje |
+| **Panel musi działać bez skryptu** | Chmurki renderuje serwer (`layout.php`), wskaźnik pracy też (`Views/wskaznik.php`), a odświeżanie robi `<meta http-equiv="refresh">`. Skrypt **przyspiesza**, nie warunkuje |
+| **Stan końcowy renderuje SERWER** | Skrypt, gdy zobaczy „Gotowe"/„Błąd", przechodzi do wyniku albo przeładowuje stronę — nie buduje komunikatu błędu ani przycisku „Ponów". Drugi renderer stanu końcowego to drugie miejsce, w którym prawda może się rozjechać |
+| **Żadnych wymyślonych procentów** | Postępu renderu nie znamy. Etapy są dyskretne („W kolejce → Przetwarzanie → Gotowe/Błąd") i każdy z nich jest prawdziwy; pasek stojący na 87% kłamie bardziej niż jego brak |
+| **Zero polskich zdań w skrypcie** | Teksty idą z `pl.php` przez HTML i `data-*`. Skrypt przełącza klasy, odsłania gotowe akapity i wstawia liczby — wersja anglojęzyczna nie ma wymagać ruszania kodu |
 | **Żadnego HTML-a z serwera do wstrzyknięcia** | Punkt końcowy zwraca dane; skrypt buduje elementy przez `createElement` i `textContent`. `innerHTML` jest zakazane — tytuł powiadomienia zawiera nazwy klubów, czyli tekst od użytkownika |
-| **Odpytywanie musi być miarkowane** | Karta w tle → zero żądań (Page Visibility); cisza → odstęp rośnie do minuty; zadanie w toku → wraca do 5 s. Bez hamulców otwarta karta to ponad 17 tys. żądań na dobę |
+| **Odpytywanie musi być miarkowane** | Karta w tle → zero żądań (Page Visibility); cisza → odstęp rośnie do minuty; zadanie w toku → wraca do 5 s. Bez hamulców otwarta karta to ponad 17 tys. żądań na dobę. Wskaźnik pyta co 4 s, ale **sam się wyłącza**, gdy zadanie się skończy — żyje tylko tyle, co praca, którą pokazuje |
 | **Brak sesji → 404, nigdy 401** | 401 na istniejącej trasie potwierdza, że trasa istnieje |
 | **Barwy wyłącznie przez zmienne CSS** | Jak w całym arkuszu — ani jednej wartości szesnastkowej poza definicją motywu |
 
-Pilnuje tego `app/tests/test_chmurki.php` (32 asercje, wpięty w CI). Test sprawdza też,
-że skrypt nie pojawił się w szablonie raportu.
+Pilnuje tego `app/tests/test_chmurki.php` (48 asercji, wpięty w CI). Test sprawdza też,
+że skrypt nie pojawił się w szablonie raportu, i porównuje kod skryptu z `pl.php` —
+tekst interfejsu wpisany w JavaScript zapala się na czerwono.
+
+Przelot HTTP obu ścieżek: `app/tests/integracja/test_wskaznik_http.php`.
+
+### Punkty końcowe wskaźnika pracy
+
+`GET /zadania/{id}/stan` → JSON: `stage` (`queued`/`processing`/`done`/`failed`),
+`elapsed` (sekundy, **liczone przez serwer** — zegar przeglądarki bywa przestawiony
+o godziny), `slow`, `started_at`, `finished_at`, `error`, `result_url`, `can_retry`.
+
+`GET /partia/{batch}/stan` → JSON: `total`, `done`, `failed`, `working`, `finished`,
+`errors[]` (mecz, powód, odnośnik do zadania) — zbiorcze przeliczenie raportów.
+
+Obie trasy obsługiwane **przed** `Auth::requireLogin()` i z 404 przy braku sesji —
+z tego samego powodu co punkt chmurek.
+
+**Timeout uczciwości:** po `Jobs::PROG_WOLNO` (180 s) w kolejce wskaźnik mówi „trwa
+dłużej niż zwykle" i tłumaczy, że zadania podnosi proces uruchamiany co minutę.
+Ostrzeżenie dotyczy WYŁĄCZNIE czekania w kolejce — render bywa długi i nie ma w tym
+nic niepokojącego, a ostrzeżenie o tym, co działa normalnie, uczy ignorować ostrzeżenia.
 
 ### Punkt końcowy
 

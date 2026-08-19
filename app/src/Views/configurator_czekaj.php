@@ -23,6 +23,20 @@ $status = $job !== null ? (string) $job['status'] : 'queued';
   <h2 class="h2"><?= View::e(View::t('conf.wait.title')) ?></h2>
   <p><?= View::e(View::t('conf.wait.body')) ?></p>
 
+  <?php if ($job !== null): ?>
+    <?php /*
+      TEN SAM WSKAŹNIK, co na ekranie zadania i przy przeliczaniu — jeden
+      komponent na wszystkie oczekiwania. `autoGo` wyłączone: po policzeniu
+      pokrycia operator ma zostać w konfiguratorze i przejść do słownika,
+      a nie zostać przerzucony na ekran importu.
+    */ ?>
+    <?= View::render('wskaznik', [
+        'job'       => $job,
+        'resultUrl' => null,
+        'autoGo'    => false,
+    ]) ?>
+  <?php endif; ?>
+
   <dl class="facts">
     <dt><?= View::e(View::t('match.status')) ?></dt>
     <dd><?= View::status($status) ?></dd>

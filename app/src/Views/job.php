@@ -24,15 +24,23 @@ $canRetry = Jobs::canRetry((string) $job['status']);
   <p class="alert" role="alert"><?= View::e($error) ?></p>
 <?php endif; ?>
 
-<?php if (in_array($job['status'], ['queued', 'running'], true)): ?>
-  <?php /*
-    Zadanie czeka na crona albo już się liczy. Strona odświeża się sama przez
-    <meta http-equiv="refresh"> ustawiany w layoucie — panel nie ma ani jednego
-    skryptu i ta zmiana tego nie łamie.
+<?php /*
+  WSKAŹNIK PRACY — ten sam komponent, co przy konfiguratorze i przy
+  przeliczaniu. Pokazuje etapy, czas od zgłoszenia i — po trzech minutach
+  w kolejce — uczciwe „trwa dłużej niż zwykle".
 
-    Komunikat mówi wprost, że można zamknąć stronę: silnik chodzi z crona,
-    więc raport powstanie niezależnie od tego, czy ktoś tu patrzy.
-  */ ?>
+  Renderuje go SERWER. Bez skryptu odświeża się przez `<meta refresh>`
+  z layoutu; ze skryptem sam się aktualizuje i po „Gotowe" przechodzi do
+  wyniku (CLAUDE.md §9 — skrypt przyspiesza, nie warunkuje).
+*/ ?>
+<?= View::render('wskaznik', [
+    'job'       => $job,
+    'resultUrl' => Jobs::resultUrl($job),
+]) ?>
+
+<?php if (in_array($job['status'], ['queued', 'running'], true)): ?>
+  <?php /* Zdanie, którego wskaźnik nie powie: silnik chodzi z crona, więc
+           raport powstanie niezależnie od tego, czy ktoś tu patrzy. */ ?>
   <p class="notice" role="status">
     <?= View::e(View::t($job['status'] === 'queued' ? 'job.waiting' : 'job.working')) ?>
     <span class="hint"><?= View::e(View::t('job.background')) ?></span>

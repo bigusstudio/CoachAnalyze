@@ -53,17 +53,37 @@ $doKolejki = array_filter($outdated, static fn(array $r) => !empty($r['raw_ready
   <p class="hint"><?= View::e(View::t('recalc.current', $current)) ?></p>
 
   <?php if ($progress !== null && $progress['total'] > 0): ?>
-    <section class="panel">
+    <?php /*
+      LICZNIK X/N ŻYWY, TABELA Z SERWERA.
+
+      `data-partia-*` włącza odpytywanie w skrypcie: podmienia SAME LICZBY,
+      a gdy partia się domknie albo przybędzie błędów — przeładowuje stronę,
+      żeby tabelę niżej wyrenderował serwer. Druga implementacja tej tabeli
+      w JavaScripcie byłaby drugim miejscem, w którym dane mogą się rozjechać.
+
+      Bez skryptu wszystko działa tak samo, tylko wolniej: odświeża
+      `<meta refresh>` z layoutu (patrz `showClubRecalc()`).
+    */ ?>
+    <section class="panel"
+             data-partia="<?= View::e((string) $batch) ?>"
+             data-partia-punkt="/partia/<?= View::e((string) $batch) ?>/stan"
+             data-partia-trwa="<?= (int) $progress['working'] > 0 ? '1' : '0' ?>"
+             data-partia-bledy="<?= (int) $progress['failed'] ?>">
       <h2 class="h2"><?= View::e(View::t('recalc.progress')) ?></h2>
 
       <p role="status">
-        <strong><?= View::e(View::t('recalc.progress.of', (int) $progress['done'], (int) $progress['total'])) ?></strong>
+        <strong>
+          <?= View::e(View::t('recalc.progress.done_label')) ?>
+          <b data-rola="gotowe"><?= (int) $progress['done'] ?></b>
+          <?= View::e(View::t('recalc.progress.of_total', (int) $progress['total'])) ?>
+        </strong>
         <?php if ((int) $progress['working'] > 0): ?>
           · <?= View::e(View::t('recalc.progress.working', (int) $progress['working'])) ?>
         <?php endif; ?>
-        <?php if ((int) $progress['failed'] > 0): ?>
-          · <span class="tag tag--older"><?= View::e(View::t('recalc.progress.failed', (int) $progress['failed'])) ?></span>
-        <?php endif; ?>
+        <span class="tag tag--older"<?= (int) $progress['failed'] > 0 ? '' : ' hidden' ?>>
+          <?= View::e(View::t('recalc.progress.failed_label')) ?>
+          <b data-rola="nieudane"><?= (int) $progress['failed'] ?></b>
+        </span>
         <?php if ((int) $progress['working'] === 0): ?>
           · <?= View::e(View::t('recalc.progress.done')) ?>
         <?php endif; ?>

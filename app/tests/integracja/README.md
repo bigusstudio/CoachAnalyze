@@ -26,7 +26,7 @@ zielone, `1` jakiś zestaw nie przeszedł, `2` zły argument.
 w podsumowaniu jako POMINIĘTY, z powodem. Zestaw cicho pominięty jest gorszy
 niż zestaw czerwony, bo wygląda jak zielony.
 
-Stan wyjściowy przy pisaniu tego pliku: **35 zestawów, 1393 asercje, 0 błędów**.
+Stan wyjściowy przy pisaniu tego pliku: **36 zestawów, 1500 asercji, 0 błędów**.
 
 ## Uruchamianie pojedynczo
 
@@ -73,6 +73,12 @@ php test_smtp.php
 # sprawdza ATOMOWOŚĆ podmiany: kolejkuje przeliczenie, psuje eksport w locie
 # i pilnuje, żeby pod adresem publicznym dalej leżał STARY raport, bajt w bajt.
 PYTHONPATH=../../../engine php test_przelicz_http.php
+
+# Wskaźnik pracy kolejki i chmurka wyniku. Sprawdza m.in. że punkty stanu bez
+# sesji dają 404 (a nie przekierowanie, które fetch wykonałby po cichu), że
+# wskaźnik jest w HTML-u z serwera, że po trzech minutach w kolejce pojawia się
+# „trwa dłużej niż zwykle" i że partia daje JEDNĄ chmurkę zamiast N.
+PYTHONPATH=../../../engine php test_wskaznik_http.php
 
 # Skrypt chmurek na atrapie DOM
 node test_chmurki.js

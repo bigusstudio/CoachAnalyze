@@ -543,12 +543,24 @@ function wykonajPrzeliczenie(int $jobId, int $importId, array $import, array $pa
     $wynik = $bieg['wynik'];
     $meta  = $bieg['meta'];
 
+    $partia = isset($payload['batch']) && is_string($payload['batch']) ? $payload['batch'] : null;
+
     if ($wynik['exit'] !== 0 || !is_file($tymczasowy)) {
         // STARY RAPORT ZOSTAJE NIETKNIĘTY. Sprzątamy wyłącznie po sobie.
         @unlink($tymczasowy);
         $powod = opiszAwarie($wynik, $meta);
         zakoncz($jobId, $wynik['exit'], $powod);
-        powiadomOAwarii($matchId, $jobId, $powod, Jobs::canRetry('failed'));
+        /*
+         * W PARTII NIE POWIADAMIAMY POJEDYNCZO — ani o sukcesie, ani o awarii.
+         * Przeliczenie dziesięciu raportów dałoby dziesięć chmurek jedna po
+         * drugiej, czyli ścianę, którą się zamyka bez czytania. Zamiast tego
+         * jedno podsumowanie, gdy partia się domknie (`powiadomOPartii()`).
+         */
+        if ($partia === null) {
+            powiadomOAwarii($matchId, $jobId, $powod, Jobs::canRetry('failed'));
+        } else {
+            powiadomOPartii($partia, $matchId, (int) ($report['club_id'] ?? 0));
+        }
         return;
     }
 
@@ -624,7 +636,56 @@ function wykonajPrzeliczenie(int $jobId, int $importId, array $import, array $pa
         'batch'         => $payload['batch'] ?? null,
     ]);
 
-    powiadomOPrzeliczeniu($matchId, $reportId, $bieg['template_version']);
+    if ($partia === null) {
+        powiadomOPrzeliczeniu($matchId, $reportId, $bieg['template_version']);
+    } else {
+        powiadomOPartii($partia, $matchId, (int) ($report['club_id'] ?? 0));
+    }
+}
+
+/**
+ * Podsumowanie partii — JEDNA chmurka, dopiero gdy nic już nie pracuje.
+ *
+ * Wołane po KAŻDYM zadaniu partii, ale wychodzi bez słowa, dopóki partia trwa.
+ * Rozstrzyga `finished` z `Rebuilds::batchStatus()`, więc warunek jest liczony
+ * ze stanu bazy, a nie z licznika w pamięci procesu — worker bywa ubity w pół
+ * przejścia i wraca dopiero z następnym cronem.
+ *
+ * Proces roboczy bierze zadania POJEDYNCZO i pod blokadą, więc „ostatnie"
+ * zadanie partii jest dokładnie jedno i podsumowanie powstaje raz.
+ */
+function powiadomOPartii(string $partia, int $matchId, int $clubId): void
+{
+    $stan = Rebuilds::batchStatus($partia);
+    if (!$stan['finished']) {
+        return;
+    }
+
+    $match = Matches::find($matchId);
+    if ($match === null) {
+        return;
+    }
+
+    $udane = (int) $stan['done'];
+    $bledy = (int) $stan['failed'];
+
+    // Adres partii, żeby z chmurki dało się wejść wprost w listę błędów per mecz.
+    $url = $clubId > 0 ? '/klub/' . $clubId . '/przelicz?partia=' . $partia : null;
+
+    Notifications::create((int) $match['owner_id'], [
+        // Odmiana chmurki idzie za NAJGORSZYM wynikiem w partii: jedna nieudana
+        // pozycja ma być widoczna, nawet gdy dziewięć się udało.
+        'type'  => $bledy > 0 ? Notifications::TYP_FAILED : Notifications::TYP_READY,
+        'title' => $bledy > 0
+            ? View::t('recalc.toast.mixed', $udane, $bledy)
+            : View::t('recalc.toast.done', $udane),
+        'body'  => $bledy > 0
+            ? View::t('recalc.toast.mixed.body')
+            : View::t('recalc.toast.done.body'),
+        'entity'    => 'club',
+        'entity_id' => $clubId > 0 ? $clubId : null,
+        'url'       => $url,
+    ]);
 }
 
 /** Powiadomienie po udanym przeliczeniu — ten sam system chmurek co „raport gotowy". */

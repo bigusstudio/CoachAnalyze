@@ -81,6 +81,9 @@ final class Rebuilds
             return ['ok' => false, 'error' => self::BLAD_BRAK_PLIKOW];
         }
 
+        $mecz = Db::one('SELECT owner_id FROM matches WHERE id = :id', ['id' => $matchId]);
+        $wlasciciel = $mecz !== null && $mecz['owner_id'] !== null ? (int) $mecz['owner_id'] : null;
+
         if (self::pending($reportId) !== null) {
             // Dwa zadania na ten sam plik znaczą dwa `rename()` w nieznanej
             // kolejności — wygrałby ten, który skończy później, niekoniecznie
@@ -100,6 +103,20 @@ final class Rebuilds
                     'import_id' => (int) $import['id'],
                     'match_id'  => $matchId,
                     'batch'     => $batch,
+                    /*
+                     * WŁAŚCICIEL ZADANIA W ŁADUNKU.
+                     *
+                     * Potrzebny `Notifications::hasActiveWork()`, żeby chmurki
+                     * przyspieszyły odpytywanie na czas przeliczania. Ta metoda
+                     * patrzy na `matches.status`, a przeliczenie świadomie go
+                     * NIE rusza (mecz ma sprawny raport i zostaje `done`) —
+                     * bez tej wartości nie ma jak dojść do konta, które czeka.
+                     *
+                     * Bierzemy właściciela MECZU, nie klikającego: to jemu
+                     * przychodzi chmurka „Raport przeliczony", tak samo jak
+                     * przy generowaniu (`powiadomOGotowym()`).
+                     */
+                    'owner_id'  => $wlasciciel,
                 ], JSON_UNESCAPED_UNICODE),
                 'status'  => 'queued',
                 'now'     => Stats::now(),
@@ -236,6 +253,48 @@ final class Rebuilds
             'failed'  => $failed,
             'working' => $working,
             'rows'    => $rows,
+        ];
+    }
+
+    /**
+     * Stan partii dla wskaźnika pracy — kształt oddawany przez punkt końcowy.
+     *
+     * WYŁĄCZNIE DANE, zero HTML-a: skrypt buduje z tego elementy przez
+     * `textContent` (CLAUDE.md §9).
+     *
+     * @return array<string,mixed>
+     */
+    public static function batchStatus(string $batch): array
+    {
+        $postep = self::batchProgress($batch);
+
+        $bledy = [];
+        foreach ($postep['rows'] as $poz) {
+            if ((string) $poz['status'] !== 'failed') {
+                continue;
+            }
+            // Lista błędów PER MECZ. Przy kilkunastu pozycjach zbiorczy
+            // komunikat nie mówi, który plik naprawić.
+            $bledy[] = [
+                'match_id' => (int) $poz['match_id'],
+                'label'    => $poz['label'],
+                'error'    => $poz['error'],
+                'job_url'  => '/zadania/' . (int) $poz['job_id'],
+            ];
+        }
+
+        return [
+            'batch'   => $batch,
+            'total'   => $postep['total'],
+            'done'    => $postep['done'],
+            'failed'  => $postep['failed'],
+            'working' => $postep['working'],
+            // Partia jest zamknięta, gdy nic już nie czeka ani nie liczy.
+            // Rozstrzyga to `working`, a nie `done + failed === total`:
+            // gdyby ktoś dołożył zadanie do tej samej partii, suma by się
+            // zgadzała przez chwilę, w której praca jeszcze trwa.
+            'finished' => $postep['total'] > 0 && $postep['working'] === 0,
+            'errors'  => $bledy,
         ];
     }
 

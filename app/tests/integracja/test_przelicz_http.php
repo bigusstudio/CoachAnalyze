@@ -539,9 +539,18 @@ check('zbiorcze przeliczenie nie zostawiło plików tymczasowych',
 
 $postep = http('GET', (string) $start['location']);
 check('widok partii odpowiada', $postep['status'] === 200);
-check('postęp podaje X z N', str_contains($postep['body'], 'gotowe 1 z 2'),
+/*
+ * Licznik jest rozbity na etykietę i LICZBĘ w osobnym elemencie — skrypt
+ * podmienia samą liczbę, żeby nie znać ani jednego polskiego zdania
+ * (zadanie „wskaźnik pracy"). Dlatego sprawdzamy wartości w rolach,
+ * a nie sklejone zdanie.
+ */
+check('postęp podaje X z N',
+    preg_match('#data-rola="gotowe">\s*1\s*<#', $postep['body']) === 1
+    && str_contains($postep['body'], 'z 2'),
     'jedno gotowe, jedno nieudane');
-check('postęp wymienia nieudane', str_contains($postep['body'], 'nieudane: 1'));
+check('postęp wymienia nieudane',
+    preg_match('#data-rola="nieudane">\s*1\s*<#', $postep['body']) === 1);
 /*
  * BŁĄD MUSI BYĆ PRZYPISANY DO MECZU, nie zsypany do jednego komunikatu.
  *

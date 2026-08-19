@@ -217,12 +217,13 @@ naglowek "4. Przeloty HTTP (każdy podnosi własny serwer)"
 
 if [ "$BEZ_HTTP" -eq 1 ]; then
   for nazwa in test_sesja_http test_haslo_http test_klub_hub_http test_mapowania_http \
-               test_konfigurator_http test_import_n1_http test_przelicz_http; do
+               test_konfigurator_http test_import_n1_http test_przelicz_http \
+               test_wskaznik_http; do
     pomin "$nazwa" "--bez-http"
   done
 else
   # KOLEJNO, NIGDY RÓWNOLEGLE: każdy zestaw podnosi wbudowany serwer PHP na
-  # stałym porcie (8946, 8947, 8951+8952, 8961, 8971, 8981, 8991). Dwa naraz biłyby się o port,
+  # stałym porcie (8946, 8947, 8951+8952, 8961, 8971, 8981, 8991, 8996). Dwa naraz biłyby się o port,
   # a objawem byłby losowo czerwony zestaw bez związku z kodem.
   for nazwa in test_sesja_http test_haslo_http test_klub_hub_http; do
     [ -f "$TUTAJ/$nazwa.php" ] || continue
@@ -231,7 +232,8 @@ else
 
   # Te dwa potrzebują jeszcze silnika Pythona.
   if [ -x "$PYTHON" ]; then
-    for nazwa in test_mapowania_http test_konfigurator_http test_import_n1_http test_przelicz_http; do
+    for nazwa in test_mapowania_http test_konfigurator_http test_import_n1_http \
+                 test_przelicz_http test_wskaznik_http; do
       [ -f "$TUTAJ/$nazwa.php" ] || continue
       zestaw "$nazwa" env PYTHONPATH="$KORZEN/engine" php "$TUTAJ/$nazwa.php"
     done
@@ -240,6 +242,7 @@ else
     pomin "test_konfigurator_http" "brak $PYTHON"
     pomin "test_import_n1_http" "brak $PYTHON"
     pomin "test_przelicz_http" "brak $PYTHON"
+    pomin "test_wskaznik_http" "brak $PYTHON"
   fi
 fi
 

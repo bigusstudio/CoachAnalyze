@@ -128,7 +128,13 @@ $router = (string) file_get_contents($root . '/app/public/index.php');
  * a brak sesji dawałby 302 zamiast 404.
  */
 $pozycjaTrasy = strpos($router, "'/powiadomienia/nowe'");
-$pozycjaAuth  = strpos($router, 'Auth::requireLogin()');
+/*
+ * Szukamy LINII BRAMKI, nie samej nazwy metody. Nazwa pada też w komentarzach
+ * tłumaczących, czemu te trasy stoją przed nią — a wtedy `strpos()` trafiał
+ * w pierwszy komentarz i asercja zapalała się na czerwono przy poprawnie
+ * ustawionej trasie. Przydarzyło się to przy dokładaniu wskaźnika pracy.
+ */
+$pozycjaAuth  = strpos($router, '$user = Auth::requireLogin();');
 check('trasa punktu końcowego stoi przed middleware sesji',
     $pozycjaTrasy !== false && $pozycjaAuth !== false && $pozycjaTrasy < $pozycjaAuth);
 
@@ -171,6 +177,78 @@ check('chmurki biorą barwy ze zmiennych motywu',
 
 check('animacja ustępuje przy prefers-reduced-motion',
     $sekcja !== false && str_contains($sekcja, 'prefers-reduced-motion'));
+
+echo "\n== wskaźnik pracy mieści się w tym samym odstępstwie ==\n";
+
+/*
+ * Wskaźnik pracy kolejki dopisał się do TEGO SAMEGO pliku — drugi plik
+ * znaczyłby, że odstępstwo się rozlało. Sprawdzenie „dokładnie jeden skrypt"
+ * wyżej to łapie, ale tylko wtedy, gdy ktoś doda znacznik do layoutu.
+ * Tu pilnujemy pozostałych granic tego odstępstwa.
+ */
+check('wskaźnik renderuje SERWER, nie skrypt',
+    is_file($root . '/app/src/Views/wskaznik.php'),
+    'bez szablonu po stronie serwera panel przestałby działać bez JavaScriptu');
+
+$wskaznik = is_file($root . '/app/src/Views/wskaznik.php')
+    ? (string) file_get_contents($root . '/app/src/Views/wskaznik.php')
+    : '';
+
+check('etapy są w HTML-u z serwera',
+    str_contains($wskaznik, "work.stage.queued") && str_contains($wskaznik, "work.stage.done"));
+
+/*
+ * ANI JEDNEGO POLSKIEGO ZDANIA W SKRYPCIE. Teksty idą z `pl.php` przez HTML
+ * i `data-*`; wersja anglojęzyczna nie ma wymagać ruszania kodu. Sprawdzamy
+ * przeciwko prawdziwym tekstom interfejsu, nie przeciwko liście z pamięci.
+ */
+$teksty = require $root . '/app/src/lang/pl.php';
+foreach (['work.stage.queued', 'work.stage.processing', 'work.stage.done',
+          'work.slow', 'work.retry', 'work.open'] as $klucz) {
+    check("skrypt nie zawiera tekstu {$klucz}",
+        !str_contains($jsBezKomentarzy, (string) $teksty[$klucz]),
+        'tekst interfejsu wpisany w skrypt omija plik językowy');
+}
+
+/*
+ * ŻADNYCH WYMYŚLONYCH PROCENTÓW. Postępu renderu nie znamy — pasek stojący
+ * na 87% kłamie bardziej niż jego brak.
+ */
+check('wskaźnik nie udaje, że zna postęp',
+    !str_contains($wskaznik, '<progress') && !str_contains($wskaznik, '%"'),
+    'etapy są dyskretne i każdy z nich jest prawdziwy');
+
+$sekcjaW = strstr($css, '/* --- wskaźnik pracy kolejki');
+check('sekcja wskaźnika istnieje w arkuszu', $sekcjaW !== false);
+
+$heksyW = [];
+if ($sekcjaW !== false) {
+    preg_match_all('/#[0-9A-Fa-f]{3,8}\b/', $sekcjaW, $trafieniaW);
+    $heksyW = $trafieniaW[0];
+}
+check('wskaźnik nie zawiera żadnej barwy wpisanej wprost', $heksyW === [],
+    implode(', ', $heksyW));
+check('puls ustępuje przy prefers-reduced-motion',
+    $sekcjaW !== false && str_contains($sekcjaW, 'prefers-reduced-motion'));
+
+echo "\n== punkty końcowe wskaźnika ==\n";
+
+/*
+ * Ta sama reguła co przy chmurkach i z tego samego powodu: `requireLogin()`
+ * przekierowuje na `/login`, a `fetch()` wykonałby to po cichu.
+ */
+$pozycjaStanu = strpos($router, "/zadania/(\\d+)/stan");
+check('trasa stanu zadania stoi przed middleware sesji',
+    $pozycjaStanu !== false && $pozycjaStanu < $pozycjaAuth);
+
+$pozycjaPartii = strpos($router, "/partia/([0-9a-f]{16})/stan");
+check('trasa stanu partii stoi przed middleware sesji',
+    $pozycjaPartii !== false && $pozycjaPartii < $pozycjaAuth);
+
+check('stan zadania nie jest buforowany',
+    preg_match('#function jobStatusFeed.{0,600}Cache-Control: no-store#s', $router) === 1);
+check('stan partii nie jest buforowany',
+    preg_match('#function batchStatusFeed.{0,600}Cache-Control: no-store#s', $router) === 1);
 
 echo "\n== raport nadal bez ani jednego skryptu ==\n";
 

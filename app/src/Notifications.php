@@ -260,7 +260,38 @@ final class Notifications
               WHERE owner_id = :uid AND status IN ('queued', 'running')",
             ['uid' => $userId]
         );
-        return (int) ($wiersz['ile'] ?? 0) > 0;
+        if ((int) ($wiersz['ile'] ?? 0) > 0) {
+            return true;
+        }
+
+        /*
+         * PRZELICZANIE RAPORTU NIE RUSZA STANU MECZU — i nie ma ruszać.
+         *
+         * Mecz z gotowym raportem zostaje `done`, bo stary raport nadal
+         * odpowiada pod swoim adresem publicznym (Sesja 7). Skutek uboczny:
+         * warunek wyżej nie widzi przeliczania w ogóle, więc chmurki nie
+         * skracały odstępu odpytywania i toast „Raport przeliczony" przychodził
+         * do minuty zamiast do pięciu sekund.
+         *
+         * Właściciela bierzemy z `payload_json` zadania — zapisuje go tam
+         * `Rebuilds::queue()`. Rozbiór w PHP, nie `JSON_EXTRACT` w SQL: funkcje
+         * JSON-owe różnią się między MariaDB a SQLite, a testy chodzą na tym
+         * drugim (ta sama decyzja co w `Matches::history()`).
+         *
+         * Zbiór jest z natury malutki — wyłącznie zadania czekające i trwające.
+         */
+        foreach (Db::all(
+            "SELECT payload_json FROM jobs
+              WHERE type = :typ AND status IN ('queued', 'running')",
+            ['typ' => Rebuilds::JOB_TYPE]
+        ) as $zadanie) {
+            $payload = json_decode((string) $zadanie['payload_json'], true);
+            if (is_array($payload) && (int) ($payload['owner_id'] ?? 0) === $userId) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

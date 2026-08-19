@@ -220,6 +220,23 @@ return [
     'match.no_club'       => 'nieprzypisany',
 
     // --- zadania ---
+    // --- wskaźnik pracy kolejki (jeden komponent dla wszystkich oczekiwań) ---
+    'work.aria'           => 'Postęp pracy',
+    'work.stage.queued'     => 'W kolejce',
+    'work.stage.processing' => 'Przetwarzanie',
+    'work.stage.done'       => 'Gotowe',
+    'work.stage.failed'     => 'Błąd',
+    'work.elapsed'        => 'Czas od zgłoszenia:',
+    'work.open'           => 'Otwórz wynik',
+    'work.retry'          => 'Ponów',
+    'work.details'        => 'Szczegóły zadania',
+
+    // TIMEOUT UCZCIWOŚCI. Mówimy, co się dzieje i dlaczego, zamiast pokazywać
+    // wymyślony procent. Wskazówka o cronie jest tu istotna: to ona tłumaczy,
+    // czemu „nic się nie dzieje" bywa normalnym stanem, a nie awarią.
+    'work.slow'           => 'Trwa dłużej niż zwykle.',
+    'work.slow.hint'      => 'Zadania podnosi proces uruchamiany co minutę, więc chwila oczekiwania jest normalna. Jeśli to się przeciąga, sprawdź szczegóły zadania — kolejka może być zajęta wcześniejszym raportem.',
+
     'job.title'           => 'Zadanie #%d',
     'job.type'            => 'Typ',
     'job.status'          => 'Status',
@@ -488,8 +505,19 @@ return [
     'recalc.bulk.nothing'  => 'Nie ma czego przeliczać — wszystkie raporty są na aktualnym templacie.',
     'recalc.bulk.all_blocked' => 'Nic nie trafiło do kolejki: wszystkie nieaktualne raporty (%d) nie mają surowych plików eksportu.',
 
+    // Podsumowanie partii — JEDNA chmurka na całe przeliczenie, nie N chmurek.
+    'recalc.toast.done'    => 'Przeliczono raportów: %d',
+    'recalc.toast.done.body' => 'Adresy publiczne raportów nie zmieniły się.',
+    'recalc.toast.mixed'   => 'Przeliczono %1$d, nie udało się %2$d',
+    'recalc.toast.mixed.body' => 'Otwórz listę partii, żeby zobaczyć, który mecz nie przeszedł i dlaczego. Raporty, które się nie przeliczyły, zachowały poprzednią treść.',
+
     'recalc.progress'      => 'Postęp partii',
     'recalc.progress.of'   => 'gotowe %1$d z %2$d',
+    // Rozbite na etykietę i liczbę, żeby skrypt podmieniał SAMĄ LICZBĘ i nie
+    // musiał znać ani jednego polskiego zdania (CLAUDE.md §9).
+    'recalc.progress.done_label'   => 'gotowe',
+    'recalc.progress.of_total'     => 'z %d',
+    'recalc.progress.failed_label' => 'nieudane:',
     'recalc.progress.failed' => 'nieudane: %d',
     'recalc.progress.working' => 'w toku: %d',
     'recalc.progress.done'    => 'Partia zakończona.',

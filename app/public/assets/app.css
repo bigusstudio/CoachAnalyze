@@ -560,7 +560,13 @@ body {
 .chmurki {
   position: fixed;
   right: 16px;
-  bottom: 16px;
+  /* PRAWY GÓRNY RÓG — jedna zmiana pozycjonowania dla całego obszaru; pojedyncze
+     chmurki nie znają swojego miejsca na ekranie i nie mają go znać.
+
+     Nie `top: 16px`, bo pasek nagłówka jest zwykłym wierszem siatki (~50 px)
+     i chmurka zasłaniałaby przełącznik motywu oraz odnośnik do powiadomień —
+     czyli dokładnie te przyciski, których operator szuka po jej zobaczeniu. */
+  top: 62px;
   z-index: 50;
   display: flex;
   flex-direction: column;
@@ -640,7 +646,9 @@ form.chmurka__zamknij button:hover { color: var(--tekst); }
 }
 
 @keyframes chmurka-wjazd {
-  from { opacity: 0; transform: translateY(8px); }
+  /* Kierunek wjazdu idzie za pozycją obszaru: chmurka w górnym rogu ma
+     opadać z góry, a nie wjeżdżać od dołu wbrew temu, gdzie się zatrzymuje. */
+  from { opacity: 0; transform: translateY(-8px); }
   to   { opacity: 1; transform: none; }
 }
 
@@ -858,3 +866,104 @@ form.chmurka__zamknij button:hover { color: var(--tekst); }
   border-style: dashed;
 }
 .panel--zagniezdzony legend { padding: 0 6px; }
+
+/* --- wskaźnik pracy kolejki ----------------------------------------------
+   Etapy „W kolejce -> Przetwarzanie -> Gotowe/Błąd", puls przy etapie
+   bieżącym, czas od startu. ŻADNYCH PROCENTÓW: postępu renderu nie znamy,
+   a pasek stojący na 87% kłamie bardziej niż jego brak.
+
+   Barwy WYŁĄCZNIE ze zmiennych motywu — ta sama zasada co przy chmurkach. */
+.wskaznik {
+  padding: 16px 18px;
+  border: 1px solid var(--obramowanie);
+  border-radius: var(--promien);
+  background: var(--tlo-panel);
+  margin-bottom: 16px;
+}
+
+.wskaznik--failed { background: var(--blad-tlo); border-color: var(--blad-tekst); }
+
+.wskaznik__etapy {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin: 0 0 10px;
+  padding: 0;
+  list-style: none;
+}
+
+.wskaznik__etap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  /* Etap jeszcze nieosiągnięty jest przygaszony — widać drogę przed sobą,
+     ale wzrok trzyma się tego, co dzieje się teraz. */
+  color: var(--tekst-slaby);
+}
+
+.wskaznik__etap.is-za-nami { color: var(--tekst); }
+.wskaznik__etap.is-teraz   { color: var(--tekst); font-weight: 600; }
+
+.wskaznik__puls {
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--obramowanie);
+}
+
+.wskaznik__etap.is-za-nami .wskaznik__puls { background: var(--tekst-slaby); }
+
+/* Puls TYLKO przy etapie bieżącym i tylko dopóki coś się dzieje. Kropka
+   pulsująca przy zakończonym zadaniu sugerowałaby pracę, której nie ma. */
+.wskaznik--queued .wskaznik__etap.is-teraz .wskaznik__puls,
+.wskaznik--processing .wskaznik__etap.is-teraz .wskaznik__puls {
+  background: var(--akcent);
+  animation: wskaznik-puls 1400ms ease-in-out infinite;
+}
+
+/* `--ok-obram` jest zdefiniowane WYŁĄCZNIE w motywie ciemnym (patrz definicje
+   na górze pliku) — w jasnym `var()` bez zapasu nie dałoby żadnej barwy.
+   Zapas zamiast dopisania zmiennej do motywu jasnego: dopisanie zmieniłoby
+   wygląd wszystkiego, co jej już używa (`.tag--done`, `.chmurka--ready`,
+   `.notice--ok`), a to osobna decyzja, nie skutek uboczny tego zadania. */
+.wskaznik--done .wskaznik__etap.is-teraz .wskaznik__puls   { background: var(--ok-obram, var(--akcent)); }
+.wskaznik--failed .wskaznik__etap.is-teraz .wskaznik__puls { background: var(--blad-tekst); }
+
+.wskaznik__czas { margin: 0; font-size: 13px; color: var(--tekst-slaby); }
+.wskaznik__czas b { font-variant-numeric: tabular-nums; color: var(--tekst); }
+
+.wskaznik__uwaga { margin: 10px 0 0; font-size: 13px; }
+.wskaznik__uwaga .hint { display: block; }
+
+.wskaznik__blad {
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: var(--blad-tekst);
+  overflow-wrap: anywhere;
+}
+
+.wskaznik__akcje {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.wskaznik__akcje [hidden] { display: none; }
+
+@keyframes wskaznik-puls {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.45; transform: scale(0.8); }
+}
+
+/* Ruch jest informacją, nie ozdobą — ale nie dla każdego. Bez animacji etap
+   bieżący nadal odróżnia się barwą i pogrubieniem. */
+@media (prefers-reduced-motion: reduce) {
+  .wskaznik--queued .wskaznik__etap.is-teraz .wskaznik__puls,
+  .wskaznik--processing .wskaznik__etap.is-teraz .wskaznik__puls {
+    animation: none;
+  }
+}
