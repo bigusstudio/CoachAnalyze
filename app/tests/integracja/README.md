@@ -26,7 +26,7 @@ zielone, `1` jakiś zestaw nie przeszedł, `2` zły argument.
 w podsumowaniu jako POMINIĘTY, z powodem. Zestaw cicho pominięty jest gorszy
 niż zestaw czerwony, bo wygląda jak zielony.
 
-Stan wyjściowy przy pisaniu tego pliku: **28 zestawów, 1115 asercji, 0 błędów**.
+Stan wyjściowy przy pisaniu tego pliku: **35 zestawów, 1393 asercje, 0 błędów**.
 
 ## Uruchamianie pojedynczo
 
@@ -69,6 +69,11 @@ php test_sesja_http.php
 # Protokół SMTP przeciw atrapie serwera; certyfikat wytwarza sam test
 php test_smtp.php
 
+# Regeneracja raportów pod aktualny templat (Sesja 7). Jedyny zestaw, który
+# sprawdza ATOMOWOŚĆ podmiany: kolejkuje przeliczenie, psuje eksport w locie
+# i pilnuje, żeby pod adresem publicznym dalej leżał STARY raport, bajt w bajt.
+PYTHONPATH=../../../engine php test_przelicz_http.php
+
 # Skrypt chmurek na atrapie DOM
 node test_chmurki.js
 ```
@@ -77,7 +82,7 @@ node test_chmurki.js
 
 | Plik | Do czego |
 |---|---|
-| `seed.php` | schemat SQLite odwzorowujący migracje 001–009 + dane przykładowe |
+| `seed.php` | schemat SQLite odwzorowujący migracje 001–013 + dane przykładowe |
 | `fake_redis.php` | RESP przez gniazdo uniksowe, wiele połączeń naraz |
 | `fake_smtp.php` | SMTP i SMTPS (tryb `smtps` wymaga pliku PEM) |
 

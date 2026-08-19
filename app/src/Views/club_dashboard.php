@@ -18,6 +18,7 @@ use CoachAnalyze\View;
  * @var int $matchesTotal
  * @var list<array<string,mixed>> $reports   już posortowane malejąco po dacie
  * @var int $reportsTotal
+ * @var int $outdatedCount  raporty starsze niż aktualny templat (Sesja 7)
  * @var string|null $notice
  * @var string|null $error
  */
@@ -87,6 +88,20 @@ $szczegoly = \CoachAnalyze\Clubs::decodeDetails($club['details'] ?? null);
     <strong><?= View::e(View::t('import.nav')) ?></strong>
     <span><?= View::e(View::t('club.hub.new_import')) ?></span>
   </a>
+
+  <?php /*
+    KAFELEK TYLKO WTEDY, GDY JEST CO PRZELICZAĆ (Sesja 7).
+
+    Kafelek „Przelicz raporty: 0" byłby zaproszeniem na pusty ekran i uczyłby
+    go pomijać wzrokiem — a wtedy przestałby działać w dniu, w którym liczba
+    przestanie być zerem.
+  */ ?>
+  <?php if ($outdatedCount > 0): ?>
+    <a class="hub__tile" href="/klub/<?= (int) $club['id'] ?>/przelicz">
+      <strong><?= View::e(View::t('club.hub.recalc')) ?></strong>
+      <span><?= View::e(View::t('club.hub.outdated', $outdatedCount)) ?></span>
+    </a>
+  <?php endif; ?>
 </div>
 
 <div class="split">

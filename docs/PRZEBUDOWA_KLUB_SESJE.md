@@ -550,6 +550,57 @@ Edycja templatu nie zostawia klubu z niespójnymi raportami. Regeneracja zawsze 
 - Zbiorcze przeliczenie 3+ raportów przechodzi przez kolejkę z widocznym postępem; sztucznie zepsuty jeden plik → błąd odnotowany, reszta przeliczona.
 - W żadnym momencie link publiczny nie zwraca 404/pustej strony (podmiana atomowa).
 
+### Co wyszło w praniu — rozstrzygnięcia z 2026-08-19
+
+**Sesja zamknięta, ZERO zmian w silniku.** Cała regeneracja stoi na istniejącym
+`build`; `engine/` nie został dotknięty, wzorce złote są nienaruszone, `CHANGELOG.md`
+nie dostaje wpisu, bo wyjście silnika się nie zmieniło.
+
+| Rzecz | Rozstrzygnięcie |
+|---|---|
+| „Przelicz" a „Wygeneruj ponownie" | **Dwie osobne akcje i obie zostają.** `/raport/{id}/ponow` tworzy NOWY raport pod nowym adresem (jak dotąd), `/raport/{id}/przelicz` podmienia treść istniejącego. Zlanie ich w jedną zabrałoby albo ślad wcześniejszych liczb, albo działający link publiczny |
+| Nowy typ zadania | `rebuild_report` w istniejącej kolejce, obsługiwany tym samym dyspozytorem. Osobnej ścieżki wykonania nie ma — silnik woła jedna funkcja (`uruchomSilnik()`), wspólna dla renderu i przeliczenia. Drugi zestaw wywołań byłby drugim miejscem, w którym liczby mogą się rozjechać |
+| Partia zbiorcza | **Bez migracji.** Identyfikator partii siedzi w `payload_json` zadania, jak `is_sample`. Nowa tabela znaczyłaby migrację do ręcznego odpalenia dla wartości, od której nie zależy ani jedna liczba |
+| Stan meczu przy nieudanym przeliczeniu | **Nie ruszamy.** Mecz zostaje `done`: stary raport nadal leży na dysku i nadal odpowiada pod swoim adresem. Oznaczenie `failed` mówiłoby operatorowi, że stracił raport, którego nie stracił |
+| Zakres akcji zbiorczej | **Po jednym, najnowszym raporcie na mecz.** Starsze rodzeństwo zostaje nietknięte — jest śladem wcześniejszych liczb (CLAUDE.md §7). Pojedyncze „Przelicz" przy takim raporcie nadal działa: to świadoma decyzja operatora, nie efekt uboczny |
+| Brak surowych plików | Rozstrzygane **przy przycisku**, nie w procesie roboczym. Zakolejkowanie zadania, o którym już wiemy, że padnie, przenosi komunikat o minutę później i o jedno kliknięcie dalej |
+| Ponowne wgranie eksportu | Nowa trasa `/mecze/{id}/wgraj` → nowy wiersz w `imports` dla ISTNIEJĄCEGO meczu. `diff_done_at` zostaje puste, bo nowy eksport może nieść nowe tagi |
+| Diff przy przeliczeniu | **Nie pytamy.** `diff_done_at` jest per import, a ten import przeszedł już przez ekran nowych tagów |
+
+**Cena podmiany in place, płacona świadomie:** poprzednia treść HTML znika.
+Ślad zostaje w `audit_log` (`report.rebuilt`, z numerami wersji przed i po),
+w `reports.params_json` (`rebuilt_from_template`) i w historii wersji templatu —
+nie w pliku. Alternatywą byłoby zerwanie działającego adresu publicznego.
+
+**Atomowość jest sprawdzana, nie deklarowana.** Silnik pisze do pliku
+`.przelicz-*` OBOK docelowego (ten sam system plików, inaczej `rename()` przestaje
+być atomowy), a podmiana to jedno `rename()` na końcu. `test_przelicz_http.php`
+kolejkuje przeliczenie, psuje eksport w locie i sprawdza, że pod adresem
+publicznym dalej leży STARY raport — bajt w bajt — a plik tymczasowy nie
+przeżył zadania.
+
+> **USTERKA ZASTANA, WYKRYTA PRZY TEJ SESJI — NAPRAWIONA osobnym commitem
+> („Naprawa: assignClubs nie nadpisuje wyboru operatora"), przed Sesją 7.**
+>
+> `Imports::queueBuild()` woła `assignClubs()` tuż przed renderem, a ta
+> **bezwarunkowo** nadpisywała `club_home_id` i `club_away_id` nazwami wykrytymi
+> w eksporcie. Gdy eksport niesie tylko jedną nazwę drużyny — a niesie, bo
+> `team` bywa wypełnione wybiórczo (pułapka nr 5) — `club_away_id` wracało do
+> `NULL` i **rywal wybrany przez operatora w formularzu meta z Sesji 6 przepadał
+> w chwili kliknięcia „Generuj"**.
+>
+> Objaw: raport i listy pokazywały „Klub A — nieznana" mimo poprawnie wypełnionej
+> mety. Testy Sesji 6 tego nie łapały, bo sprawdzały `club_away_id` zaraz po
+> zapisie mety, a nie po wygenerowaniu.
+>
+> **Reguła po naprawie:** dane wykryte w eksporcie UZUPEŁNIAJĄ puste pola
+> i nie mają prawa unieważnić decyzji człowieka. Promocja „pierwszy dopasowany
+> na gospodarza" działa wyłącznie przy pustym gospodarzu. Korekta błędnego
+> dopasowania pozostaje możliwa: `Matches::saveMeta()` zapisuje `club_away_id`
+> bezwarunkowo, bo to jawne polecenie operatora. Pilnuje tego asercja
+> „rywal z formularza meta PRZEŻYŁ generowanie" w `test_import_n1_http.php`
+> — dopisana PO renderze, bo tam wybór ginął.
+
 ---
 
 ## PO SESJACH 1–7 (backlog, nie planować teraz)
@@ -604,6 +655,23 @@ Edycja templatu nie zostawia klubu z niespójnymi raportami. Regeneracja zawsze 
   konfigurowanie templatu miało być robotą na kilka posiedzeń, wtedy tabela,
   świadomie i z migracją. Wraz z nią trzeba zaplanować sprzątanie porzuconych
   draftów; bez tego zostają w bazie na zawsze.
+
+- **Wskaźnik postępu partii przeliczeń bez odświeżania strony.** Ekran
+  `/klub/{id}/przelicz` odświeża się dziś przez `<meta http-equiv="refresh">`
+  co 10 s, dopóki coś w partii pracuje — tak samo jak ekran zadania i bez ani
+  jednej linii skryptu (CLAUDE.md §9).
+
+  **Nota do tego zadania (odroczone z Sesji 7):** `Notifications::hasActiveWork()`
+  liczy wyłącznie `matches.status IN ('queued','running')`, a przeliczenie
+  świadomie NIE rusza stanu meczu — mecz ma sprawny raport i ma zostać `done`.
+  Skutek: podczas przeliczania chmurki nie skracają odstępu odpytywania, więc
+  toast „Raport przeliczony" przychodzi do minuty zamiast do pięciu sekund.
+  Żeby to naprawić, trzeba dojść do `owner_id` zadania typu `rebuild_report`,
+  a ono ma w `payload_json` tylko `report_id`/`match_id` — czyli albo złączenie
+  przez `match_id` do `matches.owner_id` w zapytaniu `hasActiveWork()`, albo
+  dopisanie `owner_id` do ładunku przy kolejkowaniu (`Rebuilds::queue()`).
+  Drugie jest tańsze w odczycie, pierwsze nie duplikuje danych — decyzja należy
+  do tego zadania, nie do Sesji 7.
 
 - **Klonowanie templatu** przy tworzeniu klubu („zacznij od templatu klubu X" / templat systemowy) — tanie, mocne przy demo sprzedażowym.
 - **Krok „test na drugim meczu"** w konfiguratorze — po zapisie v1 zachęta do wgrania drugiego eksportu dla walidacji pokrycia.

@@ -152,18 +152,34 @@ $link = static function (array $zmiany) use ($filters, $basePath): string {
               <?= View::e((string) ($r['engine_version'] ?? '')) ?: '<span class="muted">'
                   . View::e(View::t('common.dash')) . '</span>' ?>
               <?php /*
-                BADGE WERSJI TEMPLATU — na razie INFORMACYJNIE. Akcja „Przelicz"
-                dla raportów starszych niż templat klubu to Sesja 7; tutaj chodzi
-                o to, żeby dało się je w ogóle rozpoznać wzrokiem.
-                NULL znaczy „raport sprzed ery templatów" i jest faktem
-                historycznym, nie brakiem do uzupełnienia.
+                BADGE WERSJI TEMPLATU (Sesja 6 informacyjnie, Sesja 7 z akcją).
+
+                Nieaktualny raport pokazuje OBIE liczby: własną i aktualną klubu.
+                Sam numer nie niesie informacji, czy jest z czym coś robić —
+                dopiero zestawienie zamienia go w powód do kliknięcia.
+
+                NULL znaczy „raport sprzed ery templatów". Gdy klub nie ma
+                jeszcze templatu, to fakt historyczny i nic więcej; gdy ma —
+                raport jest nieaktualny tak samo jak każdy starszy.
               */ ?>
               <br>
-              <span class="tag <?= $r['template_version'] === null ? 'tag--older' : '' ?>">
-                <?= $r['template_version'] === null
-                    ? View::e(View::t('reports.tplv.none'))
-                    : View::e(View::t('reports.tplv', (int) $r['template_version'])) ?>
-              </span>
+              <?php if (!empty($r['tpl_outdated'])): ?>
+                <span class="tag tag--older" title="<?= View::e(View::t('recalc.act.hint')) ?>">
+                  <?= $r['template_version'] === null
+                      ? View::e(View::t('reports.tplv.outdated.none', (int) $r['tpl_current']))
+                      : View::e(View::t(
+                          'reports.tplv.outdated',
+                          (int) $r['template_version'],
+                          (int) $r['tpl_current']
+                      )) ?>
+                </span>
+              <?php else: ?>
+                <span class="tag <?= $r['template_version'] === null ? 'tag--older' : '' ?>">
+                  <?= $r['template_version'] === null
+                      ? View::e(View::t('reports.tplv.none'))
+                      : View::e(View::t('reports.tplv', (int) $r['template_version'])) ?>
+                </span>
+              <?php endif; ?>
             </td>
 
             <td><?= View::linkStatus((string) $r['link_stan']) ?></td>
@@ -191,6 +207,34 @@ $link = static function (array $zmiany) use ($filters, $basePath): string {
                 <input type="hidden" name="csrf" value="<?= View::e(Session::csrfToken()) ?>">
                 <button class="link" type="submit"><?= View::e(View::t('reports.act.regen')) ?></button>
               </form>
+
+              <?php /*
+                PRZELICZ — tylko przy raporcie starszym niż templat klubu.
+                Przycisk przy raporcie aktualnym byłby zaproszeniem do
+                kilkudziesięciu sekund pracy silnika bez żadnej zmiany w wyniku.
+
+                Bez surowych plików pokazujemy POWÓD, a nie wyszarzony przycisk
+                bez wyjaśnienia — i od razu drogę wyjścia (CLAUDE.md §8: brak
+                danych ma być widoczny, nie zamaskowany).
+              */ ?>
+              <?php if (!empty($r['tpl_outdated'])): ?>
+                <?php if (!empty($r['raw_ready'])): ?>
+                  <form class="inline" method="post" action="/raport/<?= (int) $r['id'] ?>/przelicz">
+                    <input type="hidden" name="csrf" value="<?= View::e(Session::csrfToken()) ?>">
+                    <input type="hidden" name="powrot" value="<?= View::e($basePath) ?>">
+                    <button class="link" type="submit" title="<?= View::e(View::t('recalc.act.hint')) ?>">
+                      <?= View::e(View::t('recalc.act')) ?>
+                    </button>
+                  </form>
+                <?php else: ?>
+                  <span class="muted" title="<?= View::e(View::t('recalc.blocked.hint')) ?>">
+                    <?= View::e(View::t('recalc.blocked')) ?>
+                  </span>
+                  <a class="link" href="/mecze/<?= (int) $r['match_id'] ?>/wgraj">
+                    <?= View::e(View::t('recalc.blocked.act')) ?>
+                  </a>
+                <?php endif; ?>
+              <?php endif; ?>
             </td>
           </tr>
         <?php endforeach; ?>

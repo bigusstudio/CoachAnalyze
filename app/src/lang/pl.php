@@ -455,6 +455,66 @@ return [
     'reports.tplv'        => 'templat v%d',
     'reports.tplv.none'   => 'sprzed templatów',
 
+    // --- regeneracja raportów pod aktualny templat (Sesja 7) ---
+    //
+    // Badge mówi OBIE liczby naraz. Sam „templat v1" nie niesie informacji,
+    // czy to dużo czy mało — dopiero zestawienie z aktualną wersją klubu
+    // zamienia numer w powód do działania.
+    'reports.tplv.outdated' => 'wygenerowano z templatem v%1$d (aktualny v%2$d)',
+    'reports.tplv.outdated.none' => 'wygenerowano przed erą templatów (aktualny v%d)',
+    'reports.tplv.current'  => 'templat v%d — aktualny',
+
+    'recalc.act'           => 'Przelicz',
+    'recalc.act.hint'      => 'Przelicza treść raportu pod aktualny templat. Adres publiczny zostaje ten sam — link rozesłany sztabowi nie przestanie działać.',
+    'recalc.blocked'       => 'brak surowych plików',
+    'recalc.blocked.hint'  => 'Eksport źródłowy tego meczu nie jest dostępny na dysku. Wgraj go ponownie w widoku meczu, żeby odblokować przeliczenie.',
+    'recalc.blocked.act'   => 'Wgraj eksport ponownie',
+    'recalc.queued'        => 'Przeliczenie trafiło do kolejki. Do czasu zakończenia pod dotychczasowym adresem publicznym działa poprzednia wersja raportu.',
+
+    'recalc.err.no_report'   => 'Nie ma takiego raportu.',
+    'recalc.err.no_raw'      => 'Nie da się przeliczyć: brakuje surowych plików eksportu dla tego meczu. Wgraj eksport ponownie w widoku meczu.',
+    'recalc.err.in_progress' => 'Przeliczenie tego raportu już czeka w kolejce. Poczekaj, aż się skończy.',
+
+    'recalc.title'         => 'Przelicz raporty',
+    'recalc.crumb'         => 'Przeliczanie',
+    'recalc.lead'          => 'Raporty wygenerowane na starszej wersji templatu. Przeliczenie podmienia treść w miejscu — adresy publiczne zostają te same.',
+    'recalc.current'       => 'Aktualny templat klubu: v%d',
+    'recalc.no_template'   => 'Ten klub nie ma jeszcze templatu, więc nie ma do czego przeliczać. Zbuduj templat w konfiguratorze.',
+    'recalc.none'          => 'Wszystkie raporty tego klubu stoją na aktualnym templacie.',
+    'recalc.count'         => 'Nieaktualnych raportów: %d',
+    'recalc.bulk.submit'   => 'Przelicz wszystkie nieaktualne (%d)',
+    'recalc.bulk.hint'     => 'Każdy mecz to osobne zadanie w kolejce. Błąd jednego nie zatrzymuje pozostałych — nieudane pozycje zostają wypisane z powodem.',
+    'recalc.bulk.queued'   => 'Do kolejki trafiło zadań: %d. Kolejka przerabia je po kolei.',
+    'recalc.bulk.nothing'  => 'Nie ma czego przeliczać — wszystkie raporty są na aktualnym templacie.',
+    'recalc.bulk.all_blocked' => 'Nic nie trafiło do kolejki: wszystkie nieaktualne raporty (%d) nie mają surowych plików eksportu.',
+
+    'recalc.progress'      => 'Postęp partii',
+    'recalc.progress.of'   => 'gotowe %1$d z %2$d',
+    'recalc.progress.failed' => 'nieudane: %d',
+    'recalc.progress.working' => 'w toku: %d',
+    'recalc.progress.done'    => 'Partia zakończona.',
+    'recalc.col.match'     => 'Mecz',
+    'recalc.col.version'   => 'Wersja raportu',
+    'recalc.col.generated' => 'Wygenerowano',
+    'recalc.col.status'    => 'Stan',
+    'recalc.col.action'    => 'Akcja',
+    'recalc.job'           => 'Zadanie',
+    'recalc.only_latest'   => 'Akcja zbiorcza bierze po jednym, najnowszym raporcie na mecz. Starsze raporty tego samego meczu zostają nietknięte — są śladem wcześniejszych liczb.',
+
+    'club.hub.outdated'    => 'Raportów do przeliczenia: %d',
+    'club.hub.recalc'      => 'Przelicz raporty',
+
+    // --- ponowne wgranie surowych plików do istniejącego meczu (Sesja 7) ---
+    'reupload.title'       => 'Wgraj eksport ponownie',
+    'reupload.lead'        => 'Plik trafi do TEGO meczu — nie powstanie nowy. Dotychczasowy raport i jego adres publiczny zostają bez zmian, dopóki nie przeliczysz raportu.',
+    'reupload.match'       => 'Mecz',
+    'reupload.previous'    => 'Ostatnie wgranie',
+    'reupload.previous.missing' => 'Poprzedni eksport nie jest dostępny na dysku.',
+    'reupload.previous.none' => 'Ten mecz nie ma jeszcze żadnego wgranego eksportu.',
+    'reupload.submit'      => 'Wgraj eksport',
+    'reupload.queued'      => 'Eksport przyjęty. Pokrycie liczy się w tle — po jego zakończeniu raport da się przeliczyć.',
+    'reupload.link'        => 'Wgraj eksport ponownie',
+
     // --- podsumowanie po zapisie, przykładowy raport, historia (Sesja 5) ---
     'conf.done.title'      => 'Templat zapisany',
     'conf.done.saved'      => 'Templat v%d zapisany',

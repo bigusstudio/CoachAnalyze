@@ -579,6 +579,19 @@ switch (true) {
         showTemplateHistory((int) $m[1]);
         break;
 
+    // ------------------------------------------- regeneracja raportow (Sesja 7)
+    case preg_match('#^/klub/(\d+)/przelicz$#', $path, $m) === 1 && $method === 'GET':
+        showClubRecalc((int) $m[1]);
+        break;
+
+    case preg_match('#^/klub/(\d+)/przelicz$#', $path, $m) === 1 && $method === 'POST':
+        // Przeliczenie uruchamia silnik dla N meczów — ta sama waga co
+        // generowanie raportu, więc i bramka ta sama.
+        requireCan($user, 'generate');
+        requireCsrf();
+        queueClubRecalc((int) $m[1], (int) $user['id']);
+        break;
+
     case preg_match('#^/klub/(\d+)/konfigurator/porzuc$#', $path, $m) === 1 && $method === 'POST':
         requireCan($user, 'mappings');
         requireCsrf();
@@ -749,6 +762,19 @@ switch (true) {
         regenerateReport((int) $m[1], (int) $user['id']);
         break;
 
+    /*
+     * PRZELICZ ≠ WYGENERUJ PONOWNIE (Sesja 7).
+     *
+     * `/ponow` tworzy NOWY raport pod nowym adresem, `/przelicz` podmienia
+     * treść istniejącego pod tym samym tokenem publicznym. Dwie trasy, bo to
+     * dwie różne decyzje — patrz `Rebuilds`.
+     */
+    case preg_match('#^/raport/(\d+)/przelicz$#', $path, $m) === 1 && $method === 'POST':
+        requireCan($user, 'generate');
+        requireCsrf();
+        recalcReport((int) $m[1], (int) $user['id']);
+        break;
+
     // ------------------------------------------------- powiadomienia
     case $path === '/powiadomienia' && $method === 'GET':
         showNotifications((int) $user['id']);
@@ -778,6 +804,22 @@ switch (true) {
 
     case preg_match('#^/mecze/(\d+)/historia$#', $path, $m) === 1 && $method === 'GET':
         showMatchHistory((int) $m[1]);
+        break;
+
+    /*
+     * Ponowne wgranie surowych plikow do ISTNIEJACEGO meczu (Sesja 7).
+     * Bez tego raport, ktoremu zniknal eksport zrodlowy, jest nie do
+     * przeliczenia na zawsze — a import od nowa daje nowy mecz i nowy adres.
+     */
+    case preg_match('#^/mecze/(\d+)/wgraj$#', $path, $m) === 1 && $method === 'GET':
+        showMatchUpload((int) $m[1]);
+        break;
+
+    case preg_match('#^/mecze/(\d+)/wgraj$#', $path, $m) === 1 && $method === 'POST':
+        // Wprowadzenie danych taktycznych do systemu — ta sama bramka co import.
+        requireCan($user, 'upload');
+        requireCsrf();
+        handleMatchUpload((int) $m[1], (int) $user['id']);
         break;
 
     case preg_match('#^/raport/(\d+)$#', $path, $m) === 1 && $method === 'GET':
@@ -1502,6 +1544,179 @@ function regenerateReport(int $reportId, int $userId): void
 
     $jobId = Imports::queueBuild((int) $import['id'], $userId);
     Session::flash('notice', View::t('reports.regen.queued'));
+    redirect('/zadania/' . $jobId);
+}
+
+/**
+ * Przeliczenie JEDNEGO raportu pod aktualny templat (Sesja 7).
+ *
+ * W ODRÓŻNIENIU OD `regenerateReport()` nie powstaje nowy raport: treść
+ * podmienia się w miejscu, pod tym samym plikiem i tym samym tokenem
+ * publicznym. Powód i cena tej decyzji: `CoachAnalyze\Rebuilds`.
+ *
+ * O diff nowych tagów TUTAJ NIE PYTAMY. `diff_done_at` jest per import, a ten
+ * import został już raz przepuszczony przez ekran nowych tagów — albo operator
+ * je dopisał, albo świadomie pominął. Ponowne pytanie przy każdym przeliczeniu
+ * zamieniłoby akcję jednego kliknięcia w przejście przez kreator.
+ */
+function recalcReport(int $reportId, int $userId): void
+{
+    $report = Reports::find($reportId);
+    if ($report === null) {
+        http_response_code(404);
+        redirect('/raporty');
+    }
+
+    // Wracamy tam, skąd przyszedł operator: „Przelicz" stoi i na liście
+    // raportów, i na ekranie zbiorczym klubu.
+    $powrot = safeReturn($_POST['powrot'] ?? '/raporty');
+
+    $wynik = \CoachAnalyze\Rebuilds::queue($reportId, $userId);
+
+    if (empty($wynik['ok'])) {
+        Session::flash('error', View::t((string) $wynik['error']));
+        redirect($powrot);
+    }
+
+    Session::flash('notice', View::t('recalc.queued'));
+    redirect('/zadania/' . (int) $wynik['job_id']);
+}
+
+/**
+ * Ekran zbiorczego przeliczenia klubu: co jest nieaktualne i jak idzie partia.
+ *
+ * Postęp i lista nieaktualnych to DWIE RÓŻNE LISTY i celowo stoją obok siebie.
+ * Partia mówi „co się dzieje teraz", lista nieaktualnych — „co zostaje do
+ * zrobienia". Pozycja zablokowana brakiem surowych plików nie wejdzie do
+ * żadnej partii i bez tej drugiej listy zniknęłaby operatorowi z oczu.
+ */
+function showClubRecalc(int $id): void
+{
+    $club = resolveTenant($id);
+    if ($club === null) {
+        tenantNotFound();
+        return;
+    }
+
+    // Identyfikator partii przychodzi z adresu — przepuszczamy wyłącznie
+    // szesnastkowy, o właściwej długości. Resztę traktujemy jak brak.
+    $partia = isset($_GET['partia']) && preg_match('/^[0-9a-f]{16}$/', (string) $_GET['partia']) === 1
+        ? (string) $_GET['partia']
+        : null;
+
+    $postep = $partia !== null ? \CoachAnalyze\Rebuilds::batchProgress($partia) : null;
+
+    View::page('club_recalc', [
+        'title'    => View::t('recalc.title'),
+        'active'   => 'clubs',
+        'club'     => $club,
+        'crumb'    => View::t('recalc.crumb'),
+        'current'  => \CoachAnalyze\ReportTemplates::currentVersion($id),
+        'outdated' => Reports::outdatedForClub($id),
+        'batch'    => $partia,
+        'progress' => $postep,
+        /*
+         * Odświeżanie strony, gdy w partii coś jeszcze pracuje — tym samym
+         * mechanizmem co ekran zadania (`<meta http-equiv="refresh">`
+         * w layoucie). Panel nie ma ani jednego skryptu poza chmurkami
+         * powiadomień (CLAUDE.md §9) i ta strona tego nie łamie.
+         */
+        'refresh'  => $postep !== null && $postep['working'] > 0 ? 10 : null,
+        'notice'   => Session::flash('notice'),
+        'error'    => Session::flash('error'),
+    ]);
+}
+
+/** Zakolejkowanie wszystkich nieaktualnych raportów klubu. */
+function queueClubRecalc(int $id, int $userId): void
+{
+    $club = resolveTenant($id);
+    if ($club === null) {
+        tenantNotFound();
+        return;
+    }
+
+    $wynik = \CoachAnalyze\Rebuilds::queueClub($id, $userId);
+
+    if ($wynik['queued'] === 0) {
+        // Zero zakolejkowanych ma DWA różne powody i operator ma je rozróżnić:
+        // albo nie ma czego przeliczać, albo wszystko jest zablokowane brakiem
+        // surowych plików. Drugie wymaga jego działania, pierwsze nie.
+        Session::flash('error', View::t(
+            $wynik['blocked'] === [] ? 'recalc.bulk.nothing' : 'recalc.bulk.all_blocked',
+            count($wynik['blocked'])
+        ));
+        redirect('/klub/' . $id . '/przelicz');
+    }
+
+    Session::flash('notice', View::t('recalc.bulk.queued', $wynik['queued']));
+    redirect('/klub/' . $id . '/przelicz?partia=' . $wynik['batch']);
+}
+
+/** Formularz ponownego wgrania surowych plików do istniejącego meczu (Sesja 7). */
+function showMatchUpload(int $matchId): void
+{
+    $match = Matches::find($matchId);
+    if ($match === null) {
+        http_response_code(404);
+        View::page('soon', ['title' => View::t('common.not_found'), 'heading' => View::t('common.not_found')]);
+        return;
+    }
+
+    View::page('match_upload', [
+        'title'        => View::t('reupload.title'),
+        'active'       => 'matches',
+        'match'        => $match,
+        'previous'     => Imports::latestForMatch($matchId),
+        'storageReady' => Storage::writable(),
+        'error'        => Session::flash('error'),
+    ]);
+}
+
+/**
+ * Przyjęcie eksportu do ISTNIEJĄCEGO meczu.
+ *
+ * Powstaje nowy wiersz w `imports`, mecz zostaje ten sam — a więc i raport,
+ * i jego adres publiczny. To jedyna droga wyjścia dla raportu, któremu zniknął
+ * eksport źródłowy: import przez `/import` założyłby drugi mecz.
+ */
+function handleMatchUpload(int $matchId, int $userId): void
+{
+    $match = Matches::find($matchId);
+    if ($match === null) {
+        http_response_code(404);
+        redirect('/mecze');
+    }
+
+    $formPath = '/mecze/' . $matchId . '/wgraj';
+
+    $csv = Upload::accept($_FILES['csv'] ?? null, 'csv', true);
+    if (!$csv['ok']) {
+        Session::flash('error', View::t($csv['error']));
+        redirect($formPath);
+    }
+
+    $json = Upload::accept($_FILES['json'] ?? null, 'json', false);
+    if (!$json['ok']) {
+        // CSV już leży w magazynie — sprzątamy, jak przy zwykłym imporcie.
+        @unlink((string) $csv['path']);
+        Session::flash('error', View::t($json['error']));
+        redirect($formPath);
+    }
+
+    $importId = Imports::createForMatch(
+        $matchId,
+        (string) $csv['path'],
+        $json['path'] ?? null,
+        (string) $csv['sha256'],
+        $userId
+    );
+
+    // Pokrycie liczy cron, jak przy każdym imporcie — z przeglądarki nie da się
+    // uruchomić procesu (disable_functions, docs/OGRANICZENIA_HOSTINGU.md).
+    $jobId = Imports::queueInspect($importId, $userId);
+
+    Session::flash('notice', View::t('reupload.queued'));
     redirect('/zadania/' . $jobId);
 }
 
@@ -2312,6 +2527,8 @@ function showClubHub(int $id): void
         'matchesTotal'  => $mecze['total'],
         'reports'       => $raporty['rows'],
         'reportsTotal'  => $raporty['total'],
+        // Ile raportów stoi na starszym templacie (Sesja 7). Zero = kafelka nie ma.
+        'outdatedCount' => Reports::outdatedCount($id),
         'notice'        => Session::flash('notice'),
         'error'         => Session::flash('error'),
     ]);

@@ -16,9 +16,19 @@ $opis = trim((string) ($match['home_name'] ?? '')) . ' — ' . trim((string) ($m
 ?>
 <div class="actions actions--head">
   <h1 class="h1"><?= View::e(View::t('history.title')) ?></h1>
-  <a class="link" href="/mecze/<?= (int) $match['id'] ?>/notatki">
-    <?= View::e(View::t('history.notes')) ?>
-  </a>
+  <span>
+    <a class="link" href="/mecze/<?= (int) $match['id'] ?>/notatki">
+      <?= View::e(View::t('history.notes')) ?>
+    </a>
+    <?php /*
+      WGRANIE EKSPORTU DO ISTNIEJĄCEGO MECZU (Sesja 7). Stoi tutaj, bo to jest
+      „widok meczu": droga wyjścia dla raportu, którego nie da się przeliczyć,
+      bo surowy eksport zniknął z dysku.
+    */ ?>
+    <a class="link" href="/mecze/<?= (int) $match['id'] ?>/wgraj">
+      <?= View::e(View::t('reupload.link')) ?>
+    </a>
+  </span>
 </div>
 
 <section class="panel">

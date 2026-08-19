@@ -38,6 +38,7 @@ use CoachAnalyze\Matches;
 use CoachAnalyze\Notifications;
 use CoachAnalyze\ReportTemplates;
 use CoachAnalyze\PasswordReset;
+use CoachAnalyze\Rebuilds;
 use CoachAnalyze\RedisClient;
 use CoachAnalyze\Stats;
 use CoachAnalyze\Storage;
@@ -190,14 +191,27 @@ function przetworz(int $jobId): void
 
     try {
         match ((string) $job['type']) {
-            'inspect'      => wykonajInspekcje($jobId, $importId, $import),
-            'build_report' => wykonajRender($jobId, $importId, $import, $payload),
-            default        => zakoncz($jobId, 4, 'Nieznany typ zadania: ' . $job['type']),
+            'inspect'         => wykonajInspekcje($jobId, $importId, $import),
+            'build_report'    => wykonajRender($jobId, $importId, $import, $payload),
+            Rebuilds::JOB_TYPE => wykonajPrzeliczenie($jobId, $importId, $import, $payload),
+            default           => zakoncz($jobId, 4, 'Nieznany typ zadania: ' . $job['type']),
         };
     } catch (\Throwable $e) {
         error_log("run_job {$jobId}: " . $e->getMessage() . "\n" . $e->getTraceAsString());
-        Db::run('UPDATE matches SET status = :s WHERE id = :id',
-            ['s' => 'failed', 'id' => (int) $import['match_id']]);
+
+        /*
+         * STANU MECZU NIE RUSZAMY PRZY PRZELICZENIU.
+         *
+         * Mecz z gotowym raportem jest `done` i taki zostaje: nieudane
+         * przeliczenie niczego mu nie odbiera — stary HTML nadal leży na dysku
+         * i nadal odpowiada pod swoim adresem publicznym. Oznaczenie meczu jako
+         * `failed` mówiłoby operatorowi, że stracił raport, którego nie stracił,
+         * i zapaliłoby alert na pulpicie bez powodu.
+         */
+        if ((string) $job['type'] !== Rebuilds::JOB_TYPE) {
+            Db::run('UPDATE matches SET status = :s WHERE id = :id',
+                ['s' => 'failed', 'id' => (int) $import['match_id']]);
+        }
         zakoncz($jobId, 4, $e->getMessage());
     }
 }
@@ -223,18 +237,32 @@ function wykonajInspekcje(int $jobId, int $importId, array $import): void
     Audit::log('inspect.done', null, 'import', $importId, ['job_id' => $jobId]);
 }
 
-/** Pełny render HTML wraz z artefaktami. */
 /**
- * @param array<string,mixed> $payload  ładunek zadania. `is_sample` MUSI tu
- *   dojść parametrem — w tej funkcji nie ma zasięgu dyspozytora, a odwołanie
- *   do nieistniejącej zmiennej dawało po cichu `false` i raport przykładowy
- *   nie był niczym oznaczony. Złapał to dopiero przelot HTTP.
+ * Jedno przejście silnika: konfiguracja zadania, templat klubu, wywołanie CLI.
+ *
+ * ═══════════════════════════════════════════════════════════════════════════
+ * JEDNA ŚCIEŻKA DLA RENDERU I DLA PRZELICZENIA (Sesja 7).
+ *
+ * Przeliczenie raportu pod nowy templat ma dać DOKŁADNIE to samo, co dałby
+ * import tego eksportu dzisiaj. Drugi zestaw wywołań silnika — nawet skopiowany
+ * wiernie — znaczyłby drugie miejsce, w którym liczby mogą się rozjechać, i
+ * rozjechałyby się przy pierwszej zmianie w konfiguracji, o której ktoś
+ * zapomniałby w drugim egzemplarzu.
+ *
+ * Funkcja NICZEGO NIE ZAPISUJE do `reports`. Co zrobić z wynikiem, rozstrzyga
+ * wywołujący: render wstawia nowy wiersz, przeliczenie podmienia plik w miejscu.
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * @param string $outHtml  dokąd silnik ma zapisać HTML. Przy przeliczeniu to
+ *   plik TYMCZASOWY obok docelowego, nigdy sam docelowy.
+ * @return array{wynik:array<string,mixed>, meta:array<string,mixed>,
+ *               template_version:?int, club_id:?int, dir:string}
  */
-function wykonajRender(int $jobId, int $importId, array $import, array $payload = []): void
+function uruchomSilnik(int $jobId, array $import, string $outHtml): array
 {
     $matchId = (int) $import['match_id'];
     $dir = Storage::jobDir($jobId);
-    $reportPath = Storage::reportDir() . '/' . Storage::randomName('html');
+    $reportPath = $outHtml;
 
     // Nazwy i barwy klubów z bazy — silnik ich nie odgaduje (docs/KONTRAKT_CLI.md).
     $match = Db::one('SELECT club_home_id, club_away_id FROM matches WHERE id = :id', ['id' => $matchId]);
@@ -339,7 +367,32 @@ function wykonajRender(int $jobId, int $importId, array $import, array $payload 
         'out_metrics' => $dir . '/metrics.json',
     ]);
 
-    $meta = wczytajMeta($dir . '/meta.json');
+    return [
+        'wynik'            => $wynik,
+        'meta'             => wczytajMeta($dir . '/meta.json'),
+        'template_version' => $templateVersion,
+        'club_id'          => $clubIdTenanta,
+        'dir'              => $dir,
+    ];
+}
+
+/** Pełny render HTML wraz z artefaktami. Powstaje NOWY wiersz w `reports`. */
+/**
+ * @param array<string,mixed> $payload  ładunek zadania. `is_sample` MUSI tu
+ *   dojść parametrem — w tej funkcji nie ma zasięgu dyspozytora, a odwołanie
+ *   do nieistniejącej zmiennej dawało po cichu `false` i raport przykładowy
+ *   nie był niczym oznaczony. Złapał to dopiero przelot HTTP.
+ */
+function wykonajRender(int $jobId, int $importId, array $import, array $payload = []): void
+{
+    $matchId    = (int) $import['match_id'];
+    $reportPath = Storage::reportDir() . '/' . Storage::randomName('html');
+
+    $bieg  = uruchomSilnik($jobId, $import, $reportPath);
+    $wynik = $bieg['wynik'];
+    $meta  = $bieg['meta'];
+    $templateVersion = $bieg['template_version'];
+    $clubIdTenanta   = $bieg['club_id'];
 
     if ($wynik['exit'] === 0 && is_file($reportPath)) {
         /*
@@ -431,6 +484,170 @@ function wykonajRender(int $jobId, int $importId, array $import, array $payload 
     $powod = opiszAwarie($wynik, $meta);
     zakoncz($jobId, $wynik['exit'], $powod);
     powiadomOAwarii($matchId, $jobId, $powod, Jobs::canRetry('failed'));
+}
+
+/**
+ * Przeliczenie ISTNIEJĄCEGO raportu pod aktualny templat klubu (Sesja 7).
+ *
+ * ═══════════════════════════════════════════════════════════════════════════
+ * PODMIANA MUSI BYĆ ATOMOWA I TO JEST CAŁA ISTOTA TEJ FUNKCJI.
+ *
+ * Adres publiczny raportu bywa rozesłany sztabowi i zarządowi. Render trwa
+ * kilkadziesiąt sekund. Gdyby silnik pisał wprost do pliku docelowego, przez
+ * ten czas pod działającym linkiem leżałby plik ucięty w połowie — a przy
+ * awarii silnika zostałby taki na zawsze.
+ *
+ * Dlatego: silnik pisze do pliku TYMCZASOWEGO obok docelowego, a na końcu
+ * robimy `rename()`. Na jednym systemie plików to operacja atomowa — czytelnik
+ * dostaje albo całą starą treść, albo całą nową, nigdy nic pośredniego.
+ * Plik tymczasowy MUSI leżeć w tym samym katalogu: `rename()` przez granicę
+ * systemów plików degraduje się do kopiowania i przestaje być atomowy.
+ *
+ * Kropka na początku nazwy nie jest ozdobą — plik tymczasowy ma być na pierwszy
+ * rzut oka odróżnialny od raportu przy przeglądaniu katalogu.
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * @param array<string,mixed> $payload  wymaga `report_id`
+ */
+function wykonajPrzeliczenie(int $jobId, int $importId, array $import, array $payload): void
+{
+    $reportId = (int) ($payload['report_id'] ?? 0);
+    $report = $reportId > 0
+        ? Db::one('SELECT * FROM reports WHERE id = :id', ['id' => $reportId])
+        : null;
+
+    if ($report === null) {
+        zakoncz($jobId, 4, 'Raport ' . $reportId . ' nie istnieje albo został usunięty.');
+        return;
+    }
+
+    $matchId   = (int) $import['match_id'];
+    $docelowy  = (string) $report['html_path'];
+
+    /*
+     * Ścieżka pochodzi z bazy, ale i tak ją sprawdzamy. Wpis `../../` w kolumnie
+     * pozwoliłby nadpisać dowolny plik dostępny dla procesu roboczego, a CLI —
+     * w odróżnieniu od FPM — nie ma `open_basedir`, więc nic go nie zatrzyma.
+     *
+     * Pytamy o KATALOG, nie o plik: przy raporcie, którego plik zniknął z dysku,
+     * przeliczenie ma go odtworzyć, a nie odmówić.
+     */
+    if ($docelowy === '' || !Storage::dirInside($docelowy)) {
+        zakoncz($jobId, 4, 'Ścieżka raportu ' . $reportId . ' leży poza magazynem — przeliczenie wstrzymane.');
+        return;
+    }
+
+    $tymczasowy = dirname($docelowy) . '/.przelicz-' . Storage::randomName('html');
+
+    $bieg  = uruchomSilnik($jobId, $import, $tymczasowy);
+    $wynik = $bieg['wynik'];
+    $meta  = $bieg['meta'];
+
+    if ($wynik['exit'] !== 0 || !is_file($tymczasowy)) {
+        // STARY RAPORT ZOSTAJE NIETKNIĘTY. Sprzątamy wyłącznie po sobie.
+        @unlink($tymczasowy);
+        $powod = opiszAwarie($wynik, $meta);
+        zakoncz($jobId, $wynik['exit'], $powod);
+        powiadomOAwarii($matchId, $jobId, $powod, Jobs::canRetry('failed'));
+        return;
+    }
+
+    // Uprawnienia bierzemy ze starego pliku, jeśli istnieje: `rename()` zachowuje
+    // je z pliku źródłowego, a ten powstał z domyślną maską procesu roboczego.
+    @chmod($tymczasowy, is_file($docelowy) ? (fileperms($docelowy) & 0777) : 0640);
+
+    if (!@rename($tymczasowy, $docelowy)) {
+        @unlink($tymczasowy);
+        zakoncz($jobId, 4, 'Nie udało się podmienić pliku raportu ' . $reportId . '. Poprzednia treść została nietknięta.');
+        powiadomOAwarii($matchId, $jobId, 'Podmiana pliku raportu nie powiodła się.', Jobs::canRetry('failed'));
+        return;
+    }
+
+    /*
+     * DOPIERO TERAZ baza. Kolejność ma znaczenie: gdyby wiersz szedł pierwszy,
+     * a `rename()` padł, `template_version` obiecywałby treść, której w pliku nie ma.
+     *
+     * `html_path` NIE JEST aktualizowane — o to w tym wszystkim chodzi. Ten sam
+     * plik, ten sam wiersz, ten sam token publiczny.
+     *
+     * `is_sample` przepisujemy ze starego ładunku: raport przykładowy z
+     * konfiguratora zostaje przykładowym także po przeliczeniu.
+     */
+    $stareParams = json_decode((string) ($report['params_json'] ?? ''), true);
+    $stareParams = is_array($stareParams) ? $stareParams : [];
+
+    Db::run(
+        'UPDATE reports
+            SET template_version = :tplv, engine_version = :ver,
+                generated_at = :now, params_json = :params
+          WHERE id = :id',
+        [
+            'tplv'   => $bieg['template_version'],
+            'ver'    => $meta['engine_version'] ?? $report['engine_version'],
+            'now'    => Stats::now(),
+            'params' => json_encode([
+                'sections'  => $meta['sections_available'] ?? [],
+                'job_id'    => $jobId,
+                'is_sample' => !empty($stareParams['is_sample']),
+                // Ślad, że ten raport powstał z podmiany, a nie z importu.
+                // Pytanie „dlaczego treść się zmieniła bez nowego raportu"
+                // ma mieć odpowiedź w danych, nie tylko w pamięci operatora.
+                'rebuilt_from_template' => $report['template_version'],
+            ], JSON_UNESCAPED_UNICODE),
+            'id'     => $reportId,
+        ]
+    );
+
+    /*
+     * POKRYCIE JAK PRZY IMPORCIE. Templat mógł urosnąć o sekcje, których ten
+     * eksport nie obsłuży — wtedy silnik zgłasza je jako niedostępne z powodem,
+     * a ekran pokrycia pokazuje to samo, co pokazałby przy świeżym imporcie.
+     * To poprawny stan, nie awaria (spec Sesji 7, pkt 6).
+     */
+    if ($meta !== []) {
+        Imports::saveInspection($importId, $meta);
+    }
+
+    // Stan meczu zostaje `done` — nie było go po co ruszać. Aktualizujemy
+    // wyłącznie to, co silnik mógł policzyć inaczej niż poprzednio.
+    Db::run('UPDATE matches SET half_split_ms = :hs WHERE id = :id', [
+        'hs' => $meta['half_split_ms'] ?? $import['half_split_ms'],
+        'id' => $matchId,
+    ]);
+
+    zakoncz($jobId, 0, null);
+    Audit::log('report.rebuilt', null, 'report', $reportId, [
+        'job_id'        => $jobId,
+        'match_id'      => $matchId,
+        'from_template' => $report['template_version'],
+        'to_template'   => $bieg['template_version'],
+        'batch'         => $payload['batch'] ?? null,
+    ]);
+
+    powiadomOPrzeliczeniu($matchId, $reportId, $bieg['template_version']);
+}
+
+/** Powiadomienie po udanym przeliczeniu — ten sam system chmurek co „raport gotowy". */
+function powiadomOPrzeliczeniu(int $matchId, int $reportId, ?int $wersja): void
+{
+    $match = Matches::find($matchId);
+    if ($match === null) {
+        return;
+    }
+
+    Notifications::create((int) $match['owner_id'], [
+        'type'  => Notifications::TYP_READY,
+        'title' => 'Raport przeliczony: ' . opisMeczu($match),
+        // Adres publiczny się NIE zmienił i to jest właśnie ta informacja,
+        // której odbiorca potrzebuje — inaczej odruchowo wygeneruje nowy link.
+        'body'  => $wersja !== null
+            ? 'Treść raportu została podmieniona pod templat v' . $wersja
+              . '. Dotychczasowy link publiczny działa bez zmian.'
+            : 'Treść raportu została podmieniona. Dotychczasowy link publiczny działa bez zmian.',
+        'entity'    => 'report',
+        'entity_id' => $reportId,
+        'url'       => '/raport/' . $reportId,
+    ]);
 }
 
 /** Powiadomienie o gotowym raporcie — w aplikacji zawsze, mailem wedle ustawień. */

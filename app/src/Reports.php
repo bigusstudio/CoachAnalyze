@@ -101,7 +101,7 @@ final class Reports
 
         $rows = Db::all(
             'SELECT r.id, r.match_id, r.html_path, r.engine_version, r.generated_at,
-                    r.template_version,
+                    r.template_version, r.club_id,
                     m.played_at, m.competition, m.season_id,
                     h.name AS home_name, a.name AS away_name,
                     s.label AS season_label
@@ -118,6 +118,7 @@ final class Reports
 
         self::dolaczStanLinkow($rows);
         self::oznaczNajnowsze($rows);
+        self::dolaczStanTemplatu($rows);
 
         return ['rows' => $rows, 'total' => $total, 'page' => $page, 'pages' => $pages];
     }
@@ -247,6 +248,160 @@ final class Reports
             $r['is_latest']     = ($najnowszy[$mid] ?? null) === (int) $r['id'];
             $r['siblings']      = $ile[$mid] ?? 1;
         }
+    }
+
+    /**
+     * Wersja templatu raportu KONTRA aktualna wersja templatu klubu (Sesja 7).
+     *
+     * Dokłada trzy pola: `tpl_current` (0 = klub nie ma templatu),
+     * `tpl_outdated` i `raw_ready`. Dopiero te trzy razem rozstrzygają, czy
+     * przycisk „Przelicz" ma sens: raport bywa nieaktualny i jednocześnie
+     * nie do przeliczenia, bo surowy eksport zniknął z dysku.
+     *
+     * DWA ZAPYTANIA NA CAŁĄ STRONĘ, nie po jednym na wiersz. Wzorzec „N+1"
+     * wprowadzony raz zostaje na stałe — ta sama zasada co w `dolaczStanLinkow()`.
+     *
+     * @param list<array<string,mixed>> $rows
+     */
+    private static function dolaczStanTemplatu(array &$rows): void
+    {
+        foreach ($rows as &$r) {
+            $r['tpl_current']  = 0;
+            $r['tpl_outdated'] = false;
+            $r['raw_ready']    = false;
+        }
+        unset($r);
+
+        if ($rows === []) {
+            return;
+        }
+
+        // --- aktualna wersja templatu, po jednym wierszu na klub
+        $clubIds = array_values(array_unique(array_filter(
+            array_map(static fn(array $r) => (int) ($r['club_id'] ?? 0), $rows)
+        )));
+
+        /** @var array<int,int> $wersje  club_id => MAX(version) */
+        $wersje = [];
+        if ($clubIds !== []) {
+            $params = [];
+            foreach ($clubIds as $i => $id) {
+                $params['c' . $i] = $id;
+            }
+            $miejsca = implode(', ', array_map(static fn($i) => ':c' . $i, array_keys($clubIds)));
+
+            foreach (Db::all(
+                'SELECT club_id, MAX(version) AS v FROM club_report_templates
+                  WHERE club_id IN (' . $miejsca . ') GROUP BY club_id',
+                $params
+            ) as $w) {
+                $wersje[(int) $w['club_id']] = (int) $w['v'];
+            }
+        }
+
+        // --- najnowszy import każdego meczu ze strony
+        $matchIds = array_values(array_unique(array_map(
+            static fn(array $r) => (int) $r['match_id'],
+            $rows
+        )));
+        $params = [];
+        foreach ($matchIds as $i => $id) {
+            $params['m' . $i] = $id;
+        }
+        $miejsca = implode(', ', array_map(static fn($i) => ':m' . $i, array_keys($matchIds)));
+
+        /** @var array<int,array<string,mixed>> $ostatniImport  match_id => wiersz */
+        $ostatniImport = [];
+        // Rosnąco po `id`, więc ostatnie przypisanie wygrywa i jest najnowsze.
+        foreach (Db::all(
+            'SELECT id, match_id, csv_path FROM imports
+              WHERE match_id IN (' . $miejsca . ') ORDER BY id ASC',
+            $params
+        ) as $imp) {
+            $ostatniImport[(int) $imp['match_id']] = $imp;
+        }
+
+        // Istnienie pliku sprawdzamy RAZ na mecz, nie raz na raport: jeden mecz
+        // miewa kilka raportów, a `is_readable()` to odwołanie do dysku.
+        $plikiGotowe = [];
+        foreach ($ostatniImport as $matchId => $imp) {
+            $plikiGotowe[$matchId] = Imports::rawUsable($imp);
+        }
+
+        foreach ($rows as &$r) {
+            $clubId = (int) ($r['club_id'] ?? 0);
+            $aktualna = $wersje[$clubId] ?? 0;
+
+            $r['tpl_current'] = $aktualna;
+            // Klub bez templatu nie ma z czym porównywać — raport sprzed ery
+            // templatów NIE jest wtedy nieaktualny, tylko historyczny.
+            $r['tpl_outdated'] = $aktualna > 0
+                && ($r['template_version'] === null || (int) $r['template_version'] < $aktualna);
+            $r['raw_ready'] = $plikiGotowe[(int) $r['match_id']] ?? false;
+        }
+        unset($r);
+    }
+
+    /**
+     * Raporty klubu do zbiorczego przeliczenia (Sesja 7).
+     *
+     * PO JEDNYM NA MECZ, najnowszy. Zbiorcze przeliczenie odpowiada na pytanie
+     * „czy klub ma spójne raporty pod aktualnym templatem", a odpowiada na nie
+     * ten raport, który jest dziś aktualny dla meczu. Przeliczanie starszego
+     * rodzeństwa oznaczałoby N zadań silnika na ten sam mecz i podmianę treści
+     * pod raportem, który celowo został jako ślad wcześniejszych liczb
+     * (CLAUDE.md §7). Pojedyncze „Przelicz" przy takim raporcie nadal działa —
+     * to świadoma decyzja operatora, nie efekt uboczny akcji zbiorczej.
+     *
+     * @return list<array<string,mixed>>  z polami `raw_ready` i `tpl_current`
+     */
+    public static function outdatedForClub(int $clubId): array
+    {
+        $aktualna = ReportTemplates::currentVersion($clubId);
+        if ($aktualna === 0) {
+            return [];   // Klub bez templatu — nie ma do czego przeliczać.
+        }
+
+        $wiersze = Db::all(
+            'SELECT r.id, r.match_id, r.template_version, r.generated_at, r.html_path,
+                    m.played_at,
+                    h.name AS home_name, a.name AS away_name
+               FROM reports r
+               JOIN matches m ON m.id = r.match_id
+               LEFT JOIN clubs h ON h.id = m.club_home_id
+               LEFT JOIN clubs a ON a.id = m.club_away_id
+              WHERE r.club_id = :club
+              ORDER BY r.match_id ASC, r.generated_at DESC, r.id DESC',
+            ['club' => $clubId]
+        );
+
+        $wynik = [];
+        $widziane = [];
+        foreach ($wiersze as $r) {
+            $matchId = (int) $r['match_id'];
+            if (isset($widziane[$matchId])) {
+                continue;   // Starsze rodzeństwo — patrz komentarz wyżej.
+            }
+            $widziane[$matchId] = true;
+
+            if (!ReportTemplates::isOutdated($clubId, $r['template_version'] === null
+                ? null
+                : (int) $r['template_version'])) {
+                continue;
+            }
+
+            $r['tpl_current'] = $aktualna;
+            $r['raw_ready']   = Imports::rawUsable(Imports::latestForMatch($matchId));
+            $wynik[] = $r;
+        }
+
+        return $wynik;
+    }
+
+    /** Ile raportów klubu czeka na przeliczenie — do odznaki na hubie klubu. */
+    public static function outdatedCount(int $clubId): int
+    {
+        return count(self::outdatedForClub($clubId));
     }
 
     /** Kluby występujące w jakimkolwiek raporcie — do listy rozwijanej filtru. */

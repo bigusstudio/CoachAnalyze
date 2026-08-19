@@ -77,6 +77,24 @@ final class Storage
         return $real !== false && $root !== false && str_starts_with($real, $root . DIRECTORY_SEPARATOR);
     }
 
+    /**
+     * Czy KATALOG wskazanej ścieżki leży w magazynie — sam plik istnieć nie musi.
+     *
+     * `isInside()` rozwiązuje ścieżkę przez `realpath()`, więc dla pliku, który
+     * dopiero ma powstać, zwraca zawsze false. Przy atomowej podmianie raportu
+     * (Sesja 7) pytamy właśnie o katalog: plik tymczasowy musi wylądować OBOK
+     * docelowego, bo `rename()` jest atomowy wyłącznie w obrębie jednego
+     * systemu plików.
+     */
+    public static function dirInside(string $path): bool
+    {
+        $dir  = realpath(dirname($path));
+        $root = realpath(self::root());
+
+        return $dir !== false && $root !== false
+            && ($dir === $root || str_starts_with($dir, $root . DIRECTORY_SEPARATOR));
+    }
+
     /** Sprawdzenie startowe — używane przez ekran uploadu, żeby powiedzieć prawdę od razu. */
     public static function writable(): bool
     {

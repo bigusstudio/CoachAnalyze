@@ -89,6 +89,78 @@ final class Imports
     }
 
     /**
+     * Kolejny import do ISTNIEJĄCEGO meczu (Sesja 7).
+     *
+     * Nie powstaje nowy mecz — dopisujemy wiersz do `imports`. Obowiązuje
+     * najnowszy (`latestForMatch()`), a poprzednie zostają jako historia wgrań.
+     *
+     * PO CO TO ISTNIEJE: regeneracja raportu stoi na surowych plikach. Gdy plik
+     * zniknął z dysku albo mecz powstał w czasach, gdy eksportów nie trzymaliśmy,
+     * „Przelicz" nie ma z czego liczyć. Bez tej ścieżki jedynym wyjściem byłby
+     * import od nowa — czyli NOWY mecz, nowy raport i nowy adres publiczny,
+     * a stary link rozesłany sztabowi zostałby sierotą.
+     *
+     * `diff_done_at` zostaje puste: nowy eksport może nieść tagi, o których
+     * templat nie wie, i operator ma zostać o nie zapytany jak przy imporcie.
+     */
+    public static function createForMatch(
+        int $matchId,
+        string $csvPath,
+        ?string $jsonPath,
+        string $checksum,
+        int $userId,
+    ): int {
+        Db::run(
+            'INSERT INTO imports (match_id, csv_path, json_path, checksum_csv, created_at)
+             VALUES (:mid, :csv, :json, :sum, :now)',
+            [
+                'mid'  => $matchId,
+                'csv'  => $csvPath,
+                'json' => $jsonPath,
+                'sum'  => $checksum,
+                'now'  => Stats::now(),
+            ]
+        );
+        $importId = (int) Db::pdo()->lastInsertId();
+
+        Audit::log('import.reuploaded', $userId, 'import', $importId, ['match_id' => $matchId]);
+        return $importId;
+    }
+
+    /**
+     * Czy z tego importu da się jeszcze cokolwiek policzyć.
+     *
+     * Wiersz w bazie NIE JEST dowodem, że plik leży na dysku: magazyn bywa
+     * czyszczony, przenoszony i przywracany z niepełnego zrzutu. Regeneracja
+     * pytana o gotowość ma odpowiadać na podstawie dysku, a nie bazy — inaczej
+     * „Przelicz" kolejkuje zadanie, które pada minutę później na brakującym
+     * pliku, a operator dowiaduje się o tym z ekranu zadania zamiast z przycisku.
+     *
+     * JSON projektu jest opcjonalny (jak przy imporcie) — brak samego JSON-a
+     * nie blokuje niczego, brak CSV blokuje wszystko.
+     */
+    public static function rawUsable(?array $import): bool
+    {
+        if ($import === null) {
+            return false;
+        }
+
+        $csv = (string) ($import['csv_path'] ?? '');
+        if ($csv === '') {
+            return false;
+        }
+
+        try {
+            return Storage::isInside($csv) && is_readable($csv);
+        } catch (\Throwable $e) {
+            // Brak STORAGE_PATH w konfiguracji to awaria wdrożenia, nie powód,
+            // żeby wywrócić listę raportów. Mówimy „nie da się" i logujemy.
+            error_log('imports: nie mogę sprawdzić surowych plików: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
      * Zapis wyniku `inspect`. Wołane WYŁĄCZNIE z procesu roboczego.
      *
      * @param array<string,mixed> $meta
