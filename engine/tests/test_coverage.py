@@ -22,6 +22,10 @@ KLUCZE_COVERAGE = {
     "events", "unanalysed", "shots", "duels", "sbz", "sbz_with_vector", "third",
     "third_pos", "teams", "no_team", "xg_parsed", "xg_missing", "xg_sum",
     "negative_begin", "has_json", "players_filled",
+    # `xg_unparsed` — komentarze wygladajace na xG, ktorych nie dalo sie odczytac.
+    # Klucz DOLOZONY przy naprawie `parse_xg`: brak xG ma byc widoczny, a nie
+    # zamaskowany zerem w `xg_missing`.
+    "xg_unparsed",
 }
 
 

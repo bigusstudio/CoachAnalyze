@@ -219,6 +219,11 @@ def build(frame, mapping_profile=None, teams=None, xg_model=False):
             if raw.get("b") is not None and raw["b"] < 0
         )
 
+    # Komentarze wygladajace na liczbe, ktorych nie dalo sie odczytac. Liczy je
+    # parser na surowych wierszach; ramka zbudowana ze wzorca (testy) licznika
+    # nie ma i wtedy zero jest prawda o tej ramce.
+    xg_unparsed = frame.get("xg_unparsed") or 0
+
     for raw in frame.get("events") or []:
         tag, tag_fixed = normalize_name(raw.get("tag"))
         typo_hits += 1 if tag_fixed else 0
@@ -353,6 +358,7 @@ def build(frame, mapping_profile=None, teams=None, xg_model=False):
             "xg_model": {"filled": xg_model_filled, "assumed": xg_model_assumed},
             "typo_hits": typo_hits,
             "negative_begin": negative_begin,
+            "xg_unparsed": xg_unparsed,
             "profile_version": (mapping_profile or {}).get("version"),
         },
     }

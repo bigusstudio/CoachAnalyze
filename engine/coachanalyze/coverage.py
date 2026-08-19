@@ -57,6 +57,10 @@ def build_coverage(frame, canon_result, has_json=False):
         "xg_missing": sum(1 for e in shots if e["xg"] is None),
         "xg_sum": round(sum(xg_values), 2) if xg_values else 0.0,
         "negative_begin": report["negative_begin"],
+        # Komentarze, ktore wygladaly na xG i nie dalo sie ich odczytac.
+        # Brak xG ma byc WIDOCZNY, nie zamaskowany zerem: „nie bylo xG"
+        # i „bylo, ale nieczytelne" to dwie rozne rzeczy dla analityka.
+        "xg_unparsed": report.get("xg_unparsed", 0),
         "has_json": bool(has_json),
         # Pułapka 4: brak warstwy indywidualnej, dopóki dane nie istnieją.
         "players_filled": len(players),
@@ -143,6 +147,16 @@ def build_warnings(frame, canon_result, has_json=False, palette=None):
             "code": "NEGATIVE_BEGIN",
             "msg": "Ujemny czas startu taga — przycięto do 0",
             "count": report["negative_begin"],
+        })
+
+    if report.get("xg_unparsed"):
+        warnings.append({
+            "code": "XG_NIECZYTELNE",
+            "msg": (
+                "Komentarz wygląda na xG, ale nie da się go odczytać jako liczby "
+                "— xG pominięte dla tych zdarzeń"
+            ),
+            "count": report["xg_unparsed"],
         })
 
     if not has_json:

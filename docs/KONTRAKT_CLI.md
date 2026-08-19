@@ -281,6 +281,7 @@ przepada po cichu — wraca jako ostrzeżenie `UNKNOWN_TEAM`.
     "xg_missing": 4,
     "xg_sum": 4.4,
     "negative_begin": 3,
+    "xg_unparsed": 1,
     "has_json": true,
     "players_filled": 0
   },
@@ -290,7 +291,8 @@ przepada po cichu — wraca jako ostrzeżenie `UNKNOWN_TEAM`.
   ],
   "warnings": [
     { "code": "TYPO_MASZA", "msg": "Wykryto 'MASZA POŁOWA' — zmapowano na NASZA", "count": 12 },
-    { "code": "NEGATIVE_BEGIN", "msg": "Ujemny czas startu taga — przycięto do 0", "count": 3 }
+    { "code": "NEGATIVE_BEGIN", "msg": "Ujemny czas startu taga — przycięto do 0", "count": 3 },
+    { "code": "XG_NIECZYTELNE", "msg": "Komentarz wygląda na xG, ale nie da się go odczytać…", "count": 1 }
   ],
   "unmapped_tags": [
     { "tag": "PRESS WYSOKI 2", "count": 7, "sample_labels": ["UDANY", "NIEUDANY"] }
@@ -308,6 +310,21 @@ przepada po cichu — wraca jako ostrzeżenie `UNKNOWN_TEAM`.
   }
 }
 ```
+
+### `coverage.xg_unparsed` i ostrzeżenie `XG_NIECZYTELNE`
+
+Komentarze, które WYGLĄDAJĄ na xG i nie dają się odczytać jako liczba
+(np. `1,2,3`). Liczone osobno od `xg_missing`, bo to dwie różne rzeczy:
+
+- `xg_missing` — strzał bez żadnego xG w komentarzu,
+- `xg_unparsed` — xG było zapisane i nie dało się go odczytać.
+
+Zlanie ich w jedno mówiłoby analitykowi „nie było xG" tam, gdzie prawdą jest
+„było, ale zepsute" — a to prowadzi do szukania winy w tagowaniu zamiast
+w zapisie liczby.
+
+Komentarz BEZ ani jednej cyfry (`zmiana, potem strzał`) nie jest tu liczony:
+to zwykły opis, nie zepsute xG, i meldowanie go byłoby szumem.
 
 ### Blok `dictionary` — PEŁNY słownik eksportu
 

@@ -302,3 +302,73 @@ def test_meta_zapisywane_takze_przy_bledzie(tmp_path, capsys):
 
     assert code == 2
     assert json.loads(meta_path.read_text(encoding="utf-8"))["ok"] is False
+
+
+# ===========================================================================
+# KOMENTARZ BEZ LICZBY — `comment` jest polem SWOBODNYM
+#
+# Poprzednia wersja `parse_xg` dopasowywala `([\d,\.]+)`, czyli takze sam
+# przecinek. Komentarz trenera „zmiana, potem strzal" dawal `float(".")`
+# i ValueError, ktory przewracal CALY import — a operator widzial komunikat
+# o konwersji na liczbe, z ktorego nie wynikalo nic o przecinku w komentarzu.
+# ===========================================================================
+
+
+@pytest.mark.parametrize("comment", [
+    "zmiana, potem strzal",
+    "uwaga, druga polowa",
+    ",",
+    ".",
+    "...",
+    "dobra akcja",
+    "",
+])
+def test_komentarz_bez_liczby_nie_wywala_importu(comment):
+    """Zero wyjatku i zero xG — komentarz bez cyfry to zwykly opis."""
+    assert parse.parse_xg(comment) is None
+
+
+@pytest.mark.parametrize("comment,oczekiwane", [
+    ("X 0,81", 0.81),
+    ("xG 0,09", 0.09),
+    ("x 0,14", 0.14),
+    ("5 minut", 5.0),
+    # Zapis z wiodaca kropka parsowal sie dotad na 0.5 i MA sie parsowac dalej.
+    # Wzorzec wymagajacy cyfry NA POCZATKU zmienilby to po cichu na 5.0.
+    (".5", 0.5),
+    ("uwaga, 5", 5.0),
+])
+def test_liczba_w_komentarzu_czytana_bez_zmian(comment, oczekiwane):
+    assert parse.parse_xg(comment) == oczekiwane
+
+
+def test_komentarz_nieczytelny_daje_none_zamiast_wyjatku():
+    """„1,2,3" wyglada na liczbe i nia nie jest. Zamiast wyjatku — brak xG."""
+    assert parse.parse_xg("1,2,3") is None
+
+
+def test_nieczytelne_xg_trafia_do_pokrycia_i_ostrzezen(write_csv, row):
+    """Brak xG ma byc WIDOCZNY, nie zamaskowany.
+
+    Nie bylo xG i bylo, ale nieczytelne, to dwie rozne rzeczy dla analityka,
+    wiec drugie liczy sie osobno i niesie ostrzezenie.
+    """
+    frame = parse.prep_frame(write_csv([
+        row("STRZAŁ", comment="1,2,3", x="80", y="30"),
+        row("STRZAŁ", comment="X 0,50", x="81", y="31"),
+        row("STRZAŁ", comment="dobra akcja", x="82", y="32"),
+    ]))
+    meta = coverage.build_meta(frame, canon.build(frame))
+
+    assert meta["coverage"]["xg_unparsed"] == 1, "nieczytelny jest wylacznie 1,2,3"
+    assert meta["coverage"]["xg_parsed"] == 1, "X 0,50 czyta sie bez zmian"
+    assert [w for w in meta["warnings"] if w["code"] == "XG_NIECZYTELNE"]
+
+
+def test_komentarz_opisowy_nie_jest_zglaszany_jako_nieczytelny(write_csv, row):
+    """Komentarz bez ani jednej cyfry to opis, nie zepsute xG — cisza jest tu poprawna."""
+    frame = parse.prep_frame(write_csv([row("STRZAŁ", comment="zmiana, potem strzal")]))
+    meta = coverage.build_meta(frame, canon.build(frame))
+
+    assert meta["coverage"]["xg_unparsed"] == 0
+    assert not [w for w in meta["warnings"] if w["code"] == "XG_NIECZYTELNE"]

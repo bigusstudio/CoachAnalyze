@@ -59,12 +59,56 @@ def to_float(value):
 def parse_xg(value):
     """xG bywa w komentarzu jako 'X 0,81' / 'xG 0,09' — polski przecinek.
 
-    ZGODNOŚĆ: ten sam regex, pierwsze dopasowanie, przecinek na kropkę.
+    ZGODNOŚĆ: pierwsze dopasowanie, przecinek na kropkę.
+
+    ────────────────────────────────────────────────────────────────────────
+    WZORZEC WYMAGA CO NAJMNIEJ JEDNEJ CYFRY I TO JEST NAPRAWA BŁĘDU.
+
+    Poprzednia wersja dopasowywała `([\\d,\\.]+)`, czyli także sam przecinek.
+    Komentarz zawierający przecinek i żadnej cyfry — a `comment` to pole
+    swobodne, więc „zmiana, potem strzał" jest zwyczajnym wpisem trenera —
+    dawał `float(".")` i `ValueError`, który przewracał CAŁY import. Operator
+    widział „could not convert string to float: '.'" i nie miał z tego jak
+    wywnioskować, że winien jest przecinek w komentarzu.
+
+    Cyfra jest wymagana W ŚRODKU dopasowania, nie na początku: zapis `.5`
+    parsował się dotąd na 0.5 i ma się parsować dalej. `(\\d[\\d,\\.]*)`
+    zmieniłoby to na 5.0, czyli po cichu podmieniło wartość xG.
+
+    Dopasowanie, którego `float()` i tak nie przyjmie (np. „1,2,3"), daje
+    `None` zamiast wyjątku. Takie komentarze są ZLICZANE osobno i trafiają
+    do raportu pokrycia — brak xG ma być widoczny, nie zamaskowany.
+    ────────────────────────────────────────────────────────────────────────
     """
     if is_na(value):
         return None
-    m = re.search(r"([\d,\.]+)", str(value))
-    return float(m.group(1).replace(",", ".")) if m else None
+    m = re.search(r"([\d,\.]*\d[\d,\.]*)", str(value))
+    if not m:
+        return None
+    try:
+        return float(m.group(1).replace(",", "."))
+    except ValueError:
+        return None
+
+
+def xg_nieparsowalne(value):
+    """Czy komentarz WYGLĄDA na liczbę, ale się nią nie okazał.
+
+    Rozróżnienie jest potrzebne raportowi pokrycia: komentarz bez ani jednej
+    cyfry to zwykły opis i nie ma o czym meldować, ale „1,2,3" albo „0,,5"
+    to zapis, który ktoś chciał odczytać jako xG. Cisza w tym drugim wypadku
+    znaczyłaby „nie było xG", a prawdą jest „było i nie dało się go odczytać".
+    """
+    if is_na(value):
+        return False
+    m = re.search(r"([\d,\.]*\d[\d,\.]*)", str(value))
+    if not m:
+        return False
+    try:
+        float(m.group(1).replace(",", "."))
+    except ValueError:
+        return True
+    return False
 
 
 def split_labels(value):
@@ -210,6 +254,10 @@ def prep_frame(csv_path):
     # ilu tagów to dotyczyło. Bez tego ostrzeżenie NEGATIVE_BEGIN cicho znika.
     begins = [to_float(r.get("begin")) for r in rows]
     frame["negative_begin"] = sum(1 for b in begins if b is not None and b < 0)
+    # Komentarze wyglądające na liczbę, których nie da się odczytać. Liczone
+    # TUTAJ, na surowych wierszach — po `_build_events` zostaje samo `None`
+    # i nie da się już odróżnić „nie było xG" od „było, ale nieczytelne".
+    frame["xg_unparsed"] = sum(1 for r in rows if xg_nieparsowalne(r.get("comment")))
     frame["headers"] = headers
     frame["format_fingerprint"] = format_fingerprint(headers)
     frame["player_column"] = player_column
