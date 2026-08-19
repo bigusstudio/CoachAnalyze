@@ -147,6 +147,28 @@ final class TemplateDiff
     }
 
     /**
+     * Czy eksport w ogóle NIESIE słownik pozycji.
+     *
+     * ═══════════════════════════════════════════════════════════════════════
+     * `null` TO NIE TO SAMO CO PUSTA LISTA — i ta różnica kosztowała usterkę.
+     *
+     * `Imports::saveInspection()` świadomie zapisuje `dictionary => null`, gdy
+     * silnik bloku nie podał: znaczy to „artefakt sprzed wersji silnika, która
+     * słownik dodała", a nie „eksport bez tagów". Pusta tablica znaczyłaby to
+     * drugie.
+     *
+     * `pozycjeSlownika()` spłaszcza oba przypadki do pustej listy i to jest
+     * poprawne przy liczeniu. Ale ekran, który na tej podstawie mówi
+     * „wszystkie pozycje są w templacie", KŁAMIE przy starym imporcie: nie wie
+     * tego, tylko nie ma czego sprawdzić. Stąd ta metoda.
+     * ═══════════════════════════════════════════════════════════════════════
+     */
+    public static function maSlownik(array $meta): bool
+    {
+        return is_array($meta['dictionary'] ?? null);
+    }
+
+    /**
      * Pozycje słownika z `meta.dictionary` — tagi i etykiety w jednym kształcie.
      *
      * Źródłem jest PEŁNY słownik eksportu (silnik ≥ 0.10.0), nie `unmapped_tags`:

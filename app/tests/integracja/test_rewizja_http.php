@@ -169,6 +169,20 @@ function csrfZ(string $html): string
     return preg_match('/name="csrf" value="([^"]+)"/', $html, $m) === 1 ? $m[1] : '';
 }
 
+/** Ten sam rozbior co w kontrolerze — do sprawdzenia stanu list bez HTTP. */
+function configuratorDiffTest(array $import): array
+{
+    $meta = json_decode((string) ($import['coverage_json'] ?? ''), true);
+    $meta = is_array($meta) ? $meta : [];
+    $templat = ReportTemplates::current(1);
+
+    return TemplateDiff::policz(
+        $meta,
+        $templat !== null ? ReportTemplates::decodeConfig($templat['config']) : null,
+        IgnoredTags::lookup(1)
+    );
+}
+
 /*
  * Eksport z tagiem, który operator najpierw odrzuci, a potem się rozmyśli.
  * PRESSING WYSOKI występuje trzy razy — po dopisaniu do templatu jego zdarzenia
@@ -390,6 +404,104 @@ check('zdarzenia dopisanego taga weszły do raportu',
 $importPo = Db::one('SELECT * FROM imports WHERE id = :i', ['i' => $importId]);
 $pokrycieJson = (string) ($importPo['coverage_json'] ?? '');
 check('pokrycie odświeżone przy generowaniu', $pokrycieJson !== '');
+
+// ============================================================ G. pusta rewizja
+echo "\n== G. rewizja renderuje sie MIMO domknietego diffu ==\n";
+
+/*
+ * ZGLOSZENIE Z PRODUKCJI: „Zmien mapowanie" odbijalo z powrotem na pokrycie.
+ * Dwa rozne stany dawaly ten sam objaw i oba trzeba pokryc osobno.
+ */
+
+// --- G1: diff domkniety, ZERO nowych, ale sa pozycje zignorowane na stale.
+$formularz = http('GET', '/klub/1/import');
+http('POST', '/klub/1/import', ['multipart' => multipart(
+    ['csrf' => csrfZ($formularz['body'])], ['csv' => ['mecz-g1.csv', $CSV]]
+)]);
+cron();
+ca_test_db($baza);
+$g1 = (int) Db::one('SELECT id FROM imports ORDER BY id DESC LIMIT 1')['id'];
+
+$rywalId = (int) Db::one("SELECT id FROM clubs WHERE name = 'GKS Rewizyjny'")['id'];
+$metaG1 = http('GET', '/import/' . $g1 . '/meta');
+http('POST', '/import/' . $g1 . '/meta', ['form' => [
+    'csrf' => csrfZ($metaG1['body']), 'club_away_id' => (string) $rywalId,
+    'played_at' => '2026-10-05',
+]]);
+
+// Wszystkie nowe pozycje idą „na stałe" — po zapisie `nowe` jest puste,
+// `ignorowane` pełne, `diff_done_at` ustawione. Dokładnie stan z produkcji.
+$diffG1 = http('GET', '/import/' . $g1 . '/diff');
+if ($diffG1['status'] === 200) {
+    preg_match_all('/name="decyzja\[([a-f0-9]+)\]"/', $diffG1['body'], $mg);
+    $decG1 = [];
+    foreach (array_unique($mg[1]) as $k) { $decG1[$k] = TemplateDiff::NA_STALE; }
+    http('POST', '/import/' . $g1 . '/diff', ['form' => [
+        'csrf' => csrfZ($diffG1['body']), 'decyzja' => $decG1,
+    ]]);
+}
+
+ca_test_db($baza);
+$importG1 = Db::one('SELECT * FROM imports WHERE id = :i', ['i' => $g1]);
+check('G1: diff jest domkniety', !empty($importG1['diff_done_at']));
+
+$diffPoG1 = configuratorDiffTest($importG1);
+check('G1: zero nowych tagow', $diffPoG1['nowe'] === [],
+    'wszystkie poszly „na stale"');
+check('G1: sa pozycje zignorowane', $diffPoG1['ignorowane'] !== [],
+    'liczba: ' . count($diffPoG1['ignorowane']));
+
+$rewG1 = http('GET', '/import/' . $g1 . '/diff?rewizja=1');
+check('G1: rewizja odpowiada 200, NIE przekierowuje',
+    $rewG1['status'] === 200,
+    'status ' . $rewG1['status'] . ' → ' . (string) $rewG1['location']);
+check('G1: lista zignorowanych jest na ekranie',
+    str_contains($rewG1['body'], 'zignorowana na stałe'));
+check('G1: da sie je cofnac',
+    str_contains($rewG1['body'], 'value="' . TemplateDiff::COFNIJ . '"'));
+
+// --- G2: eksport BEZ bloku `dictionary` — artefakt sprzed wersji silnika,
+// ktora slownik dodala. To jest przyczyna zgloszenia z produkcji: obie listy
+// diffu sa puste, bo nie ma czego porownac, a ekran pokrycia i tak pokazuje
+// pominiete tagi (te ida z profilu mapowan, niezaleznie od slownika).
+$coverage = json_decode((string) $importG1['coverage_json'], true);
+unset($coverage['dictionary']);
+Db::run('UPDATE imports SET coverage_json = :c WHERE id = :i',
+    ['c' => json_encode($coverage, JSON_UNESCAPED_UNICODE), 'i' => $g1]);
+
+$rewG2 = http('GET', '/import/' . $g1 . '/diff?rewizja=1');
+check('G2: rewizja NADAL odpowiada 200', $rewG2['status'] === 200,
+    'status ' . $rewG2['status'] . ' → ' . (string) $rewG2['location']);
+check('G2: ekran mowi, ze brakuje slownika, a nie ze wszystko zmapowane',
+    str_contains($rewG2['body'], 'nie ma zapisanego słownika pozycji'),
+    '„wszystkie pozycje sa w templacie" byloby nieprawda — po prostu nie ma czego sprawdzic');
+check('G2: NIE twierdzi, ze wszystko jest w templacie',
+    !str_contains($rewG2['body'], 'Wszystkie pozycje z tego eksportu są w templacie'));
+check('G2: jest droga wyjscia — przeliczenie pokrycia',
+    str_contains($rewG2['body'], '/import/' . $g1 . '/inspekcja'));
+
+$przelicz = http('POST', '/import/' . $g1 . '/inspekcja', [
+    'form' => ['csrf' => csrfZ($rewG2['body'])],
+]);
+check('G2: przeliczenie pokrycia przyjete',
+    $przelicz['status'] === 302 && str_contains((string) $przelicz['location'], '/zadania/'),
+    (string) $przelicz['location']);
+check('G2: cron policzyl pokrycie ponownie', cron() === 0);
+
+ca_test_db($baza);
+$poInspekcji = Db::one('SELECT coverage_json FROM imports WHERE id = :i', ['i' => $g1]);
+check('G2: slownik wrocil do artefaktu',
+    str_contains((string) $poInspekcji['coverage_json'], '"dictionary"'));
+
+$rewG3 = http('GET', '/import/' . $g1 . '/diff?rewizja=1');
+check('G2: po przeliczeniu rewizja listuje pozycje',
+    $rewG3['status'] === 200 && str_contains($rewG3['body'], 'zignorowana na stałe'),
+    'to jest zamkniecie petli z produkcji');
+
+// --- G3: nic nowego i nic zignorowanego -> komunikat, nadal nie redirect.
+$importCzysty = Db::one('SELECT * FROM imports WHERE id = :i', ['i' => $importId]);
+check('G3: import z domknietym diffem i pelnym templatem',
+    !empty($importCzysty['diff_done_at']));
 
 echo "\n=== OK: {$ok}, BŁĘDÓW: {$fail} ===\n";
 exit($fail === 0 ? 0 : 1);

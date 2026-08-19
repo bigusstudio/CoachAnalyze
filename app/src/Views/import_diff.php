@@ -21,9 +21,11 @@ use CoachAnalyze\View;
  * @var list<string>              $qualifiers
  * @var bool|null                 $rewizja  tryb rewizji mapowania z pokrycia
  * @var string|null               $fokus    skrót pozycji do wyróżnienia
+ * @var bool|null                 $slownikJest  czy eksport niesie słownik pozycji
  */
 $rewizja = $rewizja ?? false;
 $fokus   = $fokus ?? null;
+$slownikJest = $slownikJest ?? true;
 
 /*
  * TEN SAM EKRAN, DWA WEJŚCIA (żadnego drugiego ekranu mapowania).
@@ -64,6 +66,33 @@ $znaczniki = [
 </section>
 
 <p class="hint"><?= View::e(View::t($rewizja ? 'rev.lead' : 'diff.lead')) ?></p>
+
+<?php if ($rewizja && $nowe === []): ?>
+  <?php /*
+    PUSTA REWIZJA TEŻ JEST ODPOWIEDZIĄ — i musi paść na ekranie.
+
+    Dotąd w tym miejscu było przekierowanie na pokrycie: operator klikał
+    „Zmień mapowanie" i wracał tam, skąd przyszedł, bez słowa. Wyglądało to
+    na zepsuty odsyłacz i tak zostało zgłoszone.
+
+    DWA POWODY PUSTKI, ROZRÓŻNIONE. Jeden znaczy „nie ma nic do poprawienia",
+    drugi „nie mam czego sprawdzić" — i tylko drugi wymaga działania.
+  */ ?>
+  <?php if (!$slownikJest): ?>
+    <section class="panel">
+      <p class="alert" role="alert"><?= View::e(View::t('rev.empty.no_dictionary')) ?></p>
+      <p class="hint"><?= View::e(View::t('rev.empty.no_dictionary.hint')) ?></p>
+      <form method="post" action="/import/<?= (int) $import['id'] ?>/inspekcja">
+        <input type="hidden" name="csrf" value="<?= View::e(Session::csrfToken()) ?>">
+        <button class="btn" type="submit"><?= View::e(View::t('rev.inspect.submit')) ?></button>
+      </form>
+    </section>
+  <?php else: ?>
+    <p class="empty"><?= View::e(View::t('rev.empty.all_mapped')) ?></p>
+  <?php endif; ?>
+
+  <p><a class="link" href="/import/<?= (int) $import['id'] ?>"><?= View::e(View::t('common.back')) ?></a></p>
+<?php else: ?>
 
 <form method="post" action="/import/<?= (int) $import['id'] ?>/diff<?= $rewizja ? '?rewizja=1' : '' ?>">
   <input type="hidden" name="csrf" value="<?= View::e(Session::csrfToken()) ?>">
@@ -202,3 +231,4 @@ $znaczniki = [
     <?php endif; ?>
   </div>
 </form>
+<?php endif; ?>

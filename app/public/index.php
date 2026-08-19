@@ -624,6 +624,18 @@ switch (true) {
         saveMatchMeta((int) $m[1], (int) $user['id']);
         break;
 
+    /*
+     * PONOWNA INSPEKCJA TEGO SAMEGO IMPORTU. Droga wyjścia dla eksportu
+     * wgranego przed wersją silnika, która zaczęła podawać słownik pozycji:
+     * bez słownika rewizja mapowania nie ma czego wylistować, a plik CSV leży
+     * na dysku i wystarczy przeliczyć pokrycie jeszcze raz.
+     */
+    case preg_match('#^/import/(\d+)/inspekcja$#', $path, $m) === 1 && $method === 'POST':
+        requireCan($user, 'generate');
+        requireCsrf();
+        requeueInspection((int) $m[1], (int) $user['id']);
+        break;
+
     case preg_match('#^/import/(\d+)/diff$#', $path, $m) === 1 && $method === 'GET':
         showTemplateDiff((int) $m[1]);
         break;
@@ -3541,6 +3553,34 @@ function zapiszMetaMeczu(int $matchId, int $userId, string $powrot): bool
  * Gdy nie ma nic nowego, NIE ZATRZYMUJEMY operatora — ekran, który pyta o nic,
  * uczy klikać „dalej" bez czytania. Idzie wtedy prosto na pokrycie.
  */
+/**
+ * Ponowne policzenie pokrycia dla istniejącego importu.
+ *
+ * Nie powstaje nowy import ani nowy mecz — to ten sam wiersz, przeliczony
+ * aktualnym silnikiem. Sensem jest uzupełnienie artefaktu o bloki, których
+ * starsza wersja silnika nie podawała (`meta.dictionary`), bez ruszania
+ * raportu i bez ponownego wgrywania pliku.
+ */
+function requeueInspection(int $importId, int $userId): void
+{
+    $import = Imports::find($importId);
+    if ($import === null) {
+        tenantNotFound();
+        return;
+    }
+
+    if (!Imports::rawUsable($import)) {
+        // Bez pliku nie ma czego inspekcjonować — mówimy wprost i wskazujemy
+        // ponowne wgranie, zamiast kolejkować zadanie skazane na porażkę.
+        Session::flash('error', View::t('rev.err.no_raw'));
+        redirect('/import/' . $importId);
+    }
+
+    $jobId = Imports::queueInspect($importId, $userId);
+    Session::flash('notice', View::t('rev.inspect.queued'));
+    redirect('/zadania/' . $jobId);
+}
+
 function showTemplateDiff(int $importId): void
 {
     $import = Imports::find($importId);
@@ -3577,9 +3617,19 @@ function showTemplateDiff(int $importId): void
         ? \CoachAnalyze\TemplateDiff::pozycjeRewizji($diff, !empty($import['diff_done_at']))
         : $diff['nowe'];
 
-    // Poza rewizją pusty ekran nie ma po co istnieć — ekran pytający o nic
-    // uczy klikać „dalej" bez czytania.
-    if ($pozycje === []) {
+    /*
+     * STRAŻNIK PUSTEJ LISTY NIE OBOWIĄZUJE W REWIZJI.
+     *
+     * USTERKA Z PRODUKCJI: „Zmień mapowanie" odbijało z powrotem na pokrycie,
+     * bez słowa wyjaśnienia. Operator klikał przycisk i wracał tam, skąd
+     * przyszedł — wyglądało to na zepsuty odsyłacz.
+     *
+     * Przy zwykłym diffie pusty ekran nie ma po co istnieć: ekran pytający
+     * o nic uczy klikać „dalej" bez czytania. Rewizja jest odwrotna — operator
+     * PRZYSZEDŁ SAM sprawdzić, co wypada z analizy, i pusta odpowiedź też jest
+     * odpowiedzią. Musi ją dostać na ekranie, a nie w postaci przekierowania.
+     */
+    if ($pozycje === [] && !$rewizja) {
         redirect('/import/' . $importId);
     }
 
@@ -3601,6 +3651,15 @@ function showTemplateDiff(int $importId): void
         'diff'       => $diff,
         'rewizja'    => $rewizja,
         'fokus'      => $fokus,
+        /*
+         * Czy eksport w ogóle niesie słownik pozycji. Bez tego rozróżnienia
+         * ekran mówiłby „wszystkie pozycje są w templacie" także wtedy, gdy
+         * po prostu nie ma czego sprawdzić — a to nieprawda i to ona stała
+         * za zgłoszeniem: import sprzed wersji silnika ze słownikiem.
+         */
+        'slownikJest' => \CoachAnalyze\TemplateDiff::maSlownik(
+            (array) json_decode((string) ($import['coverage_json'] ?? ''), true)
+        ),
         'nowe'       => \CoachAnalyze\TemplateDiff::zPodpowiedziami(
             $pozycje, new \CoachAnalyze\HeuristicSuggester(), $clubId
         ),

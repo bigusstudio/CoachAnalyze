@@ -534,6 +534,14 @@ return [
     'rev.chip.hint'       => 'Otwórz rewizję mapowania na tej pozycji',
     'rev.submit'          => 'Zatwierdź rewizję',
 
+    // Pusta rewizja: DWA różne powody, tylko jeden wymaga działania.
+    'rev.empty.all_mapped' => 'Wszystkie pozycje z tego eksportu są w templacie klubu — nie ma czego poprawiać.',
+    'rev.empty.no_dictionary' => 'Ten eksport nie ma zapisanego słownika pozycji, więc nie ma czego wylistować.',
+    'rev.empty.no_dictionary.hint' => 'Pokrycie policzono wersją silnika sprzed dodania słownika tagów. Plik źródłowy leży na dysku — przelicz pokrycie jeszcze raz, a lista pozycji się pojawi. Raport i jego adres publiczny zostają bez zmian.',
+    'rev.inspect.submit'  => 'Przelicz pokrycie',
+    'rev.inspect.queued'  => 'Ponowne policzenie pokrycia trafiło do kolejki. Po jego zakończeniu wróć do rewizji mapowania.',
+    'rev.err.no_raw'      => 'Nie da się przeliczyć pokrycia: brakuje pliku źródłowego tego importu. Wgraj eksport ponownie w widoku meczu.',
+
     'rev.stan.nowa'       => 'nowa',
     'rev.stan.pominieta'  => 'pominięta w tym imporcie',
     'rev.stan.na_stale'   => 'zignorowana na stałe',
