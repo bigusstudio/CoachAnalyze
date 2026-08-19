@@ -44,6 +44,40 @@ $liczby = [
 
 <p class="hint"><?= View::e(View::t('coverage.lead')) ?></p>
 
+<?php if (!empty($meczMeta)): ?>
+  <?php /*
+    DANE MECZU NA WIERZCHU, z drogą do poprawki.
+
+    Data i sezon nie wpływają na liczby, ale opisują raport i stoją w jego
+    nagłówku. Dotąd dało się je ustawić wyłącznie raz, w kroku przed diffem —
+    mecz przepuszczony bez daty zostawał bez daty i bez sezonu na zawsze.
+  */ ?>
+  <section class="panel">
+    <div class="actions actions--head">
+      <h2 class="h2"><?= View::e(View::t('meta.edit.title')) ?></h2>
+      <a class="link" href="/mecze/<?= (int) $meczMeta['id'] ?>/meta?powrot=<?= rawurlencode('/import/' . (int) $import['id']) ?>">
+        <?= View::e(View::t('meta.edit.link')) ?>
+      </a>
+    </div>
+    <dl class="facts">
+      <dt><?= View::e(View::t('match.date')) ?></dt>
+      <dd><?= !empty($meczMeta['played_at'])
+              ? View::e(substr((string) $meczMeta['played_at'], 0, 10))
+              : '<span class="muted">' . View::e(View::t('match.no_date')) . '</span>' ?></dd>
+
+      <dt><?= View::e(View::t('matches.season')) ?></dt>
+      <dd><?= !empty($meczMeta['season_label'])
+              ? View::e((string) $meczMeta['season_label'])
+              : '<span class="muted">' . View::e(View::t('common.dash')) . '</span>' ?></dd>
+
+      <dt><?= View::e(View::t('match.them')) ?></dt>
+      <dd><?= !empty($meczMeta['away_name'])
+              ? View::e((string) $meczMeta['away_name'])
+              : '<span class="muted">' . View::e(View::t('match.no_club')) . '</span>' ?></dd>
+    </dl>
+  </section>
+<?php endif; ?>
+
 <section class="panel">
   <h2 class="h2"><?= View::e(View::t('coverage.numbers')) ?></h2>
   <dl class="facts facts--wide">

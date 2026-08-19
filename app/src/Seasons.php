@@ -66,6 +66,65 @@ final class Seasons
      * pierwszym imporcie po wakacjach. Dopasowujemy po ZAKRESIE DAT, nie po
      * etykiecie: etykieta jest tekstem i klub może ją sobie nazwać inaczej.
      */
+    /**
+     * Sezon obejmujący datę — WYŁĄCZNIE ODCZYT, bez zakładania nowego.
+     *
+     * `detect()` przy braku dopasowania TWORZY sezon i to jest poprawne przy
+     * zapisie meczu. Formularz potrzebuje jednak czegoś innego: podpowiedzieć,
+     * co zaznaczyć, zanim operator cokolwiek zatwierdzi. Zakładanie sezonu przy
+     * samym wyświetleniu ekranu znaczyłoby wiersze w bazie powstające z tego,
+     * że ktoś gdzieś zajrzał.
+     */
+    public static function matching(?string $date): ?int
+    {
+        if ($date === null || $date === '') {
+            return null;
+        }
+
+        $wiersz = Db::one(
+            // Dwa symbole na tę samą datę — patrz komentarz w Reports::search().
+            'SELECT id FROM seasons WHERE date_from <= :d_od AND date_to >= :d_do ORDER BY id LIMIT 1',
+            ['d_od' => substr($date, 0, 10), 'd_do' => substr($date, 0, 10)]
+        );
+        return $wiersz !== null ? (int) $wiersz['id'] : null;
+    }
+
+    /**
+     * Sezon proponowany w formularzu meczu.
+     *
+     * ═══════════════════════════════════════════════════════════════════════
+     * KOLEJNOŚĆ NIE JEST DOWOLNA: najpierw to, co WYNIKA Z DANYCH, dopiero
+     * potem to, co jest tylko prawdopodobne.
+     *
+     *   1. sezon już przypisany do meczu — decyzja człowieka, nie ruszamy,
+     *   2. sezon obejmujący datę meczu — wynika z daty, więc jest prawdziwy,
+     *   3. sezon bieżący, a gdy go nie ma — najnowszy.
+     *
+     * Punkt 2 przed 3 ma konkretny powód: mecz z zeszłego sezonu wgrywany dziś
+     * trafiłby przy odwrotnej kolejności do sezonu bieżącego, po cichu i wbrew
+     * własnej dacie. Podpowiedź ma przyspieszać, nie zmyślać.
+     * ═══════════════════════════════════════════════════════════════════════
+     */
+    public static function suggestFor(?int $assigned, ?string $date): ?int
+    {
+        if ($assigned !== null && $assigned > 0) {
+            return $assigned;
+        }
+
+        $zDaty = self::matching($date);
+        if ($zDaty !== null) {
+            return $zDaty;
+        }
+
+        $biezacy = self::current();
+        if ($biezacy !== null) {
+            return (int) $biezacy['id'];
+        }
+
+        $wszystkie = self::all();   // posortowane malejąco po `date_from`
+        return $wszystkie !== [] ? (int) $wszystkie[0]['id'] : null;
+    }
+
     public static function detect(?string $date, ?int $userId = null): ?int
     {
         if ($date === null || $date === '') {

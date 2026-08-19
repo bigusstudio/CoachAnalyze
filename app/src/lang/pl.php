@@ -447,6 +447,22 @@ return [
     'meta.score_them'     => 'Bramki — rywal',
     'meta.score.hint'     => 'Puste pole znaczy „nie podano", a nie 0:0.',
     'meta.competition'    => 'Rozgrywki',
+    // --- edycja meta po fakcie ---
+    //
+    // POWÓD ISTNIENIA: dotąd metę dało się ustawić WYŁĄCZNIE raz, przy imporcie.
+    // Mecz wgrany bez daty zostawał bez daty i bez sezonu na zawsze — stąd puste
+    // kolumny „Sezon" i „bez daty" na liście meczów.
+    'meta.edit.title'     => 'Dane meczu',
+    'meta.edit.crumb'     => 'Dane meczu',
+    'meta.edit.lead'      => 'Popraw datę, sezon, rywala lub wynik już zaimportowanego meczu. Te dane opisują mecz i nie wchodzą do metryk — liczby w raporcie się od nich nie zmienią.',
+    'meta.edit.submit'    => 'Zapisz dane meczu',
+    'meta.edit.link'      => 'Dane meczu',
+    'meta.edit.saved'     => 'Dane meczu zapisane.',
+
+    // Uczciwa nota: nagłówek gotowego raportu jest już w pliku HTML.
+    'meta.edit.report_note' => 'Raport dla tego meczu już istnieje. Zmiana tych danych nie wpływa na liczby, ale nagłówek raportu odświeży się dopiero przy „Przelicz".',
+    'meta.edit.saved_with_report' => 'Dane meczu zapisane. Liczby w raporcie się nie zmieniły — nagłówek gotowego raportu odświeży się dopiero po użyciu „Przelicz".',
+
     'meta.season.auto'    => '— wykryj z daty',
     'meta.submit'         => 'Zapisz i przejdź dalej',
     'meta.saved'          => 'Zapisano dane meczu.',

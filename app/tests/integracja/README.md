@@ -26,7 +26,7 @@ zielone, `1` jakiś zestaw nie przeszedł, `2` zły argument.
 w podsumowaniu jako POMINIĘTY, z powodem. Zestaw cicho pominięty jest gorszy
 niż zestaw czerwony, bo wygląda jak zielony.
 
-Stan wyjściowy przy pisaniu tego pliku: **38 zestawów, 1575 asercji, 0 błędów**.
+Stan wyjściowy przy pisaniu tego pliku: **39 zestawów, 1618 asercji, 0 błędów**.
 
 ## Uruchamianie pojedynczo
 
@@ -83,6 +83,9 @@ PYTHONPATH=../../../engine php test_wskaznik_http.php
 # Rewizja mapowania z ekranu pokrycia: pokrycie → rewizja → dodanie taga →
 # nowa wersja templatu → Generuj ponownie → zdarzenia taga w raporcie.
 PYTHONPATH=../../../engine php test_rewizja_http.php
+
+# Meta meczu: sezon przy imporcie, filtr po sezonie i edycja po fakcie.
+PYTHONPATH=../../../engine php test_meta_sezon_http.php
 
 # Skrypt chmurek na atrapie DOM
 node test_chmurki.js

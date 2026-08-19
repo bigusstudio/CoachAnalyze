@@ -118,12 +118,15 @@ $link = static function (array $zmiany) use ($filtr, $basePath): string {
               ? View::e((string) $m['season_label'])
               : '<span class="muted">' . View::e(View::t('common.dash')) . '</span>' ?></td>
           <td><?= View::status((string) $m['status']) ?></td>
-          <td>
+          <td class="akcje">
             <?php if (!empty($m['import_id'])): ?>
               <a class="link" href="/import/<?= (int) $m['import_id'] ?>"><?= View::e(View::t('matches.open')) ?></a>
-            <?php else: ?>
-              <span class="muted"><?= View::e(View::t('common.dash')) ?></span>
             <?php endif; ?>
+            <?php /* WEJŚCIE DO POPRAWKI META. Pusta data i pusty sezon w tej
+                     tabeli brały się stąd, że nie było gdzie ich uzupełnić. */ ?>
+            <a class="link" href="/mecze/<?= (int) $m['id'] ?>/meta?powrot=<?= rawurlencode($_SERVER['REQUEST_URI'] ?? '/mecze') ?>">
+              <?= View::e(View::t('meta.edit.link')) ?>
+            </a>
           </td>
         </tr>
       <?php endforeach; ?>

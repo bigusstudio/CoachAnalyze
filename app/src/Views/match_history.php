@@ -11,9 +11,24 @@ use CoachAnalyze\View;
  *
  * @var array<string,mixed> $match
  * @var list<array<string,mixed>> $events
+ * @var string|null $notice
+ * @var string|null $error
  */
 $opis = trim((string) ($match['home_name'] ?? '')) . ' — ' . trim((string) ($match['away_name'] ?? ''));
 ?>
+<?php /*
+  KOMUNIKATY MUSZĄ SIĘ TU POKAZAĆ. Historia meczu jest celem powrotu po zapisie
+  danych meczu, a widok bez tych dwóch akapitów po prostu gubił potwierdzenie —
+  operator zapisywał wynik i nie dostawał żadnej odpowiedzi, łącznie z notą
+  o tym, że nagłówek raportu odświeży się dopiero przy „Przelicz".
+*/ ?>
+<?php if (!empty($notice)): ?>
+  <p class="notice" role="status"><?= View::e($notice) ?></p>
+<?php endif; ?>
+<?php if (!empty($error)): ?>
+  <p class="alert" role="alert"><?= View::e($error) ?></p>
+<?php endif; ?>
+
 <div class="actions actions--head">
   <h1 class="h1"><?= View::e(View::t('history.title')) ?></h1>
   <span>
@@ -25,6 +40,9 @@ $opis = trim((string) ($match['home_name'] ?? '')) . ' — ' . trim((string) ($m
       „widok meczu": droga wyjścia dla raportu, którego nie da się przeliczyć,
       bo surowy eksport zniknął z dysku.
     */ ?>
+    <a class="link" href="/mecze/<?= (int) $match['id'] ?>/meta">
+      <?= View::e(View::t('meta.edit.link')) ?>
+    </a>
     <a class="link" href="/mecze/<?= (int) $match['id'] ?>/wgraj">
       <?= View::e(View::t('reupload.link')) ?>
     </a>

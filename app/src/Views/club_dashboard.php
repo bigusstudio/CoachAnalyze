@@ -117,6 +117,7 @@ $szczegoly = \CoachAnalyze\Clubs::decodeDetails($club['details'] ?? null);
             <th><?= View::e(View::t('match.date')) ?></th>
             <th><?= View::e(View::t('match.them')) ?></th>
             <th><?= View::e(View::t('match.status')) ?></th>
+            <th><?= View::e(View::t('match.action')) ?></th>
           </tr>
         </thead>
         <tbody>
@@ -137,6 +138,13 @@ $szczegoly = \CoachAnalyze\Clubs::decodeDetails($club['details'] ?? null);
               <?php endif; ?>
             </td>
             <td><?= View::status((string) $m['status']) ?></td>
+            <td class="akcje">
+              <?php /* Wejście do poprawki daty i sezonu — hub jest miejscem,
+                       w którym operator najczęściej zauważa, że ich brakuje. */ ?>
+              <a class="link" href="/mecze/<?= (int) $m['id'] ?>/meta?powrot=<?= rawurlencode('/klub/' . (int) $club['id']) ?>">
+                <?= View::e(View::t('meta.edit.link')) ?>
+              </a>
+            </td>
           </tr>
         <?php endforeach; ?>
         </tbody>

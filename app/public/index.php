@@ -872,6 +872,22 @@ switch (true) {
      * Bez tego raport, ktoremu zniknal eksport zrodlowy, jest nie do
      * przeliczenia na zawsze — a import od nowa daje nowy mecz i nowy adres.
      */
+    /*
+     * EDYCJA META MECZU PO FAKCIE. Ten sam formularz co przy imporcie —
+     * bez tej trasy mecz bez daty i sezonu zostawał taki na zawsze.
+     */
+    case preg_match('#^/mecze/(\d+)/meta$#', $path, $m) === 1 && $method === 'GET':
+        showMatchMetaEdit((int) $m[1]);
+        break;
+
+    case preg_match('#^/mecze/(\d+)/meta$#', $path, $m) === 1 && $method === 'POST':
+        // Meta opisuje mecz, z którego powstaje raport — decyzja, nie podgląd.
+        // Ta sama bramka co przy imporcie.
+        requireCan($user, 'upload');
+        requireCsrf();
+        saveMatchMetaEdit((int) $m[1], (int) $user['id']);
+        break;
+
     case preg_match('#^/mecze/(\d+)/wgraj$#', $path, $m) === 1 && $method === 'GET':
         showMatchUpload((int) $m[1]);
         break;
@@ -1972,6 +1988,9 @@ function showMatchHistory(int $matchId): void
         'active' => 'matches',
         'match'  => $match,
         'events' => Matches::history($matchId),
+        // Cel powrotu po zapisie danych meczu — bez tego potwierdzenie ginie.
+        'notice' => Session::flash('notice'),
+        'error'  => Session::flash('error'),
     ]);
 }
 
@@ -3199,6 +3218,66 @@ function showMatchMeta(int $importId): void
         'mecz'    => $mecz,
         'rywale'  => Clubs::rivals(),
         'seasons' => Seasons::all(),
+        // Podpowiedź sezonu: z daty meczu, a gdy jej nie ma — bieżący.
+        // Kolejność i powód: `Seasons::suggestFor()`.
+        'seasonDefault' => Seasons::suggestFor(
+            $mecz['season_id'] ?? null,
+            $mecz['played_at'] ?? null
+        ),
+        'akcja'   => '/import/' . $importId . '/meta',
+        'powrot'  => '/import/' . $importId,
+        'edycja'  => false,
+        'notice'  => Session::flash('notice'),
+        'error'   => Session::flash('error'),
+    ]);
+}
+
+/**
+ * Edycja mety meczu JUŻ ZAIMPORTOWANEGO.
+ *
+ * ═══════════════════════════════════════════════════════════════════════════
+ * PO CO, SKORO META JEST PRZY IMPORCIE.
+ *
+ * Bo dotąd dało się ją ustawić WYŁĄCZNIE raz, w kroku przed diffem. Mecz
+ * wgrany przed powstaniem tego kroku — albo taki, przy którym operator przeszedł
+ * dalej bez daty — zostawał bez daty i bez sezonu NA ZAWSZE. Stąd puste kolumny
+ * „Sezon" i „bez daty" na liście meczów: to nie usterka filtrowania, tylko brak
+ * drogi do uzupełnienia danych.
+ *
+ * Ten sam formularz, inny adres zapisu (`app/src/Views/match_meta.php`).
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+function showMatchMetaEdit(int $matchId): void
+{
+    $mecz = Matches::find($matchId);
+    if ($mecz === null) {
+        http_response_code(404);
+        View::page('soon', ['title' => View::t('common.not_found'), 'heading' => View::t('common.not_found')]);
+        return;
+    }
+
+    $tenant = $mecz['club_id'] !== null ? Clubs::find((int) $mecz['club_id']) : null;
+    $import = Imports::latestForMatch($matchId);
+
+    View::page('match_meta', [
+        'title'   => View::t('meta.edit.title'),
+        'active'  => 'matches',
+        'club'    => $tenant,
+        'crumb'   => View::t('meta.edit.crumb'),
+        'import'  => $import ?? ['id' => 0],
+        'mecz'    => $mecz,
+        'rywale'  => Clubs::rivals(),
+        'seasons' => Seasons::all(),
+        'seasonDefault' => Seasons::suggestFor(
+            $mecz['season_id'] ?? null,
+            $mecz['played_at'] ?? null
+        ),
+        'akcja'   => '/mecze/' . $matchId . '/meta',
+        // Wracamy tam, skąd operator przyszedł: meta jest osiągalna z listy
+        // meczów, z huba klubu i z ekranu pokrycia.
+        'powrot'  => safeReturn($_GET['powrot'] ?? ('/mecze/' . $matchId . '/historia')),
+        'edycja'  => true,
+        'maRaport' => Imports::latestReport($matchId) !== null,
         'notice'  => Session::flash('notice'),
         'error'   => Session::flash('error'),
     ]);
@@ -3212,9 +3291,54 @@ function saveMatchMeta(int $importId, int $userId): void
         tenantNotFound();
         return;
     }
-    $matchId = (int) $import['match_id'];
-    $powrot = '/import/' . $importId . '/meta';
 
+    if (!zapiszMetaMeczu((int) $import['match_id'], $userId, '/import/' . $importId . '/meta')) {
+        return;   // Błąd walidacji — `zapiszMetaMeczu()` już przekierowało.
+    }
+
+    Session::flash('notice', View::t('meta.saved'));
+    redirect('/import/' . $importId . '/diff');
+}
+
+/** Zapis mety poprawianej po fakcie. Ten sam formularz, inny powrót. */
+function saveMatchMetaEdit(int $matchId, int $userId): void
+{
+    $mecz = Matches::find($matchId);
+    if ($mecz === null) {
+        http_response_code(404);
+        redirect('/mecze');
+    }
+
+    $powrot = safeReturn($_POST['powrot'] ?? ('/mecze/' . $matchId . '/historia'));
+
+    if (!zapiszMetaMeczu($matchId, $userId, '/mecze/' . $matchId . '/meta')) {
+        return;
+    }
+
+    /*
+     * META NIE WCHODZI DO METRYK — zmiana daty, wyniku czy sezonu nie wymaga
+     * przeliczania raportu i nie proponujemy go odruchowo. Ale nagłówek
+     * gotowego raportu jest już wyrenderowany w pliku HTML i zostanie stary
+     * do najbliższego „Przelicz". Mówimy to wprost tylko wtedy, gdy raport
+     * faktycznie istnieje — inaczej byłaby to rada o czymś, czego nie ma.
+     */
+    Session::flash('notice', Imports::latestReport($matchId) !== null
+        ? View::t('meta.edit.saved_with_report')
+        : View::t('meta.edit.saved'));
+
+    redirect($powrot);
+}
+
+/**
+ * Zapis pól mety meczu — wspólny dla importu i dla poprawki po fakcie.
+ *
+ * Zwraca `false`, gdy zapis został przerwany walidacją (i już przekierował).
+ * Wydzielone, bo obie ścieżki ustawiają DOKŁADNIE TE SAME pola i różnią się
+ * wyłącznie tym, dokąd wracają — dwie kopie tej logiki znaczyłyby dwa miejsca,
+ * w których zakładany jest nowy rywal, i dwie okazje, żeby się rozjechały.
+ */
+function zapiszMetaMeczu(int $matchId, int $userId, string $powrot): bool
+{
     /*
      * NOWY RYWAL ZAKŁADANY TĄ SAMĄ DROGĄ CO KAŻDY KLUB — `Clubs::create()`
      * z `is_own_team = 0`. Nazwa z eksportu ląduje w aliasach, żeby następny
@@ -3247,6 +3371,21 @@ function saveMatchMeta(int $importId, int $userId): void
         }
     }
 
+    /*
+     * PRZY POPRAWCE PO FAKCIE PUSTY WYBÓR NIE KASUJE RYWALA.
+     *
+     * Formularz importu i formularz edycji wyglądają tak samo, ale znaczą co
+     * innego: przy imporcie pusty select to „jeszcze nie wiem", przy edycji
+     * byłby to „usuń przypisanie", czego operator nie prosił. Zostawiamy więc
+     * to, co jest — wyczyścić da się, wybierając innego rywala.
+     */
+    if ($awayId === null) {
+        $obecny = Matches::find($matchId);
+        $awayId = $obecny !== null && $obecny['club_away_id'] !== null
+            ? (int) $obecny['club_away_id']
+            : null;
+    }
+
     $isHome = (string) ($_POST['is_home'] ?? '');
     Matches::saveMeta($matchId, [
         'club_away_id' => $awayId,
@@ -3259,8 +3398,7 @@ function saveMatchMeta(int $importId, int $userId): void
         'score_them'   => $_POST['score_them'] ?? null,
     ], $userId);
 
-    Session::flash('notice', View::t('meta.saved'));
-    redirect('/import/' . $importId . '/diff');
+    return true;
 }
 
 /**
