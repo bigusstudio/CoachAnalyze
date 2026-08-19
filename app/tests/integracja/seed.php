@@ -1,6 +1,6 @@
 <?php
 declare(strict_types=1);
-/** Baza testowa: SQLite o kształcie migracji 001–009 + dane przykładowe. */
+/** Baza testowa: SQLite o kształcie migracji 001–013 + dane przykładowe. */
 
 use CoachAnalyze\Auth;
 use CoachAnalyze\Db;
@@ -43,12 +43,17 @@ function ca_test_db(string $file, bool $withData = true): PDO
     $pdo->exec('CREATE TABLE matches (id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id INT,
         club_id INT NOT NULL, season_id INT NULL, club_home_id INT NULL, club_away_id INT NULL,
         played_at TEXT NULL, is_home INT NULL,
+        -- Migracja 013: wynik w DWOCH kolumnach, nie w napisie „3:1".
+        -- NULL znaczy „nie wiemy" i tak zostaje dla calej historii.
+        score_us INT NULL, score_them INT NULL,
         competition TEXT NULL, half_split_ms INT NULL, status TEXT DEFAULT "draft",
         created_at TEXT DEFAULT CURRENT_TIMESTAMP)');
     $pdo->exec('CREATE TABLE imports (id INTEGER PRIMARY KEY AUTOINCREMENT, match_id INT,
         csv_path TEXT, json_path TEXT NULL, checksum_csv TEXT, format_fingerprint TEXT NULL,
         coverage_json TEXT NULL, warnings_json TEXT NULL, engine_version TEXT NULL,
         sections_json TEXT NULL, mapping_profile_id INT NULL,
+        -- Migracja 013: znacznik „operator widzial ekran nowych tagow".
+        diff_done_at TEXT NULL,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP)');
     $pdo->exec('CREATE TABLE notifications (id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INT NOT NULL, type TEXT NOT NULL, title TEXT NOT NULL, body TEXT NULL,

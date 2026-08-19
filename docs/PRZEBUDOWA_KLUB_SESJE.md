@@ -577,6 +577,25 @@ Edycja templatu nie zostawia klubu z niespójnymi raportami. Regeneracja zawsze 
   - brak odpowiedzi modelu ma schodzić na heurystykę, a nie blokować
     konfigurator.
 
+- **Wygaszenie starego kreatora mapowań.** Po Sesji 6 nowe tagi obsługują DWA
+  mechanizmy, a rozstrzyga obecność templatu: klub Z templatem idzie przez diff
+  (`/import/{id}/diff`), klub BEZ — przez kreator mapowań (`/import/{id}/mapowanie`)
+  i `mapping_profiles`. Reguła jest wpisana w dwóch miejscach (`showCoverage()`
+  i `queueBuild()`) i pilnuje jej przelot HTTP; rozjazd między nimi już raz
+  wystąpił i objawił się tym, że ekran prowadził przez diff, a przycisk
+  „Generuj" odbijał na kreator.
+
+  **Nie usuwamy kreatora teraz**, bo zabrałoby to jedyną ścieżkę klubom, które
+  nie przeszły jeszcze konfiguratora. Usunięcie ma sens dopiero wtedy, gdy każdy
+  klub w bazie ma templat — wtedy znika rozgałęzienie w obu miejscach, znika
+  `Mappings::needsMapping()` ze ścieżki importu, a `mapping_profiles` zostaje
+  wyłącznie jako archiwum decyzji sprzed przebudowy (nie kasować: to odpowiedź
+  na pytanie, czemu raport z tamtego okresu liczył się tak, a nie inaczej).
+
+  Warunek wejścia: zapytanie `SELECT COUNT(*) FROM clubs c WHERE c.is_own_team = 1
+  AND NOT EXISTS (SELECT 1 FROM club_report_templates t WHERE t.club_id = c.id)`
+  zwraca zero.
+
 - **Stan roboczy konfiguratora w bazie zamiast w sesji.** Draft siedzi dziś
   w sesji PHP (`Configurator::draft`), bo wymaganie brzmiało „ma przeżyć
   odświeżenie strony" i sesja to spełnia. Skutek uboczny: draft znika przy

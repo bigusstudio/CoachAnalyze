@@ -126,6 +126,23 @@ final class Clubs
     }
 
     /**
+     * Rywale — kluby, które NIE są tenantami (`is_own_team = 0`).
+     *
+     * Lista do wyboru przeciwnika w formularzu meta meczu (Sesja 6). Osobno od
+     * `tenants()`, bo to rozłączne role: tenant jest właścicielem analizy,
+     * rywal stroną meczu. Ten sam klub bywa jednym i drugim (sparingi między
+     * drużynami klubu), więc rozstrzyga `is_own_team`, a nie brak meczów.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public static function rivals(): array
+    {
+        return Db::all(
+            'SELECT * FROM clubs WHERE is_own_team = 0 ORDER BY name'
+        );
+    }
+
+    /**
      * Klub po kluczu z adresu publicznego.
      *
      * Osobno od `find()`, bo `club_key` jest tym, co widzi świat zewnętrzny,

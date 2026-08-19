@@ -561,6 +561,23 @@ final class Imports
         );
     }
 
+    /**
+     * „Operator widział ekran nowych tagów i zdecydował" (Sesja 6).
+     *
+     * NIE ZNACZY „nie ma już nic nowego". Akcja „pomiń w tym imporcie" niczego
+     * nie zapisuje — i tak ma być, bo przy następnym eksporcie chcemy o ten tag
+     * zapytać ponownie. Bez tego znacznika pominięta pozycja byłaby przy każdym
+     * wejściu znowu „nowa", ekran pokrycia odsyłałby na diff w kółko, a operator
+     * nigdy nie dotarłby do przycisku „Generuj".
+     */
+    public static function markDiffDone(int $importId): void
+    {
+        Db::run('UPDATE imports SET diff_done_at = :now WHERE id = :id', [
+            'now' => Stats::now(),
+            'id'  => $importId,
+        ]);
+    }
+
     /** Najnowszy raport dla meczu — do odnośnika po zakończeniu. */
     public static function latestReport(int $matchId): ?array
     {

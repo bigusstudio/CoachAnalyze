@@ -101,6 +101,7 @@ final class Reports
 
         $rows = Db::all(
             'SELECT r.id, r.match_id, r.html_path, r.engine_version, r.generated_at,
+                    r.template_version,
                     m.played_at, m.competition, m.season_id,
                     h.name AS home_name, a.name AS away_name,
                     s.label AS season_label

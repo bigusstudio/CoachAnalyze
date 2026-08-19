@@ -19,6 +19,8 @@ use CoachAnalyze\View;
  * @var list<string>              $sectionsAvailable
  * @var array<string,mixed>|null  $report
  * @var string|null               $notice
+ * @var array<string,mixed>|null  $pozaTemplatem  diff wobec templatu (Sesja 6)
+ * @var array<string,mixed>|null  $meczMeta
  */
 $liczby = [
     'cov.events'          => $coverage['events']          ?? null,
@@ -190,6 +192,42 @@ $liczby = [
     <?php endif; ?>
   <?php endif; ?>
 </section>
+
+<?php /*
+  POZA TEMPLATEM KLUBU. Pozycje, o które operator został zapytany na ekranie
+  diffu i których nie dopisał, oraz te zignorowane na stałe. Ich zdarzenia
+  NIE wchodzą do metryk — i to musi być widoczne przed kliknięciem „Generuj",
+  a nie odkryte pół roku później.
+*/ ?>
+<?php if (!empty($pozaTemplatem) && (($pozaTemplatem['nowe'] ?? []) !== [] || ($pozaTemplatem['ignorowane'] ?? []) !== [])): ?>
+  <section class="panel">
+    <h2 class="h2"><?= View::e(View::t('cov.excluded.template')) ?></h2>
+    <p class="hint"><?= View::e(View::t('cov.excluded.template.hint')) ?></p>
+
+    <?php if (($pozaTemplatem['nowe'] ?? []) !== []): ?>
+      <h3 class="h3"><?= View::e(View::t('diff.new')) ?></h3>
+      <p class="tagi">
+        <?php foreach ($pozaTemplatem['nowe'] as $poz): ?>
+          <code class="tag-nazwa"><?= View::e((string) $poz['name']) ?></code>
+        <?php endforeach; ?>
+      </p>
+      <p class="hint">
+        <a class="link" href="/import/<?= (int) $import['id'] ?>/diff">
+          <?= View::e(View::t('diff.title')) ?>
+        </a>
+      </p>
+    <?php endif; ?>
+
+    <?php if (($pozaTemplatem['ignorowane'] ?? []) !== []): ?>
+      <h3 class="h3"><?= View::e(View::t('diff.ignored')) ?></h3>
+      <p class="tagi">
+        <?php foreach ($pozaTemplatem['ignorowane'] as $poz): ?>
+          <code class="tag-nazwa tag-nazwa--pominiety"><?= View::e((string) $poz['name']) ?></code>
+        <?php endforeach; ?>
+      </p>
+    <?php endif; ?>
+  </section>
+<?php endif; ?>
 
   <form method="post" action="/import/<?= (int) $import['id'] ?>/generuj">
     <input type="hidden" name="csrf" value="<?= View::e(Session::csrfToken()) ?>">

@@ -148,8 +148,23 @@ $link = static function (array $zmiany) use ($filters, $basePath): string {
                     ? View::e((string) $r['season_label'])
                     : '<span class="muted">' . View::e(View::t('common.dash')) . '</span>' ?></td>
 
-            <td><?= View::e((string) ($r['engine_version'] ?? '')) ?: '<span class="muted">'
-                    . View::e(View::t('common.dash')) . '</span>' ?></td>
+            <td>
+              <?= View::e((string) ($r['engine_version'] ?? '')) ?: '<span class="muted">'
+                  . View::e(View::t('common.dash')) . '</span>' ?>
+              <?php /*
+                BADGE WERSJI TEMPLATU — na razie INFORMACYJNIE. Akcja „Przelicz"
+                dla raportów starszych niż templat klubu to Sesja 7; tutaj chodzi
+                o to, żeby dało się je w ogóle rozpoznać wzrokiem.
+                NULL znaczy „raport sprzed ery templatów" i jest faktem
+                historycznym, nie brakiem do uzupełnienia.
+              */ ?>
+              <br>
+              <span class="tag <?= $r['template_version'] === null ? 'tag--older' : '' ?>">
+                <?= $r['template_version'] === null
+                    ? View::e(View::t('reports.tplv.none'))
+                    : View::e(View::t('reports.tplv', (int) $r['template_version'])) ?>
+              </span>
+            </td>
 
             <td><?= View::linkStatus((string) $r['link_stan']) ?></td>
 

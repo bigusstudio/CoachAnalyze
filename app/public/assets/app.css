@@ -849,3 +849,12 @@ form.chmurka__zamknij button:hover { color: var(--tekst); }
 /* Sekcja zablokowana: widoczna, ale wyraźnie nieaktywna. Ukrycie jej kazałoby
    operatorowi zgadywać, czego brakuje i dlaczego. */
 .is-disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* Formularz nowego rywala wewnątrz formularza meta (Sesja 6) — wizualnie
+   podrzędny, żeby było widać, że to alternatywa dla listy, a nie drugi krok. */
+.panel--zagniezdzony {
+  margin: 0 0 18px;
+  background: var(--tlo);
+  border-style: dashed;
+}
+.panel--zagniezdzony legend { padding: 0 6px; }

@@ -166,6 +166,82 @@ final class Matches
         Audit::log('match.updated', $userId, 'match', $matchId, ['played_at' => $date]);
     }
 
+    /**
+     * Metadane meczu z formularza (Sesja 6 przebudowy).
+     *
+     * PRZECIWNIK JEST WIERSZEM W `clubs`, NIE WOLNYM TEKSTEM — rozstrzygnięcie
+     * z Sesji 1, spisane w docs/PRZEBUDOWA_KLUB_SESJE.md. Wiersz niesie herb,
+     * barwy i `aliases_json`, czyli nazwy, pod jakimi klub występuje
+     * w eksportach LiveTag. To one napędzają automatyczne dopasowanie drużyn
+     * przy imporcie; wolny tekst zabiłby dopasowanie i kazałby operatorowi
+     * wpisywać przeciwnika od nowa przy każdym meczu, także przy rewanżu.
+     *
+     * `is_home` WYPEŁNIA WYŁĄCZNIE TEN FORMULARZ. Eksport LiveTag nie niesie
+     * informacji o gospodarzu i nie wolno jej zgadywać — `NULL` znaczy
+     * „nie wiemy" i jest poprawną wartością dla całej historii.
+     *
+     * Wynik trzymamy w dwóch kolumnach (`score_us` / `score_them`, migracja
+     * 013), a nie w napisie „3:1": porównania sezonowe muszą sumować bramki,
+     * a napis nie mówi, która liczba jest czyja, dopóki nie zna się `is_home`.
+     *
+     * Sezon nadpisujemy TYLKO gdy podany — ręczne przypisanie operatora jest
+     * ważniejsze niż wykrywanie z daty (tak samo jak w `setDate()`).
+     *
+     * @param array<string,mixed> $data
+     */
+    public static function saveMeta(int $matchId, array $data, int $userId): void
+    {
+        $data_meczu = trim((string) ($data['played_at'] ?? ''));
+        $sezon = $data['season_id'] ?? null;
+
+        if ($sezon === null && $data_meczu !== '') {
+            $sezon = Seasons::detect($data_meczu, $userId);
+        }
+
+        Db::run(
+            'UPDATE matches
+                SET club_away_id = :away,
+                    played_at    = :date,
+                    is_home      = :home,
+                    competition  = :comp,
+                    season_id    = :season,
+                    score_us     = :us,
+                    score_them   = :them
+              WHERE id = :id',
+            [
+                'away'   => $data['club_away_id'] ?? null,
+                'date'   => $data_meczu !== '' ? $data_meczu : null,
+                // Trzy stany, nie dwa: u siebie, na wyjeździe, nie wiemy.
+                'home'   => $data['is_home'] === null ? null : (int) (bool) $data['is_home'],
+                'comp'   => ($data['competition'] ?? '') !== '' ? $data['competition'] : null,
+                'season' => $sezon,
+                'us'     => self::bramki($data['score_us'] ?? null),
+                'them'   => self::bramki($data['score_them'] ?? null),
+                'id'     => $matchId,
+            ]
+        );
+
+        Audit::log('match.meta', $userId, 'match', $matchId, [
+            'club_away_id' => $data['club_away_id'] ?? null,
+            'played_at'    => $data_meczu !== '' ? $data_meczu : null,
+        ]);
+    }
+
+    /**
+     * Liczba bramek albo `null`.
+     *
+     * Puste pole to BRAK DANYCH, nie zero. Zero jest konkretnym wynikiem
+     * i nie da się go odróżnić od „nie podano" (CLAUDE.md §8).
+     */
+    private static function bramki(mixed $wartosc): ?int
+    {
+        if ($wartosc === null || trim((string) $wartosc) === '') {
+            return null;
+        }
+        $liczba = (int) $wartosc;
+        return $liczba >= 0 && $liczba <= 99 ? $liczba : null;
+    }
+
     public static function setSeason(int $matchId, ?int $seasonId, int $userId): void
     {
         Db::run('UPDATE matches SET season_id = :s WHERE id = :id', [

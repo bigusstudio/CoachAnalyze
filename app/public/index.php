@@ -551,6 +551,30 @@ switch (true) {
         queueSampleReport((int) $m[1], (int) $user['id']);
         break;
 
+    // ------------------------------------------- import meczu n+1 (Sesja 6)
+    case preg_match('#^/import/(\d+)/meta$#', $path, $m) === 1 && $method === 'GET':
+        showMatchMeta((int) $m[1]);
+        break;
+
+    case preg_match('#^/import/(\d+)/meta$#', $path, $m) === 1 && $method === 'POST':
+        // Meta opisuje mecz, z którego powstaje raport — decyzja, nie podgląd.
+        requireCan($user, 'upload');
+        requireCsrf();
+        saveMatchMeta((int) $m[1], (int) $user['id']);
+        break;
+
+    case preg_match('#^/import/(\d+)/diff$#', $path, $m) === 1 && $method === 'GET':
+        showTemplateDiff((int) $m[1]);
+        break;
+
+    case preg_match('#^/import/(\d+)/diff$#', $path, $m) === 1 && $method === 'POST':
+        // Decyzje o nowych tagach zmieniają liczby w raportach tak samo jak
+        // profil mapowań — ta sama bramka.
+        requireCan($user, 'mappings');
+        requireCsrf();
+        saveTemplateDiff((int) $m[1], (int) $user['id']);
+        break;
+
     case preg_match('#^/klub/(\d+)/templaty$#', $path, $m) === 1 && $method === 'GET':
         showTemplateHistory((int) $m[1]);
         break;
@@ -1138,7 +1162,40 @@ function showCoverage(int $importId): void
      * Gdy wszystkie tagi są znane, NIE ZATRZYMUJEMY SIĘ. Ekran, który pyta
      * o nic, uczy klikać „dalej" bez czytania.
      */
-    if (Imports::needsMapping($import)) {
+    /*
+     * ŚCIEŻKA IMPORTU MECZU n+1 (Sesja 6): meta → diff → pokrycie → generuj.
+     *
+     * KTÓRY KREATOR OBSŁUGUJE NOWE TAGI — rozstrzyga OBECNOŚĆ TEMPLATU:
+     *
+     *   klub Z templatem  -> diff templatu (`/diff`), bo templat jest tym,
+     *                        czym raport tego klubu jest zdefiniowany,
+     *   klub BEZ templatu -> kreator mapowań (`/mapowanie`), jak dotąd.
+     *
+     * Dwa ekrany pytające o to samo byłyby gorsze niż jeden zły: operator
+     * odklikiwałby te same tagi dwa razy, w dwóch różnych modelach, i nie
+     * wiedziałby, który rozstrzyga o liczbach.
+     */
+    $mecz = Matches::find((int) $import['match_id']);
+    $clubId = $mecz !== null && $mecz['club_id'] !== null ? (int) $mecz['club_id'] : null;
+    $maTemplat = $clubId !== null && \CoachAnalyze\ReportTemplates::current($clubId) !== null;
+
+    if ($maTemplat) {
+        // Meta PRZED diffem: rywal z formularza wchodzi do dopasowania drużyn,
+        // a bez niego raport pokazywałby „nieznana" po stronie przeciwnika.
+        if ($mecz !== null && $mecz['club_away_id'] === null && empty($mecz['played_at'])) {
+            redirect('/import/' . $importId . '/meta');
+        }
+
+        // Na diff odsyłamy TYLKO gdy operator jeszcze go nie widział. Pozycje
+        // „pominięte w tym imporcie" nic nie zapisują, więc bez tego warunku
+        // byłyby nowe przy każdym wejściu i pętla nie miałaby wyjścia.
+        if (empty($import['diff_done_at'])) {
+            $diff = configuratorDiff($import, $clubId);
+            if ($diff['nowe'] !== []) {
+                redirect('/import/' . $importId . '/diff');
+            }
+        }
+    } elseif (Imports::needsMapping($import)) {
         redirect('/import/' . $importId . '/mapowanie');
     }
 
@@ -1152,6 +1209,11 @@ function showCoverage(int $importId): void
         'sectionsAvailable'   => $report['sections_available'],
         'excluded'            => $report['excluded'],
         'report'              => Imports::latestReport((int) $import['match_id']),
+        // Pozycje spoza templatu — zignorowane na stałe i te, o które
+        // operator został zapytany. ZERO CICHEGO WYRZUCANIA DANYCH: raport
+        // pokrycia, który ich nie wymienia, sugeruje kompletność, której nie ma.
+        'pozaTemplatem'       => $maTemplat ? configuratorDiff($import, $clubId) : null,
+        'meczMeta'            => $mecz,
         'notice'              => Session::flash('notice'),
     ]);
 }
@@ -1349,7 +1411,31 @@ function queueBuild(int $importId, int $userId): void
      * Kontrola przy akcji zmieniającej stan jest jedyną, której nie da się
      * ominąć wyborem innej ścieżki w interfejsie.
      */
-    if (Imports::needsMapping($import)) {
+    /*
+     * KTÓRA BRAMKA OBOWIĄZUJE — ta sama reguła co w `showCoverage()`.
+     *
+     * Klub Z templatem rozstrzyga templatem: wymagamy domkniętego ekranu
+     * nowych tagów, a nie profilu kreatora. Bez tego rozgałęzienia ekran
+     * pokrycia prowadziłby przez diff, a przycisk „Generuj" odbijał na
+     * kreator mapowań — dwa mechanizmy pilnujące tego samego, z których
+     * każdy uważa się za właściwy. Złapał to przelot HTTP.
+     *
+     * Kontrola przy AKCJI, nie tylko przy ekranie: do generowania da się dojść
+     * także przyciskiem „wygeneruj ponownie" z listy raportów albo POST-em.
+     */
+    $meczGen = Matches::find((int) $import['match_id']);
+    $clubGen = $meczGen !== null && $meczGen['club_id'] !== null ? (int) $meczGen['club_id'] : null;
+    $maTemplatGen = $clubGen !== null && \CoachAnalyze\ReportTemplates::current($clubGen) !== null;
+
+    if ($maTemplatGen) {
+        if (empty($import['diff_done_at'])) {
+            $diffGen = configuratorDiff($import, $clubGen);
+            if ($diffGen['nowe'] !== []) {
+                Session::flash('notice', View::t('diff.required'));
+                redirect('/import/' . $importId . '/diff');
+            }
+        }
+    } elseif (Imports::needsMapping($import)) {
         Session::flash('notice', View::t('mapping.required'));
         redirect('/import/' . $importId . '/mapowanie');
     }
@@ -2759,6 +2845,265 @@ function queueSampleReport(int $id, int $userId): void
     $jobId = Imports::queueBuild((int) $import['id'], $userId, true);
     Session::flash('notice', View::t('conf.sample.queued'));
     redirect('/zadania/' . $jobId);
+}
+
+// ------------------------------------------- import meczu n+1 (Sesja 6)
+
+/**
+ * Formularz meta meczu.
+ *
+ * PRZECIWNIK Z LISTY KLUBÓW, nie z wolnego tekstu (rozstrzygnięcie z Sesji 1).
+ * Lista to rywale (`is_own_team = 0`) plus możliwość założenia nowego wpisu
+ * tu, na miejscu — bo odsyłanie operatora do osobnego ekranu klubów w środku
+ * importu gubi kontekst.
+ *
+ * Nazwa „naszej" drużyny NIE jest polem formularza: bierze się z klubu-tenanta
+ * meczu. Wpisywanie jej przy każdym imporcie byłoby drugim źródłem prawdy
+ * o tym samym.
+ */
+function showMatchMeta(int $importId): void
+{
+    $import = Imports::find($importId);
+    if ($import === null) {
+        tenantNotFound();
+        return;
+    }
+
+    $mecz = Matches::find((int) $import['match_id']);
+    $tenant = $mecz !== null && $mecz['club_id'] !== null
+        ? Clubs::find((int) $mecz['club_id'])
+        : null;
+
+    View::page('match_meta', [
+        'title'   => View::t('meta.title'),
+        'active'  => 'clubs',
+        'club'    => $tenant,
+        'crumb'   => View::t('meta.crumb'),
+        'import'  => $import,
+        'mecz'    => $mecz,
+        'rywale'  => Clubs::rivals(),
+        'seasons' => Seasons::all(),
+        'notice'  => Session::flash('notice'),
+        'error'   => Session::flash('error'),
+    ]);
+}
+
+/** Zapis meta. Rywal wybrany z listy albo zakładany na miejscu. */
+function saveMatchMeta(int $importId, int $userId): void
+{
+    $import = Imports::find($importId);
+    if ($import === null) {
+        tenantNotFound();
+        return;
+    }
+    $matchId = (int) $import['match_id'];
+    $powrot = '/import/' . $importId . '/meta';
+
+    /*
+     * NOWY RYWAL ZAKŁADANY TĄ SAMĄ DROGĄ CO KAŻDY KLUB — `Clubs::create()`
+     * z `is_own_team = 0`. Nazwa z eksportu ląduje w aliasach, żeby następny
+     * mecz z tym klubem dopasował się sam (`Clubs::matchByExportName`).
+     */
+    $awayId = ($_POST['club_away_id'] ?? '') !== '' ? (int) $_POST['club_away_id'] : null;
+    $nowaNazwa = trim((string) ($_POST['nowy_rywal'] ?? ''));
+
+    if ($nowaNazwa !== '') {
+        $istniejacy = Clubs::matchByExportName($nowaNazwa);
+        if ($istniejacy !== null) {
+            // Klub o tej nazwie już jest — używamy go zamiast tworzyć bliźniaka.
+            // Duplikat rozbiłby historię meczów tego rywala na dwa wiersze.
+            $awayId = (int) $istniejacy['id'];
+        } else {
+            $crest = Crest::accept($_FILES['crest'] ?? null);
+            if (!$crest['ok']) {
+                Session::flash('error', View::t($crest['error']));
+                redirect($powrot);
+            }
+            $awayId = Clubs::create($userId, [
+                'name'            => $nowaNazwa,
+                'short_name'      => '',
+                'color_primary'   => View::color($_POST['color_primary'] ?? null, '#2C6FE8'),
+                'color_secondary' => '',
+                'is_own_team'     => false,
+                'aliases'         => $nowaNazwa,
+                'crest_path'      => $crest['path'] ?? null,
+            ]);
+        }
+    }
+
+    $isHome = (string) ($_POST['is_home'] ?? '');
+    Matches::saveMeta($matchId, [
+        'club_away_id' => $awayId,
+        'played_at'    => $_POST['played_at'] ?? '',
+        // Trzy stany: u siebie / wyjazd / nie wiemy. Puste pole to NIE „wyjazd".
+        'is_home'      => $isHome === '' ? null : ($isHome === '1'),
+        'competition'  => trim((string) ($_POST['competition'] ?? '')),
+        'season_id'    => ($_POST['season_id'] ?? '') !== '' ? (int) $_POST['season_id'] : null,
+        'score_us'     => $_POST['score_us'] ?? null,
+        'score_them'   => $_POST['score_them'] ?? null,
+    ], $userId);
+
+    Session::flash('notice', View::t('meta.saved'));
+    redirect('/import/' . $importId . '/diff');
+}
+
+/**
+ * Diff słownika importu wobec templatu klubu.
+ *
+ * Gdy nie ma nic nowego, NIE ZATRZYMUJEMY operatora — ekran, który pyta o nic,
+ * uczy klikać „dalej" bez czytania. Idzie wtedy prosto na pokrycie.
+ */
+function showTemplateDiff(int $importId): void
+{
+    $import = Imports::find($importId);
+    if ($import === null) {
+        tenantNotFound();
+        return;
+    }
+
+    $mecz = Matches::find((int) $import['match_id']);
+    $clubId = $mecz !== null && $mecz['club_id'] !== null ? (int) $mecz['club_id'] : null;
+    $tenant = $clubId !== null ? Clubs::find($clubId) : null;
+
+    if (empty($import['coverage_json'])) {
+        $job = Imports::latestJob($importId, 'inspect');
+        redirect($job !== null ? '/zadania/' . (int) $job['id'] : '/import');
+    }
+
+    $diff = configuratorDiff($import, $clubId);
+
+    if ($diff['nowe'] === []) {
+        redirect('/import/' . $importId);
+    }
+
+    View::page('import_diff', [
+        'title'      => View::t('diff.title'),
+        'active'     => 'clubs',
+        'club'       => $tenant,
+        'crumb'      => View::t('diff.crumb'),
+        'import'     => $import,
+        'diff'       => $diff,
+        'nowe'       => \CoachAnalyze\TemplateDiff::zPodpowiedziami(
+            $diff['nowe'], new \CoachAnalyze\HeuristicSuggester(), $clubId
+        ),
+        'concepts'   => \CoachAnalyze\Mappings::POJECIA,
+        'qualifiers' => \CoachAnalyze\Mappings::KWALIFIKATORY,
+        'notice'     => Session::flash('notice'),
+        'error'      => Session::flash('error'),
+    ]);
+}
+
+/**
+ * Diff dla importu — jedno miejsce, bo liczą go dwa ekrany (diff i pokrycie).
+ *
+ * @return array<string,mixed>
+ */
+function configuratorDiff(array $import, ?int $clubId): array
+{
+    $meta = json_decode((string) ($import['coverage_json'] ?? ''), true);
+    $meta = is_array($meta) ? $meta : [];
+
+    $templat = $clubId !== null ? \CoachAnalyze\ReportTemplates::current($clubId) : null;
+    $config = $templat !== null
+        ? \CoachAnalyze\ReportTemplates::decodeConfig($templat['config'])
+        : null;
+
+    return \CoachAnalyze\TemplateDiff::policz(
+        $meta,
+        $config,
+        $clubId !== null ? \CoachAnalyze\IgnoredTags::lookup($clubId) : ['tag' => [], 'label' => []]
+    );
+}
+
+/**
+ * Decyzje z ekranu diffu.
+ *
+ * JEDNA NOWA WERSJA TEMPLATU NA CAŁY IMPORT — nie jedna na tag. Wersja jest
+ * znacznikiem „raporty starsze są nieaktualne" (Sesja 7); podbicie jej pięć
+ * razy przy pięciu tagach unieważniałoby raporty klubu pięciokrotnie,
+ * a cztery z tych wersji nigdy nie były stanem, w którym coś wyrenderowano.
+ */
+function saveTemplateDiff(int $importId, int $userId): void
+{
+    $import = Imports::find($importId);
+    if ($import === null) {
+        tenantNotFound();
+        return;
+    }
+
+    $mecz = Matches::find((int) $import['match_id']);
+    $clubId = $mecz !== null && $mecz['club_id'] !== null ? (int) $mecz['club_id'] : null;
+    if ($clubId === null) {
+        Session::flash('error', View::t('diff.err.no_club'));
+        redirect('/import/' . $importId);
+    }
+
+    $diff = configuratorDiff($import, $clubId);
+
+    /*
+     * MAPA KLUCZY BUDOWANA Z POZYCJI, KTÓRE WŁAŚNIE POKAZALIŚMY, nigdy
+     * z żądania. Decyzja może więc dotyczyć wyłącznie pozycji faktycznie
+     * obecnej w tym imporcie — podmiana pola w przeglądarce nie pozwala
+     * dopisać do templatu tagu, którego w eksporcie nie było.
+     */
+    $mapa = \CoachAnalyze\TemplateDiff::mapaKluczy($diff['nowe']);
+
+    $decyzje = [];
+    $pola = [];
+    foreach ((array) ($_POST['decyzja'] ?? []) as $skrot => $decyzja) {
+        $klucz = $mapa[(string) $skrot] ?? null;
+        if ($klucz === null) {
+            continue;
+        }
+        $decyzje[$klucz] = (string) $decyzja;
+        $pola[$klucz] = [
+            'canon'         => $_POST['canon'][$skrot] ?? '',
+            'display_label' => $_POST['label'][$skrot] ?? '',
+            'color'         => $_POST['color'][$skrot] ?? null,
+            'sections'      => (array) ($_POST['vsections'][$skrot] ?? []),
+        ];
+    }
+
+    // „Zignoruj na stałe" NIE podbija wersji templatu — to nie jest zmiana
+    // definicji raportu, tylko decyzja „nie pytaj mnie więcej o ten tag".
+    $naStale = 0;
+    foreach ($diff['nowe'] as $poz) {
+        $klucz = \CoachAnalyze\TemplateDiff::klucz((string) $poz['type'], (string) $poz['name']);
+        if (($decyzje[$klucz] ?? '') === \CoachAnalyze\TemplateDiff::NA_STALE) {
+            \CoachAnalyze\IgnoredTags::add($clubId, (string) $poz['type'], (string) $poz['name'], $userId);
+            $naStale++;
+        }
+    }
+
+    $wersja = null;
+    if (\CoachAnalyze\TemplateDiff::czyDopisuje($decyzje)) {
+        $templat = \CoachAnalyze\ReportTemplates::current($clubId);
+        $config = $templat !== null
+            ? \CoachAnalyze\ReportTemplates::decodeConfig($templat['config'])
+            : \CoachAnalyze\Configurator::config([], \CoachAnalyze\Configurator::SEKCJE);
+
+        $nowy = \CoachAnalyze\TemplateDiff::nowyConfig($config, $diff['nowe'], $decyzje, $pola);
+
+        $bledy = \CoachAnalyze\Configurator::bledyConfigu($nowy);
+        if ($bledy !== []) {
+            Session::flash('error', implode(' ', array_map(
+                static fn(string $k): string => View::t($k), $bledy
+            )));
+            redirect('/import/' . $importId . '/diff');
+        }
+
+        $wersja = \CoachAnalyze\ReportTemplates::saveNewVersion($clubId, $nowy, $userId);
+    }
+
+    // Znacznik PO zapisie decyzji: od teraz pokrycie nie odsyła tu z powrotem,
+    // a wrócić da się odsyłaczem z sekcji „Poza templatem klubu".
+    Imports::markDiffDone($importId);
+
+    Session::flash('notice', $wersja !== null
+        ? View::t('diff.saved.version', $wersja, $naStale)
+        : View::t('diff.saved.no_version', $naStale));
+
+    redirect('/import/' . $importId);
 }
 
 /** Historia wersji templatu — lista z datą, bez diffa (spec Sesji 4 pkt 5). */
