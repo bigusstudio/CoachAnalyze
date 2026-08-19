@@ -309,4 +309,32 @@ final class Session
         unset($_SESSION['_flash'][$key]);
         return $out;
     }
+
+    /**
+     * Wartość TRWAŁA w sesji — w odróżnieniu od `flash()`, która znika
+     * po jednym odczycie.
+     *
+     * Powstało dla stanu roboczego konfiguratora raportu: draft musi przeżyć
+     * odświeżenie strony, a `flash` skasowałby go przy pierwszym wyświetleniu.
+     *
+     * ŻADNYCH POŚWIADCZEŃ TĄ DROGĄ. Poziom dostępu, identyfikator konta
+     * i odcisk hasła mają własne, nazwane metody wyżej i tak ma zostać —
+     * worek na dowolne dane jest kuszącym miejscem, żeby wrzucić do niego
+     * rolę użytkownika, a wtedy uprawnienia zaczynają zależeć od tego, co
+     * ostatnio zapisał jakikolwiek ekran.
+     *
+     * @return mixed
+     */
+    public static function get(string $key)
+    {
+        self::start();
+        return $_SESSION['_dane'][$key] ?? null;
+    }
+
+    /** @param mixed $value */
+    public static function set(string $key, $value): void
+    {
+        self::start();
+        $_SESSION['_dane'][$key] = $value;
+    }
 }

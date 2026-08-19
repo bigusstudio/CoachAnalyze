@@ -815,3 +815,37 @@ form.chmurka__zamknij button:hover { color: var(--tekst); }
 .club-card__counts { display: flex; gap: 14px; font-size: 13px; color: var(--tekst-slaby); }
 .club-card__foot { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--tekst-slaby); }
 .club-card__note { font-size: 12px; color: var(--tekst-slaby); }
+
+/* --- konfigurator raportu (Sesje 3+4) ------------------------------------- */
+.zmienna {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--obramowanie);
+}
+.zmienna:last-child { border-bottom: 0; }
+
+/* Zmienna bez pojęcia kanonicznego ma OGRANICZONE możliwości i widać to od razu,
+   zanim operator spróbuje wejść nią do mapy. */
+.zmienna--generyczna { border-left: 3px solid var(--obramowanie); padding-left: 12px; }
+
+.zmienna__glowa { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.zmienna__usun { margin-left: auto; font-size: 12px; color: var(--tekst-slaby); }
+.zmienna__probka { margin: 6px 0 10px; }
+.probka {
+  display: inline-block;
+  margin-right: 10px;
+  padding: 1px 6px;
+  border: 1px solid var(--obramowanie);
+  border-radius: 4px;
+}
+.zmienna__pola {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px 14px;
+  align-items: end;
+}
+.zmienna__sekcje { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-top: 10px; }
+.zmienna__sekcje .field__label { margin: 0; }
+
+/* Sekcja zablokowana: widoczna, ale wyraźnie nieaktywna. Ukrycie jej kazałoby
+   operatorowi zgadywać, czego brakuje i dlaczego. */
+.is-disabled { opacity: 0.45; cursor: not-allowed; }

@@ -295,6 +295,33 @@ Jedna ścieżka generowania: silnik Python przyjmuje config templatu i renderuje
 4. **Przykładowy raport z konfiguratora:** przycisk po zapisie templatu → enqueue zadania na pliki założycielskie przez istniejącą kolejkę. Zero osobnego code path — to zwykłe zadanie z flagą `is_sample` tylko do oznaczenia w UI. Ekran statusu jak przy normalnym generowaniu (kolejka cron = wynik do minuty-dwóch).
 5. **Test regresji:** referencyjny eksport + templat odwzorowujący obecny raport 1:1 → wynikowy HTML funkcjonalnie równy dzisiejszemu (te same sekcje, liczby, xG, half_split ≈ 45,5'). To bramka akceptacji całej sesji.
 
+### DOPISANE 2026-08-19 (przeniesione z Sesji 3+4)
+
+Trzy rzeczy wyszły przy konfiguratorze i mają dom właśnie tutaj, bo wszystkie
+wymagają silnika albo generowania:
+
+6. **Paleta z pliku projektu do `meta.json`.** Sesja 3 pkt 6 zakładała, że
+   barwy zmiennych wezmą się z palety LiveTag. Nie da się tego zrobić po
+   stronie PHP: paletę liczy silnik (`prep_palette` + `to_hex` z korektą
+   jasności), a warstwa żądań nie może ani uruchomić silnika
+   (`disable_functions`), ani policzyć koloru sama — arytmetyka koloru nie
+   wraca do PHP i pilnuje tego `test_4b.php`. Dziś paleta jest wyłącznie
+   WEJŚCIEM do ostrzeżeń i nigdzie nie wychodzi.
+
+   Rozwiązanie: dołożyć `palette` do `meta.json` (addytywnie, jak
+   `dictionary`). Konfigurator już to czyta — `configuratorPalette()` sięga po
+   `coverage_json['palette']` — więc zadziała bez zmiany w PHP. Do tego czasu
+   zmienne dostają barwy klubu, czyli fallback przewidziany przez specyfikację
+   dla importu bez pliku projektu.
+
+7. **CTA „Wygeneruj przykładowy raport"** po zapisie templatu (Sesja 4 pkt 6).
+   Świadomie niezrobione w Sesji 3+4: generowanie należy do tej sesji, a
+   przycisk bez działającej ścieżki byłby obietnicą bez pokrycia.
+
+8. **Widok „historia wersji templatu"** (Sesja 4 pkt 5, minimalny: lista wersji
+   z datą, bez diffa). Dane są — `ReportTemplates::history()` istnieje od
+   Sesji 1 — brakuje ekranu. Naturalnie razem z badge'em wersji z Sesji 7.
+
 ### Kryteria akceptacji
 - Raport generuje się wyłącznie z sekcjami z templatu, z etykietami i kolorami usera.
 - Templat z wyłączoną sekcją map → map nie ma w HTML, bez błędu.
@@ -391,6 +418,38 @@ Edycja templatu nie zostawia klubu z niespójnymi raportami. Regeneracja zawsze 
 ---
 
 ## PO SESJACH 1–7 (backlog, nie planować teraz)
+
+- **Model językowy jako źródło podpowiedzi bindingów.** Dziś proponuje
+  heurystyka (`HeuristicSuggester`): odległość edycyjna wobec tagów już
+  zmapowanych plus człon nazwy pojęcia. Szew jest gotowy — interfejs
+  `Suggester`, jedna metoda, poziom pewności w kontrakcie — więc podmiana
+  źródła nie dotyka ekranów ani walidacji.
+
+  **Pierwszy kandydat to import założycielski nowego słownika i to nie jest
+  przypadek: tam heurystyka jest najsłabsza z definicji.** Porównuje nowy tag
+  z tagami już zdecydowanymi, a przy pierwszym imporcie klubu takich prawie
+  nie ma — zostaje sam człon nazwy, czyli podpowiedź oznaczana jako
+  „zgadywana". Model językowy ma tu przewagę realną, a nie kosmetyczną:
+  rozumie „PRESS WYSOKI 2" bez wcześniejszego przykładu.
+
+  Warunki brzegowe przy podpięciu:
+  - kontrakt bez zmian — model **proponuje**, zatwierdza człowiek (D5),
+  - do modelu wolno wysłać **nazwy tagów i policzone metryki**, nigdy próbek
+    zdarzeń z `meta.dictionary[].samples` ani surowych zdarzeń meczowych
+    (CLAUDE.md §5); poufność taktyki jest argumentem sprzedażowym,
+  - poziom pewności musi dalej rozróżniać „pewne" od „zgadywanego", inaczej
+    operator uczy się klikać „dalej" bez czytania,
+  - brak odpowiedzi modelu ma schodzić na heurystykę, a nie blokować
+    konfigurator.
+
+- **Stan roboczy konfiguratora w bazie zamiast w sesji.** Draft siedzi dziś
+  w sesji PHP (`Configurator::draft`), bo wymaganie brzmiało „ma przeżyć
+  odświeżenie strony" i sesja to spełnia. Skutek uboczny: draft znika przy
+  wylogowaniu i nie przenosi się na inne urządzenie. Przy pracy trwającej
+  kwadrans to zachowanie oczekiwane, nie utrata danych — ale gdyby
+  konfigurowanie templatu miało być robotą na kilka posiedzeń, wtedy tabela,
+  świadomie i z migracją. Wraz z nią trzeba zaplanować sprzątanie porzuconych
+  draftów; bez tego zostają w bazie na zawsze.
 
 - **Klonowanie templatu** przy tworzeniu klubu („zacznij od templatu klubu X" / templat systemowy) — tanie, mocne przy demo sprzedażowym.
 - **Krok „test na drugim meczu"** w konfiguratorze — po zapisie v1 zachęta do wgrania drugiego eksportu dla walidacji pokrycia.

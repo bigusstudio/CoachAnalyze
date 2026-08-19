@@ -509,10 +509,41 @@ switch (true) {
         handleClubImport((int) $m[1], (int) $user['id']);
         break;
 
-    // Konfigurator to Sesja 3 — CTA z huba ma dokąd prowadzić już teraz,
-    // zamiast 404 albo linku, który nie robi nic.
+    // ------------------------------------------- konfigurator raportu (Sesje 3+4)
     case preg_match('#^/klub/(\d+)/konfigurator$#', $path, $m) === 1 && $method === 'GET':
-        showClubConfiguratorSoon((int) $m[1]);
+        showConfigurator((int) $m[1]);
+        break;
+
+    case preg_match('#^/klub/(\d+)/konfigurator$#', $path, $m) === 1 && $method === 'POST':
+        // Import założycielski wprowadza dane taktyczne do systemu — ta sama
+        // bramka co każdy inny upload.
+        requireCan($user, 'upload');
+        requireCsrf();
+        handleConfiguratorImport((int) $m[1], (int) $user['id']);
+        break;
+
+    case preg_match('#^/klub/(\d+)/konfigurator/slownik$#', $path, $m) === 1 && $method === 'GET':
+        showConfiguratorDictionary((int) $m[1]);
+        break;
+
+    case preg_match('#^/klub/(\d+)/konfigurator/slownik$#', $path, $m) === 1 && $method === 'POST':
+        // Zapis decyzji o zmiennych rozstrzyga, co wejdzie do raportu i jak
+        // zostanie policzone — waga ta sama co profil mapowań.
+        requireCan($user, 'mappings');
+        requireCsrf();
+        saveConfiguratorDraft((int) $m[1]);
+        break;
+
+    case preg_match('#^/klub/(\d+)/konfigurator/zapisz$#', $path, $m) === 1 && $method === 'POST':
+        requireCan($user, 'mappings');
+        requireCsrf();
+        saveConfiguratorTemplate((int) $m[1], (int) $user['id']);
+        break;
+
+    case preg_match('#^/klub/(\d+)/konfigurator/porzuc$#', $path, $m) === 1 && $method === 'POST':
+        requireCan($user, 'mappings');
+        requireCsrf();
+        discardConfiguratorDraft((int) $m[1]);
         break;
 
     // ------------------------------------------------------- biblioteka meczów
@@ -2311,8 +2342,19 @@ function handleClubImport(int $id, int $userId): void
     handleImport($userId, $id, '/klub/' . $id . '/import');
 }
 
-/** CTA „Skonfiguruj raporty" z huba — konfigurator sam jest Sesją 3. */
-function showClubConfiguratorSoon(int $id): void
+// ------------------------------------------- konfigurator raportu (Sesje 3+4)
+
+/**
+ * Wejście do konfiguratora. Trzy stany, rozstrzygane stanem roboczym:
+ *
+ *   brak draftu                    -> formularz importu założycielskiego
+ *   draft bez pokrycia             -> ekran oczekiwania (inspekcję robi cron)
+ *   draft z pokryciem              -> edytor zmiennych (`/slownik`)
+ *
+ * Rozstrzyga DRAFT, nie parametr w adresie: dzięki temu odświeżenie strony
+ * i powrót z zakładki trafiają tam, gdzie operator skończył, a nie na początek.
+ */
+function showConfigurator(int $id): void
 {
     $club = resolveTenant($id);
     if ($club === null) {
@@ -2320,14 +2362,328 @@ function showClubConfiguratorSoon(int $id): void
         return;
     }
 
-    View::page('soon', [
-        'title'   => View::t('club.configurator.title'),
-        'active'  => 'clubs',
-        'club'    => $club,
-        'crumb'   => View::t('club.configurator.crumb'),
-        'heading' => View::t('club.configurator.title'),
-        'body'    => View::t('club.configurator.soon'),
+    $draft = \CoachAnalyze\Configurator::draft($id);
+
+    if ($draft !== null && !empty($draft['import_id'])) {
+        $import = Imports::find((int) $draft['import_id']);
+
+        // Import zniknął (skasowany mecz, sprzątanie) — draft wskazuje w pustkę.
+        // Mówimy o tym wprost zamiast pokazywać wieczne „przetwarzanie".
+        if ($import === null) {
+            \CoachAnalyze\Configurator::clearDraft($id);
+            Session::flash('error', View::t('conf.err.import_gone'));
+            redirect('/klub/' . $id . '/konfigurator');
+        }
+
+        if (!empty($import['coverage_json'])) {
+            redirect('/klub/' . $id . '/konfigurator/slownik');
+        }
+
+        $job = Imports::latestJob((int) $draft['import_id'], 'inspect');
+        View::page('configurator_czekaj', [
+            'title'  => View::t('conf.title'),
+            'active' => 'clubs',
+            'club'   => $club,
+            'crumb'  => View::t('conf.crumb'),
+            'job'    => $job,
+            // Odstęp jak przy ekranie zadania: kolejkę podnosi cron co minutę,
+            // więc odpytywanie co kilka sekund to same puste żądania.
+            'refresh' => $job !== null && (string) $job['status'] === 'running' ? 6 : 20,
+        ]);
+        return;
+    }
+
+    View::page('configurator_import', [
+        'title'        => View::t('conf.title'),
+        'active'       => 'clubs',
+        'club'         => $club,
+        'crumb'        => View::t('conf.crumb'),
+        // NIE „template": `View::render()` ma własny parametr o tej nazwie
+        // (nazwa PLIKU szablonu), a `extract(…, EXTR_SKIP)` go nie nadpisuje —
+        // klucz zostałby po cichu wchłonięty i widok dostałby napis zamiast
+        // wiersza z bazy. Ta sama pułapka co w `club_dashboard.php`.
+        'reportTemplate' => \CoachAnalyze\ReportTemplates::current($id),
+        'storageReady' => Storage::writable(),
+        'notice'       => Session::flash('notice'),
+        'error'        => Session::flash('error'),
     ]);
+}
+
+/**
+ * Import założycielski: ten sam pipeline co zwykły import.
+ *
+ * Mecz powstaje normalnie — import założycielski JEST pierwszym meczem klubu
+ * (spec Sesji 3 pkt 7), a nie bytem osobnym. Dzięki temu surowe pliki leżą
+ * tam, gdzie leżą wszystkie inne (`imports.csv_path`), i regeneracja z Sesji 7
+ * będzie działać bez wyjątku dla tego jednego przypadku.
+ */
+function handleConfiguratorImport(int $id, int $userId): void
+{
+    $club = resolveTenant($id);
+    if ($club === null) {
+        tenantNotFound();
+        return;
+    }
+
+    $powrot = '/klub/' . $id . '/konfigurator';
+
+    $csv = Upload::accept($_FILES['csv'] ?? null, 'csv', true);
+    if (!$csv['ok']) {
+        Session::flash('error', View::t($csv['error']));
+        redirect($powrot);
+    }
+
+    $json = Upload::accept($_FILES['json'] ?? null, 'json', false);
+    if (!$json['ok']) {
+        @unlink((string) $csv['path']);
+        Session::flash('error', View::t($json['error']));
+        redirect($powrot);
+    }
+
+    $importId = Imports::create(
+        $userId,
+        (string) $csv['path'],
+        $json['path'] ?? null,
+        (string) $csv['sha256'],
+        $id
+    );
+    Imports::queueInspect($importId, $userId);
+
+    // Draft powstaje TERAZ, z samym odnośnikiem do importu. Zmienne dołożą się
+    // dopiero, gdy cron policzy pokrycie — wcześniej nie ma z czego ich zbudować.
+    \CoachAnalyze\Configurator::saveDraft($id, [
+        'import_id' => $importId,
+        'variables' => null,
+        'sections'  => \CoachAnalyze\Configurator::SEKCJE,
+    ]);
+
+    redirect($powrot);
+}
+
+/** Edytor zmiennych — Sesja 3 (listing + podpowiedzi) i Sesja 4 (edycja) razem. */
+function showConfiguratorDictionary(int $id): void
+{
+    $club = resolveTenant($id);
+    if ($club === null) {
+        tenantNotFound();
+        return;
+    }
+
+    $draft = \CoachAnalyze\Configurator::draft($id);
+    if ($draft === null || empty($draft['import_id'])) {
+        redirect('/klub/' . $id . '/konfigurator');
+    }
+
+    $import = Imports::find((int) $draft['import_id']);
+    if ($import === null || empty($import['coverage_json'])) {
+        redirect('/klub/' . $id . '/konfigurator');
+    }
+
+    $raport = Imports::report($import);
+    $meta = $raport['coverage'];
+
+    // Zmienne budujemy RAZ, przy pierwszym wejściu. Potem obowiązuje draft —
+    // inaczej każde odświeżenie kasowałoby decyzje operatora i zastępowało je
+    // podpowiedziami od nowa.
+    if (!is_array($draft['variables'] ?? null)) {
+        $draft['variables'] = \CoachAnalyze\Configurator::zmienneZeSlownika(
+            $meta,
+            new \CoachAnalyze\HeuristicSuggester(),
+            $id,
+            configuratorPalette($import),
+            array_filter([$club['color_primary'] ?? null, $club['color_secondary'] ?? null])
+        );
+        \CoachAnalyze\Configurator::saveDraft($id, $draft);
+    }
+
+    View::page('configurator_slownik', [
+        'title'      => View::t('conf.dict.title'),
+        'active'     => 'clubs',
+        'club'       => $club,
+        'crumb'      => View::t('conf.crumb'),
+        'import'     => $import,
+        'coverage'   => $meta,
+        'warnings'   => $raport['warnings'],
+        'variables'  => $draft['variables'],
+        'sections'   => array_values((array) ($draft['sections'] ?? \CoachAnalyze\Configurator::SEKCJE)),
+        'concepts'   => \CoachAnalyze\Mappings::POJECIA,
+        'qualifiers' => \CoachAnalyze\Mappings::KWALIFIKATORY,
+        'notice'     => Session::flash('notice'),
+        'error'      => Session::flash('error'),
+    ]);
+}
+
+/**
+ * Paleta z pliku projektu LiveTag — barwy domyślne zmiennych.
+ *
+ * DZIŚ ZWRACA PUSTO I TO JEST STAN ZNANY, NIE PRZEOCZENIE.
+ *
+ * Paletę liczy silnik (`prep_palette` + `to_hex` z korektą jasności) i NIE
+ * przechodzi ona dziś przez `meta.json` — jest wyłącznie wejściem do ostrzeżeń
+ * przy inspekcji. Warstwa żądań nie może jej policzyć sama: uruchomienie
+ * silnika z PHP-FPM blokuje `disable_functions`, a przepisanie `to_hex` do PHP
+ * byłoby przeniesieniem arytmetyki koloru do warstwy, która nie ma prawa nic
+ * liczyć (pilnuje tego `test_4b.php`).
+ *
+ * Skutek jest widoczny i wytłumaczalny: bez palety zmienne dostają barwy klubu
+ * (`Configurator::barwa`), czyli dokładnie ten fallback, który przewiduje
+ * specyfikacja dla importu bez pliku projektu. Doprowadzenie palety wymaga
+ * przeniesienia jej do `meta.json` — naturalnie razem z Sesją 5, która i tak
+ * dokłada silnikowi wejście z templatu.
+ *
+ * Czytamy z `coverage_json`, żeby ta ścieżka zadziałała sama, gdy paleta się
+ * tam pojawi — bez zmiany w tym miejscu.
+ *
+ * @return array<string,mixed>
+ */
+function configuratorPalette(array $import): array
+{
+    $meta = json_decode((string) ($import['coverage_json'] ?? ''), true);
+    $paleta = is_array($meta) ? ($meta['palette'] ?? null) : null;
+    return is_array($paleta) ? $paleta : [];
+}
+
+/** Zapis decyzji operatora do stanu roboczego. Bez zapisu templatu. */
+function saveConfiguratorDraft(int $id): void
+{
+    $club = resolveTenant($id);
+    if ($club === null) {
+        tenantNotFound();
+        return;
+    }
+
+    $draft = \CoachAnalyze\Configurator::draft($id);
+    if ($draft === null || !is_array($draft['variables'] ?? null)) {
+        redirect('/klub/' . $id . '/konfigurator');
+    }
+
+    $draft['variables'] = configuratorVariablesFromPost($draft['variables']);
+    $draft['sections'] = array_values(array_intersect(
+        \CoachAnalyze\Configurator::SEKCJE,
+        array_map('strval', (array) ($_POST['sections'] ?? []))
+    ));
+
+    \CoachAnalyze\Configurator::saveDraft($id, $draft);
+    Session::flash('notice', View::t('conf.draft.saved'));
+    redirect('/klub/' . $id . '/konfigurator/slownik');
+}
+
+/**
+ * Decyzje z formularza nałożone na zmienne draftu.
+ *
+ * ŹRÓDŁO ZMIENNEJ NIE PRZYCHODZI Z ŻĄDANIA. `source` i `count` biorą się
+ * wyłącznie z draftu — z żądania przyjmujemy tylko to, co operator faktycznie
+ * edytuje. Inaczej podmiana pola ukrytego pozwoliłaby przypisać decyzję
+ * do innego tagu, niż widać na ekranie.
+ *
+ * @param list<array<string,mixed>> $biezace
+ * @return list<array<string,mixed>>
+ */
+function configuratorVariablesFromPost(array $biezace): array
+{
+    $canon    = (array) ($_POST['canon'] ?? []);
+    $etykiety = (array) ($_POST['label'] ?? []);
+    $barwy    = (array) ($_POST['color'] ?? []);
+    $sekcje   = (array) ($_POST['vsections'] ?? []);
+    $widoczne = (array) ($_POST['visible'] ?? []);
+    $usuniete = array_flip(array_map('strval', (array) ($_POST['remove'] ?? [])));
+
+    $out = [];
+    foreach ($biezace as $z) {
+        $vid = (string) ($z['id'] ?? '');
+        if ($vid === '' || isset($usuniete[$vid])) {
+            continue;   // „Usuń z templatu" — zmienna nie trafi do raportów.
+        }
+
+        $wybrane = (string) ($canon[$vid] ?? '');
+        $dozwolone = \CoachAnalyze\Configurator::dozwoloneCanon(
+            (string) ($z['source']['type'] ?? '')
+        );
+        $z['canon'] = in_array($wybrane, $dozwolone, true) ? $wybrane : null;
+
+        $etykieta = trim((string) ($etykiety[$vid] ?? ''));
+        $z['display_label'] = $etykieta !== '' ? $etykieta : (string) ($z['display_label'] ?? '');
+
+        $z['color'] = View::color($barwy[$vid] ?? null, (string) ($z['color'] ?? '#8899AA'));
+
+        $z['sections'] = array_values(array_intersect(
+            \CoachAnalyze\Configurator::SEKCJE,
+            array_map('strval', (array) ($sekcje[$vid] ?? []))
+        ));
+
+        $z['visible'] = !empty($widoczne[$vid]);
+
+        $out[] = $z;
+    }
+
+    return $out;
+}
+
+/** Zapis templatu v1 (albo kolejnej wersji) — append-only przez ReportTemplates. */
+function saveConfiguratorTemplate(int $id, int $userId): void
+{
+    $club = resolveTenant($id);
+    if ($club === null) {
+        tenantNotFound();
+        return;
+    }
+
+    $draft = \CoachAnalyze\Configurator::draft($id);
+    if ($draft === null || !is_array($draft['variables'] ?? null)) {
+        redirect('/klub/' . $id . '/konfigurator');
+    }
+
+    // Decyzje z formularza obowiązują także przy zapisie: operator klika
+    // „Zapisz templat" bez osobnego zapisywania draftu i ma prawo oczekiwać,
+    // że zapisze się to, co widzi.
+    $zmienne = configuratorVariablesFromPost($draft['variables']);
+    $sekcje = array_values(array_intersect(
+        \CoachAnalyze\Configurator::SEKCJE,
+        array_map('strval', (array) ($_POST['sections'] ?? $draft['sections'] ?? []))
+    ));
+
+    $draft['variables'] = $zmienne;
+    $draft['sections'] = $sekcje;
+    \CoachAnalyze\Configurator::saveDraft($id, $draft);
+
+    $config = \CoachAnalyze\Configurator::config($zmienne, $sekcje);
+    $bledy = \CoachAnalyze\Configurator::bledyConfigu($config);
+
+    if ($bledy !== []) {
+        // Komunikaty z KLUCZY, nie sklejane z treści — zestaw jest zamknięty
+        // i tłumaczy się w `pl.php` jak reszta interfejsu.
+        Session::flash('error', implode(' ', array_map(
+            static fn(string $klucz): string => View::t($klucz),
+            $bledy
+        )));
+        redirect('/klub/' . $id . '/konfigurator/slownik');
+    }
+
+    $wersja = \CoachAnalyze\ReportTemplates::saveNewVersion($id, $config, $userId);
+
+    \CoachAnalyze\Configurator::clearDraft($id);
+
+    Session::flash('notice', View::t(
+        'conf.saved',
+        $wersja,
+        count($zmienne),
+        \CoachAnalyze\Configurator::podsumowanie($config)['canon'],
+        count($sekcje)
+    ));
+    redirect('/klub/' . $id);
+}
+
+/** Porzucenie stanu roboczego. Import i mecz ZOSTAJĄ — skasowane byłyby utratą danych. */
+function discardConfiguratorDraft(int $id): void
+{
+    if (resolveTenant($id) === null) {
+        tenantNotFound();
+        return;
+    }
+
+    \CoachAnalyze\Configurator::clearDraft($id);
+    Session::flash('notice', View::t('conf.draft.discarded'));
+    redirect('/klub/' . $id . '/konfigurator');
 }
 
 function showLogin(): void

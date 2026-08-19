@@ -126,6 +126,22 @@ final class Imports
                     [
                         'unmapped_tags'   => array_values((array) ($meta['unmapped_tags'] ?? [])),
                         'unmapped_labels' => array_values((array) ($meta['unmapped_labels'] ?? [])),
+
+                        /*
+                         * PEŁNY SŁOWNIK EKSPORTU — dokładnie ta sama klasa
+                         * pomyłki, co przy `unmapped_tags` wyżej: blok leży
+                         * w `meta.json` NA NAJWYŻSZYM POZIOMIE, obok
+                         * `coverage`, a nie w środku. Zapisanie samego
+                         * `$meta['coverage']` gubi go po cichu, a konfigurator
+                         * raportu (Sesje 3+4) widzi wtedy pusty słownik
+                         * i nie ma z czego zbudować templatu.
+                         *
+                         * `null` zamiast pustej tablicy, gdy silnik bloku nie
+                         * podaje: to znaczy „stary artefakt, sprzed tej wersji
+                         * silnika", a nie „eksport bez tagów". Konfigurator
+                         * odróżnia te dwa stany.
+                         */
+                        'dictionary'      => $meta['dictionary'] ?? null,
                     ]
                 )),
                 'warn' => self::encode($meta['warnings'] ?? null),

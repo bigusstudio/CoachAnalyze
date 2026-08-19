@@ -362,11 +362,78 @@ return [
     'club.hub.all_matches'     => 'Wszystkie mecze klubu',
     'club.hub.all_reports'     => 'Wszystkie raporty klubu',
     'club.hub.template_hint'   => 'Mapowania tagów tego klubu — aktualna wersja templatu: v%d.',
-    'club.configurator.title'  => 'Konfigurator raportów',
-    'club.configurator.crumb'  => 'Konfigurator',
-    'club.configurator.soon'   => 'Konfigurator raportów (import założycielski, mapowanie zmiennych, sekcje) powstaje w kolejnej sesji.',
     'club.card.last_import'    => 'Ostatni import: %s',
     'club.card.no_import'      => 'Brak importu',
+
+    // --- konfigurator raportu (Sesje 3+4) ---
+    'conf.title'          => 'Konfigurator raportów',
+    'conf.crumb'          => 'Konfigurator',
+    'conf.lead'           => 'Wgraj eksport, z którego zbudujemy templat raportów klubu. Kolejne mecze będą już tylko mapowane na ten templat.',
+    'conf.submit'         => 'Wgraj i zbuduj słownik',
+    'conf.json.hint'      => 'Opcjonalny. Bez niego zmienne dostaną barwy klubu zamiast palety z tablicy kodowej.',
+    'conf.has_template'   => 'Ten klub ma już templat w wersji %d. Kolejny przebieg konfiguratora zapisze nową wersję — poprzednia zostanie nietknięta.',
+
+    'conf.wait.title'     => 'Przetwarzamy eksport',
+    'conf.wait.body'      => 'Silnik liczy pokrycie i składa słownik. Zadanie podnosi kolejka — zwykle do minuty. Strona odświeży się sama.',
+    'conf.wait.job'       => 'Zadanie',
+    'conf.wait.failed'    => 'Przetwarzanie nie powiodło się. Powód stoi w podglądzie zadania. Możesz porzucić ten import i wgrać plik jeszcze raz.',
+
+    'conf.dict.title'     => 'Słownik importu i zmienne raportu',
+    'conf.sections.title' => 'Sekcje raportu',
+    'conf.sections.hint'  => 'Wyłączona sekcja nie powstanie w raporcie, nawet jeśli dane na nią pozwalają.',
+    'conf.vars.title'     => 'Zmienne (%d)',
+    'conf.vars.hint'      => 'Każdy tag i każda etykieta z eksportu. Podpowiedzi są propozycją — zatwierdzasz je Ty.',
+    'conf.vars.empty'     => 'Eksport nie zawiera żadnych tagów. To nie wygląda na plik z LiveTag.Pro.',
+    'conf.src.tag'        => 'tag',
+    'conf.src.label'      => 'etykieta',
+    'conf.count'          => 'wystąpień: %d',
+    'conf.samples'        => 'Przykłady:',
+
+    // Poziomy pewności podpowiedzi. Rozróżnienie jest funkcjonalne, nie ozdobne:
+    // bez niego zgadywanka wygląda tak samo jak trafienie pewne.
+    'conf.conf.pewna'         => 'podpowiedź pewna',
+    'conf.conf.prawdopodobna' => 'podpowiedź prawdopodobna',
+    'conf.conf.zgadywana'     => 'podpowiedź zgadywana',
+
+    'conf.var.canon'          => 'Pojęcie kanoniczne',
+    'conf.var.canon.none'     => '— brak (zmienna niestandardowa)',
+    'conf.var.label'          => 'Etykieta w raporcie',
+    'conf.var.color'          => 'Barwa',
+    'conf.var.visible'        => 'Widoczna w raporcie',
+    'conf.var.sections'       => 'Sekcje',
+    'conf.var.remove'         => 'usuń z templatu',
+    'conf.var.canon_required' => 'Zmienna bez pojęcia kanonicznego wchodzi wyłącznie do bilansu i na oś czasu. Podepnij pojęcie, żeby użyć jej w mapach albo xG.',
+
+    'conf.draft.save'      => 'Zapisz roboczo',
+    'conf.draft.saved'     => 'Zapisano stan roboczy. Możesz wrócić do niego później.',
+    'conf.draft.discard'   => 'Porzuć konfigurację',
+    'conf.draft.discarded' => 'Stan roboczy porzucony. Wgrany eksport i mecz zostały zachowane.',
+    'conf.save'            => 'Zapisz templat',
+    'conf.saved'           => 'Templat v%d zapisany · %d zmiennych (%d kanonicznych) · %d sekcji.',
+
+    'conf.err.import_gone'      => 'Import, na którym stał konfigurator, już nie istnieje. Zacznij od wgrania eksportu.',
+    'conf.err.no_variables'     => 'Templat bez zmiennych nie ma czego renderować.',
+    'conf.err.no_sections'      => 'Włącz co najmniej jedną sekcję raportu.',
+    'conf.err.unknown_section'  => 'Któraś sekcja nie jest znana silnikowi.',
+    'conf.err.variable_shape'   => 'Któraś zmienna ma niepoprawny kształt.',
+    'conf.err.duplicate_id'     => 'Dwie zmienne mają ten sam identyfikator.',
+    'conf.err.variable_source'  => 'Któraś zmienna nie wskazuje poprawnego źródła w eksporcie.',
+    'conf.err.duplicate_source' => 'Ta sama pozycja słownika występuje dwa razy — bilans policzyłby ją podwójnie.',
+    'conf.err.unknown_canon'    => 'Któraś zmienna ma pojęcie spoza słownika kanonicznego.',
+    'conf.err.color'            => 'Któraś zmienna ma niepoprawną barwę.',
+    'conf.err.label'            => 'Każda zmienna musi mieć etykietę wyświetlaną.',
+    'conf.err.section_disabled' => 'Zmienna wskazuje sekcję wyłączoną w templacie.',
+    'conf.err.canon_required'   => 'Zmienna bez pojęcia kanonicznego może wejść wyłącznie do bilansu i na oś czasu.',
+
+    // Nazwy sekcji. Terminologia klienta (SBZ, III strefa, bilans) NIE PODLEGA
+    // tłumaczeniu — jest częścią produktu (CLAUDE.md §6).
+    'sekcja.bilans'    => 'Bilans',
+    'sekcja.mapy'      => 'Mapy współczynników',
+    'sekcja.tl_sbz'    => 'Oś SBZ',
+    'sekcja.tl_iii'    => 'Oś III strefy',
+    'sekcja.tl_bilans' => 'Oś bilansu',
+    'sekcja.duels'     => 'Pojedynki, straty, odbiory',
+    'sekcja.noteam'    => 'Bez przypisania drużyny',
 
     // --- biblioteka meczów (Etap 4c) ---
     'matches.title'       => 'Mecze',

@@ -270,6 +270,13 @@ final class Mappings
                 'concept' => $kandydat['concept'],
                 'reason'  => 'podobne do „' . $kandydat['tag'] . '”',
                 'similar' => $kandydat['tag'],
+                // `score` i `source` DOŁOŻONE, nic nie zostało zabrane —
+                // dotychczasowi wywołujący czytają `concept`/`reason`/`similar`
+                // i tych pól nie ruszamy. Nowe niesie SIŁĘ podpowiedzi, żeby
+                // `Suggester` mógł odróżnić „pewne" od „zgadywanego" bez
+                // liczenia podobieństwa drugi raz, po swojemu.
+                'score'   => $najlepszy,
+                'source'  => 'similarity',
             ];
         }
 
@@ -280,10 +287,19 @@ final class Mappings
                 'concept' => $poNazwie['concept'],
                 'reason'  => 'nazwa zawiera „' . $poNazwie['keyword'] . '”',
                 'similar' => null,
+                // Dopasowanie po członie nazwy jest z natury słabsze niż
+                // bliskość całej nazwy: „SBZ PODAJĄCY" trafia w `entry_sbz`
+                // przez jedno słowo. Stąd stała, niska wartość — to nie jest
+                // zmierzone podobieństwo, tylko przesłanka.
+                'score'   => 0.5,
+                'source'  => 'keyword',
             ];
         }
 
-        return ['concept' => null, 'reason' => null, 'similar' => null];
+        return [
+            'concept' => null, 'reason' => null, 'similar' => null,
+            'score'   => 0.0, 'source' => null,
+        ];
     }
 
     /**
