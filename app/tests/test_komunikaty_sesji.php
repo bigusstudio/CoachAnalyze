@@ -70,6 +70,7 @@ function check(string $name, bool $condition, string $detail = ''): void
 
 $indexPhp  = (string) file_get_contents($root . '/app/public/index.php');
 $sessionPhp = (string) file_get_contents($root . '/app/src/Session.php');
+$authPhp   = (string) file_get_contents($root . '/app/src/Auth.php');
 $teksty    = require $root . '/app/src/lang/pl.php';
 
 // ---------------------------------------------------------------- teksty
@@ -179,6 +180,79 @@ check('checkCsrf() nadal odpowiada zgodnie z csrfProblem()',
 
 check('magazyn sesji jest sprawdzalny (storageProblem)',
     Session::storageProblem() === null || is_string(Session::storageProblem()));
+
+// ------------------------------------------------------------- pula tokenów
+echo "\n== pula ostatnich tokenów CSRF (wiele kart, wymiana tokenu) ==\n";
+
+/*
+ * Awaria z produkcji: świeże logowanie kończyło się „Formularz stracił
+ * ważność", bo sesja ginęła spod otwartego formularza. Przyczynę usuwa
+ * `Auth::requireLogin()` (niżej), a pula domyka klasę: wymiana tokenu nie
+ * unieważnia natychmiast formularza, który ktoś ma przed sobą.
+ */
+$pierwszy = Session::csrfToken();
+check('render formularza NIE rotuje tokenu (dwa formularze, ten sam token)',
+    Session::csrfToken() === $pierwszy);
+
+$poRotacji = Session::rotateCsrf();
+check('rotacja wydaje NOWY token', $poRotacji !== $pierwszy);
+check('csrfToken() podaje najnowszy z puli', Session::csrfToken() === $poRotacji);
+check('FORMULARZ SPRZED ROTACJI NADAL PRZECHODZI',
+    Session::csrfProblem($pierwszy) === Session::CSRF_OK,
+    'po to jest pula — inaczej zalogowanie unieważnia otwartą obok kartę');
+
+$wydane = [$pierwszy, $poRotacji];
+while (count($wydane) < Session::CSRF_POOL + 1) {
+    $wydane[] = Session::rotateCsrf();
+}
+
+check('pula ma GRANICĘ: najstarszy token wypada (FIFO)',
+    Session::csrfProblem($wydane[0]) === Session::CSRF_MISMATCH,
+    'token ważny na zawsze przestaje cokolwiek ograniczać');
+
+$zywe = array_slice($wydane, -Session::CSRF_POOL);
+$wszystkieZywe = true;
+foreach ($zywe as $token) {
+    $wszystkieZywe = $wszystkieZywe && Session::csrfProblem($token) === Session::CSRF_OK;
+}
+check('ostatnie ' . Session::CSRF_POOL . ' tokenów pozostaje ważnych', $wszystkieZywe);
+check('zmyślony token nadal odpada', Session::csrfProblem(str_repeat('a', 64)) === Session::CSRF_MISMATCH);
+
+// Sesje otwarte przed wdrożeniem puli niosą pod tym kluczem POJEDYNCZY napis.
+$_SESSION['_csrf'] = str_repeat('b', 64);
+check('token ze starej sesji (napis zamiast listy) jest honorowany',
+    Session::csrfProblem(str_repeat('b', 64)) === Session::CSRF_OK,
+    'inaczej wdrożenie unieważnia formularze wszystkim pracującym');
+
+// ------------------------------------------------- sesja anonimowa jest cenna
+echo "\n== żądanie niezalogowanego NIE KASUJE sesji ==\n";
+
+/*
+ * PRZYCZYNA AWARII „świeże logowanie niemożliwe": `requireLogin()` wołał
+ * `Session::destroy()`, a to kasuje CIASTECZKO. Przez tę gałąź przechodzi
+ * każde żądanie niezalogowanego na trasę panelu — w tym `/favicon.ico`
+ * i sondy przeglądarki — więc ciasteczko znikało spod otwartego formularza
+ * logowania i token przestawał do czegokolwiek pasować.
+ */
+check('Session udostępnia forgetCredentials()',
+    str_contains($sessionPhp, 'function forgetCredentials('));
+check('forgetCredentials() nie rusza ciasteczka (żadnego setcookie)',
+    preg_match('/function forgetCredentials\(\): void\s*\{(.*?)\n    \}/s', $sessionPhp, $mFc) === 1
+        && !str_contains($mFc[1], 'setcookie'));
+
+check('requireLogin() NIE kasuje sesji',
+    preg_match('/function requireLogin\(\): array\s*\{(.*?)\n    \}/s', $authPhp, $mRl) === 1
+        && !str_contains($mRl[1], 'Session::destroy();'),
+    'destroy() kasuje ciasteczko — a tędy przechodzi żądanie, którego nikt nie kliknął');
+
+// Wywołanie, nie wzmianka: w komentarzach nazwa metody pada i ma padać.
+check('destroy() zostaje TYLKO w wylogowaniu',
+    substr_count($authPhp, 'Session::destroy();') === 1,
+    'wywołań: ' . substr_count($authPhp, 'Session::destroy();'));
+
+check('adresy wysyłane przez samą przeglądarkę mają odpowiedź przed sesją',
+    str_contains($indexPhp, "\$path === '/favicon.ico'")
+        && str_contains($indexPhp, "str_starts_with(\$path, '/.well-known/')"));
 
 echo "\n== ciasteczko Secure przy żądaniu bez szyfrowania ==\n";
 

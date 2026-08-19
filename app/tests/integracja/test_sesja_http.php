@@ -19,7 +19,12 @@ declare(strict_types=1);
  *  - stary komunikat ZOSTAJE tam, gdzie jest prawdziwy: sesja żyje, token się nie zgadza,
  *  - po odrzuceniu formularz da się wysłać ponownie — pętla się rozplątuje,
  *  - trasy przedlogowe nie gubią komunikatu przez `flash` w nieistniejącej sesji,
- *  - ciasteczko `Secure` przy żądaniu bez HTTPS jest rozpoznawane i nazwane.
+ *  - ciasteczko `Secure` przy żądaniu bez HTTPS jest rozpoznawane i nazwane,
+ *  - ŻĄDANIA WYSYŁANE PRZEZ SAMĄ PRZEGLĄDARKĘ (`/favicon.ico`, sonda DevToolsa,
+ *    błędny adres) nie zabierają sesji spod otwartego formularza logowania —
+ *    to była przyczyna awarii „świeże logowanie niemożliwe",
+ *  - dwa formularze otwarte równolegle wysyłają się oba, a token sprzed
+ *    wymiany (zalogowanie) nadal przechodzi — pula ostatnich tokenów.
  *
  * Środowisko: dwa wbudowane serwery PHP (APP_URL http i https) + atrapa Redisa.
  *
@@ -343,7 +348,112 @@ check('KOMUNIKAT WSKAZUJE SZYFROWANIE, nie ważność formularza',
 check('przyczyna zapisana w logu serwera',
     str_contains((string) @file_get_contents($logFile), 'flagę Secure'));
 
-// ============================================================ 8. ślad w audycie
+// ============================================================ 8. żądania, których nikt nie kliknął
+echo "\n== /favicon.ico i sondy przeglądarki NIE zabierają sesji spod formularza ==\n";
+
+/*
+ * AWARIA Z PRODUKCJI: świeże zalogowanie było NIEMOŻLIWE, a sesje otwarte
+ * wcześniej działały dalej. Przyczyna: `Auth::requireLogin()` wołał
+ * `Session::destroy()`, czyli KASOWAŁ CIASTECZKO, dla każdego żądania
+ * niezalogowanego na trasę panelu. A takie żądania wysyła sama przeglądarka,
+ * bez udziału użytkownika: `/favicon.ico` przy otwarciu strony, sonda
+ * `/.well-known/appspecific/com.chrome.devtools.json` przy otwarciu DevToolsa,
+ * dowolny błędny adres. Ciasteczko znikało spod OTWARTEGO formularza
+ * logowania i wysłanie formularza kończyło się odrzuceniem tokenu — przy
+ * każdej próbie, w jednej karcie, bez żadnego przeładowania.
+ *
+ * Dlaczego nie widział tego dotąd żaden przelot HTTP: klient testowy prosi
+ * WYŁĄCZNIE o to, o co go poproszono. Przeglądarka nie. Ta sekcja odtwarza
+ * żądania towarzyszące i dlatego stoi tu, a nie w teście statycznym.
+ */
+$ciasteczka = [];
+$ekranKarty  = http('GET', '/login');
+$tokenKarty  = csrfZ($ekranKarty['body']);
+check('formularz logowania niesie token', $tokenKarty !== '');
+
+$ikona = http('GET', '/favicon.ico');
+check('/favicon.ico kończy się 404, bez wchodzenia w trasy panelu',
+    $ikona['status'] === 404, 'status ' . $ikona['status']);
+check('/favicon.ico NIE DOTYKA ciasteczka sesji', $ikona['setCookie'] === '', $ikona['setCookie']);
+
+$sonda = http('GET', '/.well-known/appspecific/com.chrome.devtools.json');
+check('sonda DevToolsa NIE DOTYKA ciasteczka sesji', $sonda['setCookie'] === '', $sonda['setCookie']);
+
+$zlyAdres = http('GET', '/nie-ma-takiej-trasy');
+check('nieznany adres nadal przekierowuje na /login',
+    $zlyAdres['status'] === 302 && $zlyAdres['location'] === '/login',
+    $zlyAdres['status'] . ' → ' . (string) $zlyAdres['location']);
+check('nieznany adres NIE KASUJE ciasteczka sesji',
+    stripos($zlyAdres['setCookie'], 'ca_session=deleted') === false
+        && !str_contains($zlyAdres['setCookie'], '1970'),
+    $zlyAdres['setCookie']);
+
+$poSondach = http('POST', '/login', ['email' => KONTO, 'password' => HASLO, 'csrf' => $tokenKarty]);
+check('ŚWIEŻE LOGOWANIE PRZECHODZI PO ŻĄDANIACH TOWARZYSZĄCYCH',
+    $poSondach['status'] === 302 && $poSondach['location'] === '/',
+    $poSondach['status'] . ' → ' . (string) $poSondach['location']);
+
+// ============================================================ 9. dwa formularze naraz
+echo "\n== dwa formularze otwarte równolegle + token sprzed wymiany ==\n";
+
+/*
+ * Pula ostatnich tokenów zamiast jednego. Dwa sprawdzenia, dwie różne sytuacje:
+ *  - DWIE KARTY: obie mają formularz i obie wysyłają — żadna nie unieważnia drugiej,
+ *  - WYMIANA TOKENU: zalogowanie wydaje nowy token, a formularz otwarty
+ *    przed zalogowaniem (tu: ekran logowania z tej samej sesji) nadal przechodzi,
+ *    bo poprzedni token siedzi w puli.
+ */
+$kartaA = csrfZ(http('GET', '/kluby')['body']);
+$kartaB = csrfZ(http('GET', '/konto')['body']);
+check('obie karty dostały token', $kartaA !== '' && $kartaB !== '');
+
+$wysylkaA = http('POST', '/motyw', ['theme' => 'dark', 'powrot' => '/kluby', 'csrf' => $kartaA]);
+check('formularz z pierwszej karty przechodzi', $wysylkaA['status'] === 302,
+    'status ' . $wysylkaA['status']);
+
+$wysylkaB = http('POST', '/motyw', ['theme' => 'light', 'powrot' => '/kluby', 'csrf' => $kartaB]);
+check('FORMULARZ Z DRUGIEJ KARTY TEŻ PRZECHODZI', $wysylkaB['status'] === 302,
+    'status ' . $wysylkaB['status'] . ' — jeden token na sesję unieważniałby tu drugą kartę');
+
+$sprzedWymiany = http('POST', '/motyw', ['theme' => 'light', 'powrot' => '/kluby', 'csrf' => $tokenKarty]);
+check('TOKEN SPRZED ZALOGOWANIA (wymiana tokenu) NADAL PRZECHODZI',
+    $sprzedWymiany['status'] === 302, 'status ' . $sprzedWymiany['status']);
+
+// Pula ma granicę — token, którego nikt nigdy nie wydał, dalej odpada.
+$zmyslony = http('POST', '/motyw', ['theme' => 'light', 'powrot' => '/kluby',
+    'csrf' => str_repeat('c', 64)]);
+check('zmyślony token nadal odrzucony', $zmyslony['status'] === 400,
+    'status ' . $zmyslony['status']);
+
+// ============================================================ 10. kontrakt zgłoszenia
+echo "\n== kontrakt ze zgłoszenia awarii: złe hasło ma mówić o haśle ==\n";
+
+/*
+ * Zdanie po zdaniu z opisu awarii: świeży formularz + poprawny token + błędne
+ * dane logowania mają dać „Nieprawidłowy adres e-mail lub hasło.", a NIE
+ * „Formularz stracił ważność." — i to po żądaniach, które przeglądarka wysyła
+ * sama z siebie, bo dopiero one wywracały cykl życia sesji.
+ */
+$ciasteczka = [];
+$swiezyEkran = http('GET', '/login');
+http('GET', '/favicon.ico');
+http('GET', '/.well-known/appspecific/com.chrome.devtools.json');
+
+$zleDane = http('POST', '/login', [
+    'email'    => 'diag@invalid.test',
+    'password' => 'x',
+    'csrf'     => csrfZ($swiezyEkran['body']),
+]);
+check('odpowiedź mówi o NIEPRAWIDŁOWYCH DANYCH',
+    str_contains($zleDane['body'], 'Nieprawidłowy adres e-mail lub hasło'),
+    'status ' . $zleDane['status']);
+check('odpowiedź NIE mówi „formularz stracił ważność"',
+    !str_contains($zleDane['body'], 'stracił ważność'));
+check('odpowiedź nie mówi o ciasteczku ani o wygasłej sesji',
+    !str_contains($zleDane['body'], 'ciasteczka sesji')
+        && !str_contains($zleDane['body'], 'Sesja wygasła'));
+
+// ============================================================ 11. ślad w audycie
 echo "\n== odrzucenia zostają w audycie ==\n";
 
 ca_test_db($baza);

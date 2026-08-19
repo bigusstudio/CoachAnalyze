@@ -323,7 +323,27 @@ final class Auth
     {
         $user = self::currentUser();
         if ($user === null) {
-            Session::destroy();
+            /*
+             * ŻADNEGO `Session::destroy()` W TYM MIEJSCU.
+             *
+             * Stała tu wcześniej i to była PRZYCZYNA awarii „świeże logowanie
+             * niemożliwe": `destroy()` kasuje ciasteczko sesji, a przez tę
+             * gałąź przechodzi KAŻDE żądanie niezalogowanego na trasę panelu —
+             * w tym żądania, których nikt nie kliknął: `/favicon.ico`,
+             * sonda DevToolsa, dowolny błędny adres, prefetch przeglądarki.
+             * Takie żądanie kasowało ciasteczko spod OTWARTEGO formularza
+             * logowania: token z formularza należał już do nieistniejącej
+             * sesji, a wysłanie formularza kończyło się „Formularz stracił
+             * ważność" (albo komunikatem o ciasteczku) przy każdej próbie.
+             *
+             * Sesja anonimowa NIE JEST śmieciem do sprzątnięcia — to ona niesie
+             * token formularza logowania. Zdejmujemy najwyżej poświadczenia
+             * sesji, która je miała i przestała być ważna (konto wyłączone,
+             * zmienione hasło), i robimy to BEZ ruszania ciasteczka.
+             */
+            if (Session::userId() !== null) {
+                Session::forgetCredentials();
+            }
             header('Location: /login');
             exit;
         }

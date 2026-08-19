@@ -11,6 +11,10 @@ namespace CoachAnalyze;
  */
 final class Session
 {
+    /**
+     * PULA tokenów CSRF pod jednym kluczem — lista, nie pojedynczy napis.
+     * Najstarszy token pierwszy; ważny jest KAŻDY element listy.
+     */
     private const CSRF_KEY = '_csrf';
     private const USER_KEY = '_uid';
     private const LEVEL_KEY = '_level';
@@ -24,6 +28,22 @@ final class Session
      * a po starcie sesji PHP jedno od drugiego już nie odróżnia.
      */
     public const COOKIE = 'ca_session';
+
+    /**
+     * Ile ostatnich tokenów CSRF zostaje ważnych.
+     *
+     * PO CO PULA ZAMIAST JEDNEGO TOKENU: token bywa wymieniany w trakcie pracy
+     * (zalogowanie, zdjęcie poświadczeń z sesji), a formularze otwarte chwilę
+     * wcześniej — w drugiej karcie albo po prostu wypełniane wolniej — niosą
+     * jeszcze poprzedni. Przy jednym tokenie KAŻDA taka wymiana zamienia gotowy
+     * formularz w „Formularz stracił ważność", choć nikt nie zrobił nic złego
+     * i powtórzenie niczego nie tłumaczy.
+     *
+     * Rozmiar jest skończony i to jest cała treść tego ustawienia: pula bez
+     * granicy znaczyłaby, że token wydany kiedykolwiek jest ważny zawsze,
+     * a wtedy przestaje cokolwiek ograniczać.
+     */
+    public const CSRF_POOL = 5;
 
     /**
      * Powody odrzucenia tokenu CSRF.
@@ -183,6 +203,9 @@ final class Session
     public static function login(int $userId, string $level = self::LEVEL_PASSWORD): void
     {
         self::regenerate();
+        // Zmiana uprawnień sesji = nowy token. Poprzednie zostają w puli, więc
+        // formularz otwarty przed zalogowaniem nie umiera w tej samej chwili.
+        self::rotateCsrf();
         $_SESSION[self::USER_KEY] = $userId;
         $_SESSION[self::LEVEL_KEY] = $level === self::LEVEL_REMEMBERED
             ? self::LEVEL_REMEMBERED
@@ -235,6 +258,33 @@ final class Session
         return is_string($fp) && $fp !== '' ? $fp : null;
     }
 
+    /**
+     * Zdejmuje z sesji POŚWIADCZENIA, zostawiając samą sesję przy życiu.
+     *
+     * OSOBNO OD `destroy()`, BO `destroy()` KASUJE TEŻ CIASTECZKO — a to jest
+     * czynność, której nie wolno wykonać przy okazji cudzego żądania.
+     * Awaria z produkcji: `requireLogin()` wołał `destroy()` na KAŻDYM żądaniu
+     * niezalogowanego, więc pobranie `/favicon.ico` albo sondy DevToolsa
+     * (`/.well-known/appspecific/...`) — czyli żądanie, którego nikt nie kliknął —
+     * kasowało ciasteczko sesji spod otwartego formularza logowania. Token
+     * z formularza przestawał pasować do sesji, którą serwer zakładał przy
+     * wysyłce, i świeże zalogowanie stawało się NIEMOŻLIWE.
+     *
+     * Wylogowanie (`Auth::logout()`) dalej woła `destroy()` — tam skasowanie
+     * ciasteczka jest wprost tym, o co prosi użytkownik.
+     */
+    public static function forgetCredentials(): void
+    {
+        self::start();
+        unset(
+            $_SESSION[self::USER_KEY],
+            $_SESSION[self::LEVEL_KEY],
+            $_SESSION[self::AUTH_FP_KEY]
+        );
+        // Sesja zmieniła tożsamość na anonimową — token idzie za nią.
+        self::rotateCsrf();
+    }
+
     public static function destroy(): void
     {
         self::start();
@@ -253,13 +303,64 @@ final class Session
         session_destroy();
     }
 
+    /** Token do wstawienia w formularz: najnowszy z puli, a gdy puli nie ma — nowy. */
     public static function csrfToken(): string
     {
         self::start();
-        if (empty($_SESSION[self::CSRF_KEY])) {
-            $_SESSION[self::CSRF_KEY] = bin2hex(random_bytes(32));
+        $pula = self::csrfPool();
+        return $pula === [] ? self::rotateCsrf() : (string) end($pula);
+    }
+
+    /**
+     * Nowy token na koniec puli; najstarszy wypada (FIFO).
+     *
+     * Wołane TAM, GDZIE ZMIENIA SIĘ TOŻSAMOŚĆ SESJI — przy zalogowaniu
+     * i przy zdjęciu poświadczeń. Nie przy każdym renderze formularza:
+     * wtedy pięć kliknięć w panelu wypychałoby z puli token formularza,
+     * który ktoś ma otwarty obok, i wracalibyśmy do naprawianego właśnie błędu.
+     */
+    public static function rotateCsrf(): string
+    {
+        self::start();
+        $pula = self::csrfPool();
+        $pula[] = bin2hex(random_bytes(32));
+        if (count($pula) > self::CSRF_POOL) {
+            $pula = array_slice($pula, -self::CSRF_POOL);
         }
-        return (string) $_SESSION[self::CSRF_KEY];
+        $_SESSION[self::CSRF_KEY] = $pula;
+
+        return (string) end($pula);
+    }
+
+    /**
+     * Pula w postaci listy napisów.
+     *
+     * Sesja otwarta PRZED wdrożeniem puli niesie pod tym kluczem pojedynczy
+     * napis — jest honorowana jako pula jednoelementowa. Bez tego wdrożenie
+     * wylogowałoby (a dokładniej: unieważniło formularze) wszystkim, którzy
+     * akurat pracują.
+     *
+     * @return list<string>
+     */
+    private static function csrfPool(): array
+    {
+        $surowe = $_SESSION[self::CSRF_KEY] ?? null;
+
+        if (is_string($surowe)) {
+            return $surowe !== '' ? [$surowe] : [];
+        }
+        if (!is_array($surowe)) {
+            return [];
+        }
+
+        $pula = [];
+        foreach ($surowe as $token) {
+            if (is_string($token) && $token !== '') {
+                $pula[] = $token;
+            }
+        }
+
+        return $pula;
     }
 
     /** Porównanie w stałym czasie — zwykłe === wycieka informację przez czas odpowiedzi. */
@@ -286,15 +387,35 @@ final class Session
         $ciasteczko = self::cookieReturned();
 
         self::start();
-        $expected = $_SESSION[self::CSRF_KEY] ?? null;
+        $pula = self::csrfPool();
 
-        if (is_string($expected) && $expected !== '') {
-            return is_string($token) && $token !== '' && hash_equals($expected, $token)
-                ? self::CSRF_OK
-                : self::CSRF_MISMATCH;
+        if ($pula !== []) {
+            return self::csrfWPuli($token, $pula) ? self::CSRF_OK : self::CSRF_MISMATCH;
         }
 
         return $ciasteczko ? self::CSRF_NO_TOKEN : self::CSRF_NO_COOKIE;
+    }
+
+    /**
+     * Czy token jest KTÓRYMKOLWIEK z ważnych.
+     *
+     * @param list<string> $pula
+     */
+    private static function csrfWPuli(?string $token, array $pula): bool
+    {
+        if (!is_string($token) || $token === '') {
+            return false;
+        }
+
+        $trafienie = false;
+        foreach ($pula as $kandydat) {
+            // Bez `break` na trafieniu: wyjście z pętli robi z liczby obrotów
+            // pomiar czasu, a `hash_equals` jest tu właśnie po to, żeby czasu
+            // nie dało się zmierzyć.
+            $trafienie = hash_equals($kandydat, $token) || $trafienie;
+        }
+
+        return $trafienie;
     }
 
     /** @param mixed $value */

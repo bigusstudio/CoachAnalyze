@@ -91,6 +91,33 @@ if ($method === 'HEAD') {
     $method = 'GET';
 }
 
+/*
+ * ŻĄDANIA, KTÓRYCH NIKT NIE KLIKNĄŁ — odpowiedź PRZED dotknięciem sesji.
+ *
+ * `/favicon.ico`, ikony ekranu głównego i sondy spod `/.well-known/` wysyła
+ * sama przeglądarka: przy każdym otwarciu strony, przy otwarciu DevToolsa,
+ * czasem w tle. Żaden z tych adresów nie jest trasą panelu, więc do tej pory
+ * wpadały do gałęzi domyślnej — czyli do bramki logowania (`requireLogin()`
+ * w klasie `Auth`), która przekierowywała na `/login` i kasowała przy tym
+ * ciasteczko sesji spod otwartego formularza logowania.
+ *
+ * Przyczynę naprawia sama bramka (patrz komentarz przy `requireLogin()`).
+ * Ta trasa domyka rzecz od drugiej strony: żądanie, o które nikt nie prosił, nie zakłada sesji, nie wysyła
+ * ciasteczka i nie zostawia pliku sesji na dysku — dostaje 404 i tyle.
+ *
+ * Prawdziwe pliki spod `/.well-known/` (potwierdzenie certyfikatu) serwuje
+ * Apache; do PHP trafia wyłącznie to, czego na dysku NIE MA (`!-f` w .htaccess).
+ */
+if ($path === '/favicon.ico'
+    || $path === '/apple-touch-icon.png'
+    || $path === '/apple-touch-icon-precomposed.png'
+    || str_starts_with($path, '/.well-known/')) {
+    http_response_code(404);
+    header('Content-Type: text/plain; charset=utf-8');
+    echo 'Nie znaleziono.';
+    exit;
+}
+
 // --- trasy bez sesji ------------------------------------------------------
 if ($path === '/login') {
     $method === 'POST' ? handleLogin() : showLogin();
