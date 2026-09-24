@@ -1091,6 +1091,7 @@ return [
     'dash.more'           => 'więcej',
     'dash.open'           => 'otwórz',
     'dash.soon.from'      => 'od sesji 3',
+    'dash.of_total'       => 'z %d zdarzeń',
     'dash.kpi.matches'    => 'Mecze w sezonie',
     'dash.kpi.reports'    => 'Raporty gotowe',
     'dash.kpi.queue'      => 'Zadania w kolejce',

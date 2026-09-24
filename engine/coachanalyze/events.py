@@ -48,13 +48,15 @@ def minuta(sekundy, half):
     Druga połowa zostaje BEZ przycięcia: to ta sama skala czasu wideo, a górnej
     granicy meczu nie znamy (doliczony czas bywa różny).
 
-    Zdarzenie w sekundzie 0 daje minutę 0, nie 1 — `ceil(0/60) == 0`. Zapis
-    jest wierny danym: podniesienie do 1 byłoby konwencją transmisyjną, a nie
-    faktem z eksportu.
+    MINUTA ZACZYNA SIĘ OD 1, NIE OD 0 — poprawka z odbioru sesji 2.
+    `ceil(0/60)` daje zero, a zdarzeń w sekundzie 0 jest w eksportach sporo:
+    pułapka 10 przycina ujemny `begin` (bufor taga) właśnie do zera, więc każdy
+    tag wstawiony przed pierwszym gwizdkiem lądował w „0. minucie". Takiej
+    minuty nie ma ani w meczu, ani na osi czasu raportu.
     """
     if sekundy is None:
         return None
-    m = math.ceil(float(sekundy) / 60.0)
+    m = max(1, math.ceil(float(sekundy) / 60.0))
     if half == 1:
         return min(m, KONIEC_PIERWSZEJ_POLOWY)
     return m

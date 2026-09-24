@@ -170,6 +170,29 @@ if (!Auth::isLoggedIn() && isset($_COOKIE[Remember::COOKIE])) {
 }
 
 /*
+ * BRAK SESJI NA `/api/metryki` DAJE 401 — świadomie inaczej niż wyżej.
+ *
+ * Chmurki i wskaźnik dostają 404, bo odpytuje je SKRYPT, w pętli, na każdej
+ * stronie panelu: 401 potwierdzałby istnienie trasy komukolwiek, kto ją zgadnie.
+ *
+ * Tu jest odwrotnie. `/api/metryki` woła się ŚWIADOMIE, z parametrami, które
+ * trzeba znać — a klient, który dostał 401, wie, że ma się zalogować. Gdyby
+ * dostał 302, przeglądarka poszłaby za przekierowaniem po cichu i `fetch()`
+ * odebrałby stronę logowania jako „odpowiedź JSON": dwieście znaków HTML-a
+ * tam, gdzie spodziewano się liczb.
+ *
+ * Obsługa stoi PRZED `requireLogin()` wyłącznie po to, żeby zdążyć przed
+ * przekierowaniem. Właściwa trasa i cała logika zakresu są niżej, za bramką.
+ */
+if ($path === '/api/metryki' && Session::userId() === null) {
+    http_response_code(401);
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-store');
+    echo json_encode(['error' => 'unauthorized'], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+/*
  * Punkt końcowy chmurek powiadomień — OBSŁUGIWANY PRZED `requireLogin()`.
  *
  * Powód: `requireLogin()` przekierowuje na `/login`, a przeglądarka wykonałaby
@@ -296,6 +319,15 @@ switch (true) {
             'seasonRows'  => Stats::seasonMatches(
                 $sezonPulpitu !== null ? (int) $sezonPulpitu['id'] : null, 40
             ),
+            // Sesja 3 — metryki z tabeli `events`. Tenant = klub „nasz";
+            // bez niego metryk nie liczymy i kafle zostają z kreską.
+            'metryki'     => ($tenantPulpitu = Clubs::tenantDefault()) !== null
+                ? \CoachAnalyze\Metrics::computeAll([
+                    'club_id'   => (int) $tenantPulpitu,
+                    'season_id' => $sezonPulpitu !== null ? (int) $sezonPulpitu['id'] : null,
+                  ])
+                : ['metrics' => [], 'coverage' => []],
+            'tenantId'    => $tenantPulpitu,
         ]);
         break;
 
@@ -686,15 +718,23 @@ switch (true) {
         $filtr = [
             'klub'   => isset($_GET['klub'])  && $_GET['klub'] !== ''  ? (int) $_GET['klub'] : null,
             'sezon'  => isset($_GET['sezon']) && $_GET['sezon'] !== '' ? (int) $_GET['sezon'] : null,
+            // Filtr statusu (poprawka z odbioru sesji 3,5). `Matches::search()`
+            // umiał go od dawna — brakowało wyłącznie wpięcia w ekran.
+            // Lista dozwolonych wartości JEST TUTAJ, bo z żądania przychodzi
+            // dowolny napis; `Matches::STATUSY` to jedno źródło prawdy.
+            'status' => in_array($_GET['status'] ?? '', Matches::STATUSY, true)
+                ? (string) $_GET['status'] : null,
             'sort'   => Matches::normalizeSort($_GET['sort'] ?? null),
             'strona' => max(1, (int) ($_GET['strona'] ?? 1)),
         ];
         View::page('matches_list', [
             'title'   => View::t('matches.title'),
             'active'  => 'matches',
+            'statusy' => Matches::STATUSY,
             'wynik'   => Matches::search([
                 'club'   => $filtr['klub'],
                 'season' => $filtr['sezon'],
+                'status' => $filtr['status'],
                 'sort'   => $filtr['sort'],
                 'page'   => $filtr['strona'],
             ]),
@@ -768,6 +808,56 @@ switch (true) {
             'active'  => 'calendar',
             'heading' => View::t('nav.calendar'),
         ]);
+        break;
+
+    /*
+     * ---------------------------------------------- metryki (API, sesja 3)
+     *
+     * `GET /api/metryki?club=&season=&match=` → JSON z wartościami metryk.
+     * Puste `match` znaczy SUMA sezonu — ta sama definicja metryki policzona
+     * dla wszystkich meczów zakresu, nie osobna metryka.
+     *
+     * TRASA STOI ZA `Auth::requireLogin()`, ale brak sesji przechwytujemy
+     * WYŻEJ (szukaj `unauthorized`) i odpowiadamy 401 zamiast przekierowania.
+     * Tamten komentarz tłumaczy, czemu akurat 401, a nie 404 jak przy chmurkach.
+     */
+    case $path === '/api/metryki' && $method === 'GET':
+        header('Content-Type: application/json; charset=utf-8');
+        header('Cache-Control: no-store');
+
+        $clubId = isset($_GET['club']) && $_GET['club'] !== '' ? (int) $_GET['club'] : null;
+        if ($clubId === null) {
+            http_response_code(400);
+            echo json_encode(['error' => 'club_required'], JSON_UNESCAPED_UNICODE);
+            break;
+        }
+
+        /*
+         * KLUB MUSI ISTNIEĆ I BYĆ TENANTEM. 403, nie 404: trasa jest znana
+         * zalogowanemu użytkownikowi, więc ukrywanie jej istnienia niczego nie
+         * chroni — a 403 mówi wprost, że zakres jest cudzy.
+         */
+        $klubApi = Clubs::find($clubId);
+        if ($klubApi === null || empty($klubApi['is_own_team'])) {
+            http_response_code(403);
+            echo json_encode(['error' => 'forbidden_scope'], JSON_UNESCAPED_UNICODE);
+            break;
+        }
+
+        $zakresApi = [
+            'club_id'   => $clubId,
+            'season_id' => isset($_GET['season']) && $_GET['season'] !== ''
+                ? (int) $_GET['season'] : null,
+            'match_id'  => isset($_GET['match']) && $_GET['match'] !== ''
+                ? (int) $_GET['match'] : null,
+        ];
+
+        $wynikApi = \CoachAnalyze\Metrics::computeAll($zakresApi);
+        echo json_encode([
+            'scope'             => \CoachAnalyze\Metrics::opisZakresu($zakresApi),
+            'metrics'           => $wynikApi['metrics'],
+            'catalog_coverage'  => $wynikApi['coverage'],
+        ], JSON_UNESCAPED_UNICODE);
         break;
 
     // -------------------------------------------------------- notatnik (Etap 6)

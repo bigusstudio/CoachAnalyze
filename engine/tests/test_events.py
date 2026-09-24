@@ -39,7 +39,7 @@ def ramka(*zdarzenia, half_split=2700.0):
 
 # ------------------------------------------------------------------ 1. minuta
 @pytest.mark.parametrize("sekundy, half, oczekiwana", [
-    (0.0,    1, 0),    # `ceil(0/60) == 0` — zapis wierny danym, nie konwencja transmisyjna
+    (0.0,    1, 1),    # minuta zaczyna się od 1 — poprawka z odbioru sesji 2
     (0.1,    1, 1),
     (59.9,   1, 1),
     (60.0,   1, 1),
@@ -60,6 +60,18 @@ def test_minuta_pierwszej_polowy_przycieta_do_45(sekundy, half, oczekiwana):
 ])
 def test_minuta_drugiej_polowy_nie_jest_przycinana(sekundy, oczekiwana):
     assert events_mod.minuta(sekundy, 2) == oczekiwana
+
+
+def test_zdarzenie_w_sekundzie_zero_ma_minute_pierwsza():
+    """Pułapka 10 przycina ujemny `begin` do zera, więc takich zdarzeń jest sporo.
+
+    „0. minuta" nie istnieje ani w meczu, ani na osi czasu raportu.
+    """
+    assert events_mod.minuta(0.0, 1) == 1
+    assert events_mod.minuta(0.0, 2) == 1
+
+    frame = ramka(zdarzenie("STRZAŁ", 0.0, team="KLUB A"))
+    assert events_mod.build(frame, config={"teams": TEAMS})["events"][0]["minute"] == 1
 
 
 def test_granica_45_rozni_polowy():

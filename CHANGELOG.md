@@ -3,6 +3,60 @@
 Format: [wersja silnika] — data — opis.
 Każda zmiana, która modyfikuje wyjście silnika, MUSI mieć tu wpis wraz z powodem.
 
+## [0.13.2] — 2026-09-24
+### Minuta meczu zaczyna się od 1
+Poprawka z odbioru sesji 2. `ceil(0/60)` dawało zero, a zdarzeń w sekundzie 0
+jest w eksportach sporo: pułapka 10 przycina ujemny `begin` (bufor taga) właśnie
+do zera, więc każdy tag wstawiony przed pierwszym gwizdkiem lądował w „0. minucie".
+Takiej minuty nie ma ani w meczu, ani na osi czasu raportu. Odtąd
+`max(1, ceil(t/60))`; przycięcie pierwszej połowy do 45 bez zmian.
+
+## Aplikacja — 2026-09-24 · sesja 3 pivotu „viewer"
+### Metryki na tabeli `events`, katalog tagów, endpoint JSON
+- **Migracja `015`** (addytywna): `tag_catalog` — co klub W OGÓLE taguje.
+  Zapełniana przy imporcie i przeliczeniu z `meta.dictionary` i `meta.palette`,
+  czyli z danych, które silnik liczy od 0.10.0 i 0.11.0. **Kasowania nie ma:**
+  tag, który zniknął z eksportów trzy miesiące temu, zostaje — to znaczy,
+  że klub zmienił metodykę, i właśnie to ma być widoczne.
+- **`Metrics::compute(definicja, zakres)`** — jeden interfejs. Definicja to
+  FILTR (tagi z aliasami, etykiety `ma`/`nie ma`, strona, połowa, zakres minut)
+  plus AGREGATOR (`count`, `sum_xg`, `ratio`, `avg_per_match`). Zakres to mecz
+  albo lista meczów; **SUMA sezonu to ta sama definicja bez filtra meczu**,
+  nie osobna metryka — inaczej zestawienie mogłoby się nie zgadzać z sumą kolejek.
+- **Wskaźnik z zerowym mianownikiem daje `null`, NIGDY zero.** „0% wejść w SBZ
+  zakończonych strzałem" i „nie było wejść w SBZ" to dwa różne zdania o meczu.
+  Zerowy licznik przy niezerowym mianowniku to co innego — **to jest wynik** i daje 0.
+- **Brak taga w katalogu klubu daje `null` i wpis w `catalog_coverage`**, nie zero.
+  To jest cały powód, dla którego `tag_catalog` powstał.
+- **Zdarzenia bez drużyny (`none`) liczą się dla tenanta** (pułapka 5, reguła
+  z `docs/STAN_PIVOTU.md`): analityk klubu taguje własne straty i odbiory, nie cudze.
+  Tam, gdzie zdarzenie MA drużynę (strzały, SBZ), `none` nie wchodzi — inaczej
+  doliczylibyśmy klubowi strzały rywala bez przypisania.
+- **`GET /api/metryki?club=&season=&match=`** → `{scope, metrics[], catalog_coverage[]}`.
+  Puste `match` znaczy SUMA sezonu. Brak sesji daje **401**, nie 404 jak przy
+  chmurkach: tamte odpytuje skrypt w pętli na każdej stronie, tę trasę woła się
+  świadomie — a 302 dałoby klientowi stronę logowania jako „odpowiedź JSON".
+  Cudzy klub: 403.
+- **Pulpit**: trzy kafle („SBZ na mecz", pressing, reakcja na stratę) i kolumna
+  SBZ w tabeli liczone z `Metrics`. Kreska zostaje WYŁĄCZNIE wtedy, gdy wartość
+  jest `null`.
+
+**Czy to łamie CLAUDE.md §4?** Nie. §4 zabrania PHP rozstrzygania, CZYM jest
+zdarzenie — czy strzał był golem, skąd xG, która drużyna jest „nasza". To
+policzył silnik i zapisał w wierszach (migracja 014). `Metrics` filtruje gotowe
+wiersze i sumuje gotowe kolumny, w SQL-u. Agregacja idzie w bazie, nie w pętli
+PHP, właśnie dlatego, że pętla byłaby zaproszeniem do dopisania w niej warunku —
+a warunek w pętli to już reguła piłkarska.
+
+**Definicje metryk leżą w `app/config/metryki_domyslne.php` i to jest plik
+PRZEJŚCIOWY.** W sesji 5 przechodzą do templatu klubu, bo metodyka jest częścią
+templatu, nie kodu.
+
+### Filtr statusu na liście meczów
+Zgłoszony przy odbiorze sesji 3,5. `Matches::search()` umiał go od dawna —
+brakowało wyłącznie pola na ekranie i przepuszczenia parametru w trasie.
+Lista dozwolonych wartości to `Matches::STATUSY`, jedno źródło prawdy.
+
 ## Aplikacja — 2026-09-24 · sesja 3,5 pivotu „viewer"
 ### Lifting panelu wg `docs/podglad_pulpit_v1.html`
 **Wpis APLIKACJI.** Silnik zmienia się wyłącznie w ucieczce nazw klubów (niżej);

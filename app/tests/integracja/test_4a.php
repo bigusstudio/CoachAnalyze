@@ -95,8 +95,16 @@ check('status po polsku, nie po angielsku',
     str_contains($html, 'gotowe') && !str_contains($html, '>done<'));
 check('kolumny są po polsku, nie Gospodarz/Gość',
     !str_contains($html, 'Gospodarz') && !str_contains($html, 'Gość'));
+/*
+ * KOTWICA ZMIENIONA W SESJI 3. Podpis „od sesji 3" zniknął, bo metryki
+ * przyszły — kafle liczą się z tabeli `events`. Została sama zasada:
+ * kafel BEZ WARTOŚCI ma kreskę i klasę `kpi--pusty`, nie zmyśloną liczbę.
+ *
+ * Ten render nie dostaje metryk w ogóle, więc wszystkie trzy mają być puste —
+ * i to jest właściwy przypadek do sprawdzenia: brak danych, nie zero.
+ */
 check('kafel bez danych pokazuje kreskę, nie zmyśloną liczbę',
-    str_contains($html, 'kpi--pusty') && str_contains($html, 'od sesji 3'),
+    substr_count($html, 'kpi--pusty') === 3 && str_contains($html, '—'),
     'brak danych ma być widoczny (CLAUDE.md §8)');
 
 $pusty = View::render('dashboard', [

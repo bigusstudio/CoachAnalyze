@@ -161,7 +161,7 @@ Trzy reguły, na których stoi to wyjście:
 
 | Reguła | Zachowanie |
 |---|---|
-| **minuta** | `ceil(t/60)`, **pierwsza połowa przycięta do 45**. Czas w eksporcie to czas wideo (pułapka 8), więc doliczony czas rośnie dalej, a przerwa nie zeruje licznika. Druga połowa bez przycięcia — górnej granicy meczu nie znamy |
+| **minuta** | `max(1, ceil(t/60))`, **pierwsza połowa przycięta do 45**. Minuta zaczyna się od 1: pułapka 10 przycina ujemny `begin` do zera, więc bez tego tag sprzed pierwszego gwizdka lądował w 0. minucie, której nie ma ani w meczu, ani na osi czasu. Czas w eksporcie to czas wideo (pułapka 8), więc doliczony czas rośnie dalej, a przerwa nie zeruje licznika. Druga połowa bez przycięcia — górnej granicy meczu nie znamy |
 | **gol** | tag `Gol` przypisany do **najbliższego w czasie** `STRZAŁ` (okno 30 s); strzał dostaje `is_goal: 1`, a wiersz `Gol` **zostaje** ze skorygowaną drużyną. `team_uuid` przy golu w eksporcie bywa błędny — dlatego drużyna idzie ze strzału, nie z własnego wiersza |
 | **strona** | `us` / `them` wg `config.teams` (to samo dopasowanie, co w renderze); wiersz bez drużyny to `none`, nie zgadywanie (pułapka 5). Perspektywę klubu-tenanta interpretuje SZABLON, nie silnik |
 

@@ -31,6 +31,23 @@ $lastMatch  ??= null;
 $lastFacts  ??= null;
 $seasonRows ??= [];
 $alerts     ??= [];
+$metryki    ??= ['metrics' => [], 'coverage' => []];
+
+/*
+ * Metryki po `id`. Kafel bez wartości ZOSTAJE KRESKĄ — `null` znaczy albo brak
+ * zdarzeń w zakresie, albo brak taga w katalogu klubu (migracja 015). Jedno
+ * i drugie to „nie ma czego liczyć", nie „policzono zero" (CLAUDE.md §8).
+ */
+$mPoId = array_column($metryki['metrics'] ?? [], null, 'id');
+
+/** Wartość metryki jako tekst albo kreska. Procent dla wskaźników. */
+$metryka = static function (string $id, bool $procent = false) use ($mPoId): string {
+    $w = $mPoId[$id]['value'] ?? null;
+    if ($w === null) {
+        return View::t('common.dash');
+    }
+    return $procent ? round((float) $w * 100) . '%' : (string) $w;
+};
 
 /** Liczba albo kreska. Zero jest wynikiem; brak danych nim nie jest. */
 $lub = static fn($w, string $format = '%s'): string =>
@@ -194,12 +211,19 @@ $klasaWyniku = static function (?int $nas, ?int $ich): string {
          'd' => View::t('nav.reports'), 'pusty' => false],
         ['l' => View::t('dash.kpi.queue'), 'v' => (string) $counters['queued'],
          'd' => View::t('nav.queue', $counters['queued']), 'pusty' => false],
-        ['l' => View::t('dash.kpi.sbz'), 'v' => View::t('common.dash'),
-         'd' => View::t('dash.soon.from'), 'pusty' => true],
-        ['l' => View::t('dash.kpi.press'), 'v' => View::t('common.dash'),
-         'd' => View::t('dash.soon.from'), 'pusty' => true],
-        ['l' => View::t('dash.kpi.reaction'), 'v' => View::t('common.dash'),
-         'd' => View::t('dash.soon.from'), 'pusty' => true],
+        // Sesja 3: trzy kafle liczone z tabeli `events`. Kreska zostaje
+        // WYŁĄCZNIE wtedy, gdy metryka nie ma wartości.
+        ['l' => View::t('dash.kpi.sbz'), 'v' => $metryka('sbz_na_mecz'),
+         'd' => (string) ($mPoId['sbz_na_mecz']['label'] ?? ''),
+         'pusty' => ($mPoId['sbz_na_mecz']['value'] ?? null) === null],
+        ['l' => View::t('dash.kpi.press'), 'v' => $metryka('pressing', true),
+         'd' => ($mPoId['pressing']['d'] ?? null) !== null
+             ? View::t('dash.of_total', (int) $mPoId['pressing']['d']) : '',
+         'pusty' => ($mPoId['pressing']['value'] ?? null) === null],
+        ['l' => View::t('dash.kpi.reaction'), 'v' => $metryka('reakcja_na_strate', true),
+         'd' => ($mPoId['reakcja_na_strate']['d'] ?? null) !== null
+             ? View::t('dash.of_total', (int) $mPoId['reakcja_na_strate']['d']) : '',
+         'pusty' => ($mPoId['reakcja_na_strate']['value'] ?? null) === null],
     ];
   ?>
   <?php foreach ($kafle as $k): ?>
@@ -308,9 +332,18 @@ $klasaWyniku = static function (?int $nas, ?int $ich): string {
                       ? View::e($r['shots_us'] . ' : ' . $r['shots_them'])
                       : View::e(View::t('common.dash')) ?>
                 </td>
-                <?php /* SBZ: kreska. Warstwa żądań nie zna słownika tagów klubu —
-                         wejścia w SBZ policzy sesja 4 na templacie. */ ?>
-                <td class="num"><?= View::e(View::t('common.dash')) ?></td>
+                <?php
+                  // Sesja 3: SBZ per mecz z tej samej definicji, co kafel.
+                  // Jedno zapytanie na wiersz — tabela ma osiem wierszy.
+                  $sbzMeczu = ($tenantId ?? null) !== null
+                      ? \CoachAnalyze\Metrics::compute(
+                            \CoachAnalyze\Metrics::definicje()['sbz'],
+                            ['club_id' => (int) $tenantId, 'match_id' => (int) $r['id']]
+                        )['value']
+                      : null;
+                ?>
+                <td class="num"><?= $sbzMeczu === null
+                    ? View::e(View::t('common.dash')) : (int) $sbzMeczu ?></td>
                 <td>
                   <span class="pill pill--<?= $r['status'] === 'done' ? 'ok' : ($r['status'] === 'failed' ? 'bad' : 'warn') ?>">
                     <i></i><?= View::e(View::t('status.' . $r['status'])) ?>

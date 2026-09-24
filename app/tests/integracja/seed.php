@@ -112,6 +112,14 @@ function ca_test_db(string $file, bool $withData = true): PDO
         xg REAL NULL, xg_source TEXT NULL,
         x REAL NULL, y REAL NULL, tx REAL NULL, ty REAL NULL,
         is_goal INT NOT NULL DEFAULT 0)');
+    // Migracja 015: katalog tagow klubu.
+    $pdo->exec('CREATE TABLE tag_catalog (id INTEGER PRIMARY KEY AUTOINCREMENT,
+        club_id INT NOT NULL, kind TEXT NOT NULL, name TEXT NOT NULL, color TEXT NULL,
+        first_seen_import_id INT NULL, last_seen_import_id INT NULL,
+        seen_matches INT NOT NULL DEFAULT 0, seen_events INT NOT NULL DEFAULT 0,
+        updated_at TEXT NULL)');
+    $pdo->exec('CREATE UNIQUE INDEX uq_tag_catalog ON tag_catalog (club_id, kind, name)');
+
     $pdo->exec('CREATE INDEX idx_events_match_tag ON events (match_id, tag_name)');
     $pdo->exec('CREATE INDEX idx_events_match_side ON events (match_id, team_side, t_ms)');
     $pdo->exec('CREATE TABLE imports (id INTEGER PRIMARY KEY AUTOINCREMENT, match_id INT,

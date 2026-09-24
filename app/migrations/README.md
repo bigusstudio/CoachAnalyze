@@ -7,7 +7,7 @@ Zmiany DANYCH mają własny katalog i własne zasady — `app/repairs/README.md`
 
 | | |
 |---|---|
-| Pliki | `001`…`014`, **bez `003`** |
+| Pliki | `001`…`015`, **bez `003`** |
 | Tabela śledząca | **nie ma** |
 | Kto uruchamia | człowiek, ręcznie, po zrzucie bazy |
 | Baza produkcyjna | `serwer400227_coachanalyze` |
@@ -42,6 +42,40 @@ pisała wiersz (docs/STAN_PIVOTU.md §2.1 i §2.3).
 `ON DELETE CASCADE` przy `events.match_id` jest tu jedynym kaskadowym kasowaniem
 w schemacie i jest świadome: zdarzenia są **odtwarzalne z surowego eksportu**,
 więc ich utrata razem z meczem niczego nieodwracalnego nie kosztuje.
+
+## `015` — katalog tagów klubu
+
+Addytywna: jedno `CREATE TABLE tag_catalog`. Odpowiada na pytanie, którego
+`events` nie unosi: **co ten klub w ogóle taguje**.
+
+Bez katalogu metryka bez danych wygląda identycznie jak metryka o wartości zero —
+raport pokazuje „0 wejść w SBZ" i nikt się nie dowiaduje, że klub takiego taga
+nie ma. Katalog pozwala odróżnić „policzono zero" od „nie ma czego liczyć";
+drugie trafia do „Wymaga uwagi" (CLAUDE.md §8).
+
+### WYMAGANIE WOBEC SERWERA: MariaDB 10.2.3+
+
+Metryki filtrują po etykietach w `events.labels_json` przez `JSON_CONTAINS()`,
+dostępne od **MariaDB 10.2.3**. Sprawdź PRZED wdrożeniem:
+
+```sql
+SELECT VERSION();                            -- >= 10.2.3
+SELECT JSON_CONTAINS('["A","B"]', '"A"');    -- ma zwrócić 1
+```
+
+> **Pułapka MariaDB:** `JSON` jest tam **aliasem na `LONGTEXT`**, nie osobnym
+> typem jak w MySQL 5.7+. Kolumna przyjmie dowolny napis, także niepoprawny JSON,
+> a `JSON_CONTAINS()` zwróci wtedy `NULL` zamiast błędu — i metryka po cichu
+> policzy zero. Dlatego `labels_json` wypełnia wyłącznie `Events::wartosc()`
+> przez `json_encode()`, nigdy sklejanie napisów.
+
+Testy chodzą na SQLite, gdzie `JSON_CONTAINS` **nie istnieje** — tam używamy
+`json_each()` z rozszerzenia JSON1. To jedyne miejsce w projekcie z rozgałęzieniem
+po sterowniku (`Db::driver()`), i jest to koszt, nie wygoda: zapytanie w testach
+idzie inną ścieżką niż na produkcji.
+
+**Wspólnego `LIKE` świadomie NIE używamy** — nie odróżnia etykiety `PRESSING`
+od `PRESSING WYSOKI`, czyli powtarza pułapkę 7 (`CELNY` wewnątrz `NIECELNY`).
 
 ## ZASADA OD `014`: WYŁĄCZNIE MIGRACJE ADDYTYWNE
 

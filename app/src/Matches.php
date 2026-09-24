@@ -42,6 +42,15 @@ final class Matches
      * @param array{tenant?:int|null, club?:int|null, season?:int|null, sort?:string|null, page?:int} $filters
      * @return array{rows:list<array<string,mixed>>, total:int, page:int, pages:int, per_page:int}
      */
+    /**
+     * Statusy meczu — JEDNO ŹRÓDŁO PRAWDY dla filtra na ekranie.
+     *
+     * Odpowiada `ENUM` z migracji 001. Lista po stronie PHP jest potrzebna, bo
+     * z żądania przychodzi dowolny napis, a `status = 'cokolwiek'` po prostu
+     * zwróciłoby pustą listę — czyli filtr, który wygląda jak „brak meczów".
+     */
+    public const STATUSY = ['draft', 'queued', 'running', 'done', 'failed'];
+
     public static function search(array $filters = []): array
     {
         $where = [];

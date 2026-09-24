@@ -153,8 +153,8 @@ else
 naglowek "1. Modele na SQLite (bez zależności)"
 
 for nazwa in test_4a test_4b test_4c test_7 test_indeks test_kluby_templaty \
-             test_konfigurator test_diff_templatu test_mapowania test_powiadomienia \
-             test_remember test_xg; do
+             test_konfigurator test_diff_templatu test_mapowania test_metryki \
+             test_powiadomienia test_remember test_xg; do
   [ -f "$TUTAJ/$nazwa.php" ] || continue
   zestaw "$nazwa" php "$TUTAJ/$nazwa.php"
 done
@@ -224,7 +224,7 @@ if [ "$BEZ_HTTP" -eq 1 ]; then
   done
 else
   # KOLEJNO, NIGDY RÓWNOLEGLE: każdy zestaw podnosi wbudowany serwer PHP na
-  # stałym porcie (8946, 8947, 8951+8952, 8961, 8971, 8981, 8991, 8996, 9001, 9006, 9011). Dwa naraz biłyby się o port,
+  # stałym porcie (8946, 8947, 8951+8952, 8961, 8971, 8981, 8991, 8996, 9001, 9006, 9011, 9021). Dwa naraz biłyby się o port,
   # a objawem byłby losowo czerwony zestaw bez związku z kodem.
   for nazwa in test_sesja_http test_haslo_http test_klub_hub_http; do
     [ -f "$TUTAJ/$nazwa.php" ] || continue
@@ -235,7 +235,7 @@ else
   if [ -x "$PYTHON" ]; then
     for nazwa in test_mapowania_http test_konfigurator_http test_import_n1_http \
                  test_przelicz_http test_wskaznik_http test_rewizja_http \
-                 test_meta_sezon_http test_hasla_indeksu_http; do
+                 test_meta_sezon_http test_hasla_indeksu_http test_api_metryki_http; do
       [ -f "$TUTAJ/$nazwa.php" ] || continue
       zestaw "$nazwa" env PYTHONPATH="$KORZEN/engine" php "$TUTAJ/$nazwa.php"
     done

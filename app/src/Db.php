@@ -15,6 +15,22 @@ final class Db
 {
     private static ?PDO $pdo = null;
 
+    /**
+     * Nazwa sterownika: `mysql` albo `sqlite`.
+     *
+     * Potrzebna WYŁĄCZNIE tam, gdzie składnia SQL naprawdę się różni — dziś
+     * w jednym miejscu, przy `JSON_CONTAINS` kontra `json_each` (`Metrics`).
+     * Rozgałęzienie po sterowniku jest kosztem, nie wygodą: każde takie miejsce
+     * to zapytanie, które w testach chodzi po innej ścieżce niż na produkcji.
+     *
+     * Czytamy z ŻYWEGO POŁĄCZENIA, nie z `.env` — liczy się to, do czego
+     * faktycznie jesteśmy podłączeni.
+     */
+    public static function driver(): string
+    {
+        return (string) self::pdo()->getAttribute(PDO::ATTR_DRIVER_NAME);
+    }
+
     public static function pdo(): PDO
     {
         if (self::$pdo instanceof PDO) {

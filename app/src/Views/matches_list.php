@@ -67,6 +67,20 @@ $link = static function (array $zmiany) use ($filtr, $basePath): string {
       </select>
     </label>
 
+    <?php /* Filtr statusu — wpięty w sesji 3. Logika była w `Matches::search()`
+             od dawna; brakowało wyłącznie tego pola. */ ?>
+    <label class="field">
+      <span class="field__label"><?= View::e(View::t('dash.filter.status')) ?></span>
+      <select class="field__input" name="status">
+        <option value=""><?= View::e(View::t('dash.filter.all')) ?></option>
+        <?php foreach (($statusy ?? \CoachAnalyze\Matches::STATUSY) as $st): ?>
+          <option value="<?= View::e($st) ?>" <?= ($filtr['status'] ?? '') === $st ? 'selected' : '' ?>>
+            <?= View::e(View::t('status.' . $st)) ?>
+          </option>
+        <?php endforeach; ?>
+      </select>
+    </label>
+
     <label class="field">
       <span class="field__label"><?= View::e(View::t('matches.sort')) ?></span>
       <select class="field__input" name="sort">

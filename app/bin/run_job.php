@@ -30,6 +30,7 @@ use CoachAnalyze\Config;
 use CoachAnalyze\Db;
 use CoachAnalyze\EngineRunner;
 use CoachAnalyze\Events;
+use CoachAnalyze\TagCatalog;
 use CoachAnalyze\Imports;
 use CoachAnalyze\IndexTerms;
 use CoachAnalyze\Jobs;
@@ -467,6 +468,34 @@ function zapiszZdarzenia(int $jobId, int $matchId, int $importId, ?string $sciez
     }
 }
 
+/**
+ * Katalog tagów klubu z `meta.json` (migracja 015, sesja 3).
+ *
+ * TA SAMA ZASADA, CO PRZY ZDARZENIACH: awaria nie unieważnia raportu. Katalog
+ * służy odróżnieniu „policzono zero" od „nie ma czego liczyć" i da się odtworzyć
+ * przy następnym imporcie; raport, który operator już rozesłał, nie.
+ *
+ * Bez `club_id` nie ma czego zapełniać — katalog jest per klub, a mecz bez
+ * tenanta to stan przejściowy tuż po imporcie.
+ */
+function zapiszKatalogTagow(int $jobId, ?int $clubId, int $importId, ?array $meta): void
+{
+    if ($clubId === null || !is_array($meta)) {
+        return;
+    }
+
+    try {
+        $ile = TagCatalog::upsertFromMeta($clubId, $importId, $meta);
+        if ($ile > 0) {
+            error_log(sprintf('[job %d] katalog tagow: %d pozycji dla klubu %d',
+                $jobId, $ile, $clubId));
+        }
+    } catch (\Throwable $e) {
+        error_log(sprintf('[job %d] katalog tagow klubu %d nie zapisany: %s',
+            $jobId, $clubId, $e->getMessage()));
+    }
+}
+
 /** Pełny render HTML wraz z artefaktami. Powstaje NOWY wiersz w `reports`. */
 /**
  * @param array<string,mixed> $payload  ładunek zadania. `is_sample` MUSI tu
@@ -489,6 +518,7 @@ function wykonajRender(int $jobId, int $importId, array $import, array $payload 
         // Zdarzenia PRZED wierszem raportu, ale po sprawdzeniu, że render się udał.
         // Awaria tego kroku nie zatrzymuje zadania — patrz `zapiszZdarzenia()`.
         zapiszZdarzenia($jobId, $matchId, $importId, $bieg['events_path'] ?? null);
+        zapiszKatalogTagow($jobId, $clubIdTenanta, $importId, $meta);
 
         /*
          * TENANT RAPORTU — przepisany z meczu, nie zgadywany.
@@ -683,6 +713,7 @@ function wykonajPrzeliczenie(int $jobId, int $importId, array $import, array $pa
     // Przeliczenie podmienia też zdarzenia: nowy templat albo poprawiony eksport
     // mogą dać inne liczby, a tabela ma odpowiadać temu, co pokazuje raport.
     zapiszZdarzenia($jobId, $matchId, $importId, $bieg['events_path'] ?? null);
+    zapiszKatalogTagow($jobId, $bieg['club_id'] ?? null, $importId, $meta);
 
     $stareParams = json_decode((string) ($report['params_json'] ?? ''), true);
     $stareParams = is_array($stareParams) ? $stareParams : [];
