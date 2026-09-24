@@ -195,6 +195,38 @@ def to_records(events, match_id=None):
     return records
 
 
+def wyglada_na_xg(wartosc):
+    """Czy liczba z komentarza da się czytać jako xG.
+
+    ═══════════════════════════════════════════════════════════════════════════
+    POTRZEBNE, BO PARSER BIERZE PIERWSZĄ LICZBĘ, JAKĄ ZNAJDZIE.
+
+    `comment` to pole swobodne. „3 zawodników w polu karnym" daje 3.0, a
+    „dośrodkowanie w 2 tempie" — 2.0. Przy pojęciu `shot` broniło przed tym samo
+    mapowanie: xG czytaliśmy wyłącznie ze strzałów. Zmienna templatu BEZ pojęcia
+    takiej obrony nie ma, więc rozstrzyga kształt liczby.
+
+    Tak samo liczy szablon v21 w przeglądarce: pierwsza liczba Z UŁAMKIEM.
+    Ta sama reguła po obu stronach, bo rozjazd oznaczałby inną sumę xG
+    w Przeglądzie i w raporcie pokrycia.
+    ═══════════════════════════════════════════════════════════════════════════
+
+    Wartość całkowita NIE przechodzi — i to jest cała ochrona przed „3 zawodników".
+    Skutek uboczny, świadomy: xG zapisane jako `1` albo `0` przepada. Po parsowaniu
+    nie da się odróżnić `1` od `1,0`, a xG równe dokładnie jeden praktycznie się
+    nie zdarza; xG równe zero i tak nie zmienia sumy.
+    """
+    if wartosc is None:
+        return False
+    try:
+        liczba = float(wartosc)
+    except (TypeError, ValueError):
+        return False
+    if not 0 < liczba <= 1:
+        return False
+    return liczba != int(liczba)
+
+
 def build(frame, mapping_profile=None, teams=None, xg_model=False, report_template=None):
     """raw_frame -> {'events': canonical_events[], 'report': {...}}.
 
@@ -213,6 +245,11 @@ def build(frame, mapping_profile=None, teams=None, xg_model=False, report_templa
     z_templatu = tpl.mapping_profile(report_template)
     if z_templatu is not None:
         mapping_profile = z_templatu
+
+    # Tagi zmiennych templatu BEZ pojęcia kanonicznego. Po kształcie reguły nie
+    # da się ich odróżnić od `NIE_ANALIZUJ` z kreatora — a to dwie różne decyzje
+    # człowieka (patrz `report_template.tags_without_concept`).
+    tagi_bez_pojecia = tpl.tags_without_concept(report_template)
 
     profile = resolve_profile(mapping_profile)
     tag_rules, label_rules = profile["tags"], profile["labels"]
@@ -305,8 +342,23 @@ def build(frame, mapping_profile=None, teams=None, xg_model=False, report_templa
         # Wartość nie przepada po cichu: tag trafia do ostrzeżenia XG_POZA_STRZALEM.
         xg = raw.get("xg")
         if xg is not None and (rule or {}).get("concept") != "shot":
-            xg_outside[tag] = xg_outside.get(tag, 0) + 1
-            xg = None
+            # ZMIENNA TEMPLATU BEZ POJĘCIA CZYTA xG (sesja 1b, odbiór sesji 1).
+            #
+            # Klub, który nie podpiął `STRZAŁ` pod `shot`, dostawał `xg_sum = 0`
+            # i ostrzeżenie XG_POZA_STRZALEM na własnych strzałach — czyli uśpiona
+            # warstwa kanoniczna dalej egzekwowała wycofaną regułę
+            # (docs/STAN_PIVOTU.md §2.3). Szablon v21 liczył wtedy poprawnie,
+            # a raport pokrycia mówił co innego.
+            #
+            # Obroną przed „3 zawodników w polu karnym" jest teraz KSZTAŁT
+            # LICZBY, a nie pojęcie — dokładnie jak w szablonie.
+            if tag in tagi_bez_pojecia and wyglada_na_xg(xg):
+                pass
+            else:
+                # XG_POZA_STRZALEM zostaje dla przypadków, w których pojęcie JEST
+                # i nie jest strzałem — tam wartość naprawdę nie ma czego szukać.
+                xg_outside[tag] = xg_outside.get(tag, 0) + 1
+                xg = None
 
         xg_source = "analyst" if xg is not None else None
 

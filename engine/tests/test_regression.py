@@ -529,3 +529,153 @@ def test_bramka_s5_brak_templatu_nie_zmienia_nic(case):
     assert a == b
     assert raport_a["sections_dropped"] == []
     assert "templat v" not in a, "stempel bez wersji nie ma prawa sie pojawic"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SESJA 1b — DOSTĘPNOŚĆ SEKCJI I xG PO SUROWYCH TAGACH TEMPLATU
+#
+# Odbiór sesji 1 na serwerze tego NIE PRZESZEDŁ. Templat, w którym `STRZAŁ`
+# i `ZDOBYCIE SBZ` mają `canon: null` — stan NORMALNY od sesji 1 — dawał raport
+# BEZ map i BEZ osi SBZ, a `meta.coverage.xg_sum` wynosiło 0 przy ostrzeżeniu
+# XG_POZA_STRZALEM na 29 strzałach. Szablon v21 liczył wtedy poprawnie
+# (12:17, xG 1,49:2,91), więc rozjazd był wyłącznie po stronie silnika:
+# uśpiona warstwa kanoniczna egzekwowała wycofaną regułę.
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def templat_bez_pojec(sekcje=None):
+    """Templat pokrywający eksport referencyjny, ze zmiennymi BEZ pojęć."""
+    zmienne = [
+        ("STRZAŁ", ["bilans", "mapy", "tl_bilans"]),
+        ("ZDOBYCIE SBZ", ["bilans", "mapy", "tl_sbz"]),
+        ("III STREFA", ["bilans", "tl_iii"]),
+        ("STRATA", ["bilans"]),
+        ("ODBIÓR", ["bilans"]),
+        ("PIERWSZY KONTAKT", ["duels"]),
+        ("1x1 OFF", ["duels"]),
+        ("1x1 DEF.", ["duels"]),
+    ]
+    return {
+        "schema_version": 1,
+        "team_us_rule": {"markers": ["NASZA", "MASZA"]},
+        "sections_enabled": list(sekcje) if sekcje else list(coverage.ALL_SECTIONS),
+        "variables": [
+            {
+                "id": "v_{:03d}".format(i + 1),
+                "source": {"type": "tag", "raw": raw},
+                "canon": None,                     # ← o to w tym teście chodzi
+                "display_label": raw.title(),
+                "color": "#8899AA",
+                "sections": sekcje_zmiennej,
+                "visible": True,
+            }
+            for i, (raw, sekcje_zmiennej) in enumerate(zmienne)
+        ],
+    }
+
+
+@pytest.mark.parametrize("case", load_cases(), ids=lambda c: c["id"])
+def test_1b_sekcje_dostepne_mimo_braku_pojec(case):
+    """Mapy i oś SBZ mają być DOSTĘPNE, choć żadna zmienna nie ma pojęcia."""
+    src = wymagaj_csv(case)
+    frame = parse.prep_frame(str(src))
+    templat = templat_bez_pojec()
+
+    canon_result = canon.build(frame, report_template=templat)
+    meta = coverage.build_meta(
+        frame, canon_result,
+        config={"sections": templat["sections_enabled"]},
+        report_template=templat,
+    )
+
+    niedostepne = {s["id"]: s["reason"] for s in meta["sections_unavailable"]}
+
+    assert "mapy" not in niedostepne, (
+        "mapy wycięte mimo zdarzeń ze współrzędnymi: " + niedostepne.get("mapy", "")
+    )
+    assert "tl_sbz" not in niedostepne, (
+        "oś SBZ wycięta mimo zdarzeń: " + niedostepne.get("tl_sbz", "")
+    )
+    assert "tl_iii" not in niedostepne, (
+        "oś III strefy wycięta mimo zdarzeń z pozycjami: " + niedostepne.get("tl_iii", "")
+    )
+
+    # ┌──────────────────────────────────────────────────────────────────────┐
+    # │ ZNALEZISKO, NIE ZACHOWANIE DOCELOWE — do decyzji.                    │
+    # │                                                                      │
+    # │ `duels` WYPADA z tego samego powodu, z którego wypadały mapy i oś    │
+    # │ SBZ: `coverage["duels"]` liczy pojęcie `duel`, a zmienne templatu    │
+    # │ pojęcia nie mają. Zakres sesji 1b wymieniał wyłącznie mapy, tl_sbz   │
+    # │ i tl_iii, więc `duels` zostaje po staremu — ale to ta sama usterka   │
+    # │ i przy templacie bez pojęć sekcja pojedynków zniknie z raportu.      │
+    # │                                                                      │
+    # │ Naprawa to jedna linia w `_powody_z_templatu` (`duels` liczony jak   │
+    # │ `tl_sbz`). Asercja stoi tu po to, żeby zmiana tego zachowania była   │
+    # │ świadoma, a nie przypadkowa.                                         │
+    # └──────────────────────────────────────────────────────────────────────┘
+    assert "duels" in niedostepne, (
+        "jeśli to przestało być prawdą, `duels` został naprawiony — zaktualizuj "
+        "ten test i docs/STAN_PIVOTU.md"
+    )
+
+
+@pytest.mark.parametrize("case", load_cases(), ids=lambda c: c["id"])
+def test_1b_xg_sum_zgadza_sie_z_przegladem(case):
+    """`xg_sum` ma być tą samą liczbą, którą pokazuje Przegląd (Hutnik: 4,40)."""
+    src = wymagaj_csv(case)
+    frame = parse.prep_frame(str(src))
+    templat = templat_bez_pojec()
+
+    canon_result = canon.build(frame, report_template=templat)
+    meta = coverage.build_meta(frame, canon_result, report_template=templat)
+
+    assert meta["coverage"]["xg_sum"] == case["coverage"]["xg_sum"]
+    assert meta["coverage"]["xg_parsed"] == case["coverage"]["xg_parsed"]
+
+    kody = {w["code"] for w in meta["warnings"]}
+    assert "XG_POZA_STRZALEM" not in kody, (
+        "xG z własnych strzałów klubu zgłoszone jako wartość poza strzałem"
+    )
+
+
+@pytest.mark.parametrize("case", load_cases(), ids=lambda c: c["id"])
+def test_1b_sekcja_bez_zmiennej_jest_niedostepna_z_powodem(case):
+    """Templat, który nie przypisał do map ANI JEDNEJ zmiennej, map nie dostaje.
+
+    To jest druga strona tej samej reguły: dostępność liczy się z tego, co
+    templat do sekcji przypisał, więc pusta sekcja zostaje pusta — z powodem,
+    nie po cichu.
+    """
+    src = wymagaj_csv(case)
+    frame = parse.prep_frame(str(src))
+
+    templat = templat_bez_pojec()
+    for zmienna in templat["variables"]:
+        zmienna["sections"] = [s for s in zmienna["sections"] if s != "mapy"]
+
+    canon_result = canon.build(frame, report_template=templat)
+    meta = coverage.build_meta(
+        frame, canon_result,
+        config={"sections": templat["sections_enabled"]},
+        report_template=templat,
+    )
+
+    niedostepne = {s["id"]: s["reason"] for s in meta["sections_unavailable"]}
+    assert "mapy" in niedostepne
+    assert niedostepne["mapy"].strip(), "każda usunięta sekcja niesie powód"
+
+
+@pytest.mark.parametrize("case", load_cases(), ids=lambda c: c["id"])
+def test_1b_bez_templatu_wynik_bez_zmian(case):
+    """Ścieżka BEZ templatu ma zostać nietknięta — na tym stoi test złoty."""
+    src = wymagaj_csv(case)
+    frame = parse.prep_frame(str(src))
+    canon_result = canon.build(frame)
+
+    meta = coverage.build_meta(frame, canon_result, has_json=True,
+                               palette=parse.prep_palette(str(GOLDEN / case["json"])))
+
+    for klucz, oczekiwane in case["coverage"].items():
+        assert meta["coverage"][klucz] == oczekiwane, klucz
+    assert [s["id"] for s in meta["sections_unavailable"]] == case["sections_unavailable"]
+    assert {w["code"]: w["count"] for w in meta["warnings"]} == case["warnings"]

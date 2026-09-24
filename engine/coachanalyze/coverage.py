@@ -7,6 +7,7 @@ Zmiana kluczy tutaj wymaga zmiany dokumentu w tym samym commicie.
 """
 
 from . import __version__
+from . import report_template as tpl
 
 # Sekcje raportu. Kolejność jest kolejnością prezentacji.
 ALL_SECTIONS = ("bilans", "mapy", "tl_sbz", "tl_iii", "tl_bilans", "duels", "noteam")
@@ -53,7 +54,16 @@ def build_coverage(frame, canon_result, has_json=False):
         "teams": report["teams_detected"],
         "no_team": sum(1 for e in raw_events if e.get("team") is None),
         # Pułapka 1: xG bywa zapisane w komentarzu, nie w osobnej kolumnie.
-        "xg_parsed": sum(1 for e in shots if e["xg"] is not None),
+        #
+        # `xg_parsed` liczy WSZYSTKIE zdarzenia z xG, nie tylko strzały — tak samo
+        # jak `xg_sum` niżej. Przy templacie ze zmienną bez pojęcia kanonicznego
+        # strzałów w sensie kanonicznym NIE MA, a xG jest (sesja 1b); dwie różne
+        # podstawy dałyby „xg_parsed 0" obok „xg_sum 4,40" w jednym raporcie
+        # pokrycia. Bez templatu obie liczby są takie jak dotąd: xG niosą tam
+        # wyłącznie strzały.
+        "xg_parsed": len(xg_values),
+        # `xg_missing` zostaje przy strzałach: „ile STRZAŁÓW nie ma xG" to pytanie
+        # o kompletność tagowania i ma sens wyłącznie dla nich.
         "xg_missing": sum(1 for e in shots if e["xg"] is None),
         "xg_sum": round(sum(xg_values), 2) if xg_values else 0.0,
         "negative_begin": report["negative_begin"],
@@ -67,31 +77,103 @@ def build_coverage(frame, canon_result, has_json=False):
     }
 
 
-def build_sections(coverage, requested=None):
-    """(dostępne, niedostępne). Każdy brak niesie powód po polsku.
+def tag_stats(frame):
+    """{surowa nazwa taga: {'count': n, 'with_pos': n}} — z ramki, nie z pojęć.
 
-    Powód trafia bez zmian do interfejsu — analityk ma zobaczyć, czego brakuje
-    i dlaczego, a nie pustą sekcję.
+    Podstawa liczenia dostępności sekcji przy templacie. Idziemy po SUROWYCH
+    nazwach, bo tak liczy raport (`e.tag==='STRZAŁ'` w szablonie).
     """
+    stats = {}
+    for e in frame.get("events") or []:
+        tag = e.get("tag")
+        if not tag:
+            continue
+        wpis = stats.setdefault(tag, {"count": 0, "with_pos": 0})
+        wpis["count"] += 1
+        if e.get("x") is not None and e.get("y") is not None:
+            wpis["with_pos"] += 1
+    return stats
+
+
+def _powody_z_templatu(template, stats):
+    """Powody niedostępności sekcji liczone z SUROWYCH TAGÓW templatu.
+
+    ═══════════════════════════════════════════════════════════════════════════
+    SESJA 1b — ODBIÓR SESJI 1 TEGO NIE PRZESZEDŁ.
+
+    Dostępność liczyła się z pojęć kanonicznych (`coverage["shots"]`,
+    `coverage["sbz"]`). Templat, w którym `STRZAŁ` i `ZDOBYCIE SBZ` mają
+    `canon: null` — stan NORMALNY od sesji 1 (docs/STAN_PIVOTU.md §2.3) —
+    dawał więc raport bez map i bez osi SBZ, z powodami „Brak zdarzeń ze
+    współrzędnymi" i „Eksport nie zawiera zdarzeń zdobycia SBZ". Dane były,
+    szablon v21 liczył je poprawnie, a `drop_sections` wycinało gotowy DOM.
+    Uśpiona warstwa egzekwowała wycofaną regułę.
+
+    Sekcja jest dostępna, gdy MA SWOJE ZDARZENIA — niezależnie od tego, czy
+    ktoś nazwał je pojęciem kanonicznym.
+    ═══════════════════════════════════════════════════════════════════════════
+    """
+    po_sekcjach = tpl.tags_by_section(template)
     reasons = {}
 
-    if not coverage["events"]:
-        reasons["bilans"] = "Eksport nie zawiera żadnych zdarzeń"
-        reasons["tl_bilans"] = reasons["bilans"]
+    def zdarzen(sekcja, klucz="count"):
+        return sum(stats.get(tag, {}).get(klucz, 0) for tag in po_sekcjach.get(sekcja, ()))
 
-    if not coverage["shots"] and not coverage["sbz"]:
+    # MAPY wymagają WSPÓŁRZĘDNYCH, nie samych zdarzeń: sekcja bez `pos_*`
+    # narysowałaby puste boisko, a to wygląda jak zero zdarzeń (§7.8).
+    if not zdarzen("mapy", "with_pos"):
         reasons["mapy"] = (
             "Brak zdarzeń ze współrzędnymi — mapy wymagają kolumn "
             "pos_x_meters i pos_y_meters"
         )
 
-    if not coverage["sbz"]:
-        reasons["tl_sbz"] = "Eksport nie zawiera zdarzeń zdobycia SBZ"
+    if not zdarzen("tl_sbz"):
+        reasons["tl_sbz"] = "Żadna zmienna tej sekcji nie ma zdarzeń w tym eksporcie"
 
-    if not coverage["third"]:
-        reasons["tl_iii"] = "Eksport nie zawiera zdarzeń III STREFY"
-    elif not coverage["third_pos"]:
+    # III strefa zachowuje ROZRÓŻNIENIE Z PUŁAPKI 3: brak zdarzeń to co innego
+    # niż zdarzenia bez pozycji, i operator ma widzieć, które z dwojga.
+    if not zdarzen("tl_iii"):
+        reasons["tl_iii"] = "Żadna zmienna tej sekcji nie ma zdarzeń w tym eksporcie"
+    elif not zdarzen("tl_iii", "with_pos"):
         reasons["tl_iii"] = "Eksport nie zawiera pozycji III STREFY (kolumny pos_* puste)"
+
+    return reasons
+
+
+def build_sections(coverage, requested=None, template=None, frame=None):
+    """(dostępne, niedostępne). Każdy brak niesie powód po polsku.
+
+    Powód trafia bez zmian do interfejsu — analityk ma zobaczyć, czego brakuje
+    i dlaczego, a nie pustą sekcję.
+
+    PRZY TEMPLACIE dostępność `mapy`, `tl_sbz` i `tl_iii` liczy się z SUROWYCH
+    TAGÓW zmiennych przypisanych do tych sekcji, a nie z pojęć kanonicznych —
+    patrz `_powody_z_templatu`. Bez templatu ścieżka zostaje NIETKNIĘTA: wyjście
+    ma być bajt w bajt takie jak dotąd i na tym stoi test złoty.
+    """
+    reasons = {}
+    z_templatu = template is not None and frame is not None
+
+    if not coverage["events"]:
+        reasons["bilans"] = "Eksport nie zawiera żadnych zdarzeń"
+        reasons["tl_bilans"] = reasons["bilans"]
+
+    if z_templatu:
+        reasons.update(_powody_z_templatu(template, tag_stats(frame)))
+    else:
+        if not coverage["shots"] and not coverage["sbz"]:
+            reasons["mapy"] = (
+                "Brak zdarzeń ze współrzędnymi — mapy wymagają kolumn "
+                "pos_x_meters i pos_y_meters"
+            )
+
+        if not coverage["sbz"]:
+            reasons["tl_sbz"] = "Eksport nie zawiera zdarzeń zdobycia SBZ"
+
+        if not coverage["third"]:
+            reasons["tl_iii"] = "Eksport nie zawiera zdarzeń III STREFY"
+        elif not coverage["third_pos"]:
+            reasons["tl_iii"] = "Eksport nie zawiera pozycji III STREFY (kolumny pos_* puste)"
 
     if not coverage["duels"]:
         reasons["duels"] = "Eksport nie zawiera pojedynków (1x1, pierwszy kontakt)"
@@ -307,12 +389,20 @@ def build_dictionary(frame, probka=3):
     }
 
 
-def build_meta(frame, canon_result, config=None, has_json=False, palette=None, ok=True):
-    """Pełny `meta.json` zgodny z docs/KONTRAKT_CLI.md."""
+def build_meta(frame, canon_result, config=None, has_json=False, palette=None, ok=True,
+               report_template=None):
+    """Pełny `meta.json` zgodny z docs/KONTRAKT_CLI.md.
+
+    `report_template` jest OPCJONALNY i bez niego nic się nie zmienia. Z nim
+    dostępność sekcji liczy się z surowych tagów templatu, a nie z pojęć
+    kanonicznych (sesja 1b).
+    """
     config = config or {}
 
     coverage = build_coverage(frame, canon_result, has_json=has_json)
-    available, unavailable = build_sections(coverage, config.get("sections"))
+    available, unavailable = build_sections(
+        coverage, config.get("sections"), template=report_template, frame=frame
+    )
 
     half_split = frame.get("half_split") or 0.0
     ends = [e.get("e") for e in (frame.get("events") or []) if e.get("e") is not None]

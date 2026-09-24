@@ -134,6 +134,64 @@ def variables_by_source(template):
     return out
 
 
+def tags_without_concept(template):
+    """Surowe nazwy tagów zmiennych templatu BEZ pojęcia kanonicznego.
+
+    ═══════════════════════════════════════════════════════════════════════════
+    ŹRÓDŁO `null` MA ZNACZENIE i dlatego ta funkcja w ogóle istnieje.
+
+    Regułę z jawnym `concept: None` potrafią dać DWIE różne decyzje człowieka:
+
+    - zmienna templatu bez pojęcia — „nie wiem, jak to nazwać kanonicznie,
+      ale POKAŻ to w raporcie" (od sesji 1 pivotu stan normalny),
+    - `NIE_ANALIZUJ` z kreatora mapowań — „ten tag mnie NIE INTERESUJE".
+
+    W profilu mapowań wyglądają identycznie. Po kształcie reguły nie da się ich
+    rozróżnić, a traktowanie ich tak samo znaczyłoby, że xG z tagu świadomie
+    wyłączonego z analizy wchodzi do sumy.
+    ═══════════════════════════════════════════════════════════════════════════
+
+    Zwraca zbiór nazw, nie listę: to wyłącznie sprawdzanie przynależności.
+    """
+    nazwy = set()
+    for zmienna in (template or {}).get("variables") or []:
+        if not isinstance(zmienna, dict) or zmienna.get("canon") is not None:
+            continue
+        zrodlo = zmienna.get("source") or {}
+        raw = zrodlo.get("raw")
+        if raw:
+            nazwy.add(str(raw))
+    return nazwy
+
+
+def tags_by_section(template):
+    """{sekcja: {surowe nazwy tagów}} — zmienne przypisane do każdej sekcji.
+
+    Służy liczeniu DOSTĘPNOŚCI SEKCJI po surowych tagach, a nie po pojęciach
+    kanonicznych (`coverage.build_sections`). Powód jest z odbioru sesji 1:
+    templat, w którym `STRZAŁ` i `ZDOBYCIE SBZ` mają `canon: null`, dawał raport
+    BEZ map i BEZ osi SBZ — bo dostępność liczyła się z `coverage["shots"]`
+    i `coverage["sbz"]`, czyli z pojęć, których te zmienne świadomie nie miały.
+    Uśpiona warstwa egzekwowała wycofaną regułę.
+
+    Bierzemy WYŁĄCZNIE tagi. Etykieta (`CELNY`) jest uszczegółowieniem zdarzenia,
+    a nie zdarzeniem — sekcja „ma dane" wtedy, gdy ma wiersze, nie gdy ma przymiotniki.
+    """
+    mapa = {}
+    for zmienna in (template or {}).get("variables") or []:
+        if not isinstance(zmienna, dict):
+            continue
+        zrodlo = zmienna.get("source") or {}
+        if zrodlo.get("type") not in (None, "tag"):
+            continue
+        raw = zrodlo.get("raw")
+        if not raw:
+            continue
+        for sekcja in zmienna.get("sections") or ():
+            mapa.setdefault(str(sekcja), set()).add(str(raw))
+    return mapa
+
+
 def generic_variables(template):
     """Zmienne BEZ pojęcia kanonicznego. Służy RAPORTOWI POKRYCIA.
 

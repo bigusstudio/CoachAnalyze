@@ -221,6 +221,8 @@ def cmd_build(args) -> int:
     meta = coverage.build_meta(
         frame, canon_result, config=config,
         has_json=bool(args.json_path), palette=palette,
+        # Dostepnosc sekcji z SUROWYCH TAGOW templatu, nie z pojec (sesja 1b).
+        report_template=templat,
     )
     metrics_pack = metrics.build(canon_result, meta=meta)
 

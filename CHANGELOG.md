@@ -3,6 +3,41 @@
 Format: [wersja silnika] — data — opis.
 Każda zmiana, która modyfikuje wyjście silnika, MUSI mieć tu wpis wraz z powodem.
 
+## [0.13.1] — 2026-09-24
+### Dostępność sekcji i xG po surowych tagach templatu
+**Naprawa. Odbiór sesji 1 na serwerze tego nie przeszedł.**
+
+Templat, w którym `STRZAŁ` i `ZDOBYCIE SBZ` mają `canon: null` — stan NORMALNY
+od sesji 1 (docs/STAN_PIVOTU.md §2.3) — dawał raport **bez map i bez osi SBZ**,
+z powodami „Brak zdarzeń ze współrzędnymi" i „Eksport nie zawiera zdarzeń zdobycia
+SBZ", a `meta.coverage.xg_sum` wynosiło **0** przy ostrzeżeniu `XG_POZA_STRZALEM`
+na 29 własnych strzałach klubu. Szablon v21 liczył przy tym poprawnie
+(12:17, xG 1,49:2,91) — `drop_sections` wycinało gotowy, policzony DOM.
+
+Przyczyna: `coverage.build_sections` liczyło dostępność z POJĘĆ KANONICZNYCH
+(`coverage["shots"]`, `coverage["sbz"]`), a `canon.py` czytał xG wyłącznie przy
+`concept == "shot"`. **Uśpiona warstwa dalej egzekwowała wycofaną regułę.**
+
+- **Dostępność sekcji z SUROWYCH TAGÓW, gdy jest templat.** `mapy` są dostępne,
+  gdy którakolwiek zmienna z tą sekcją ma ≥1 zdarzenie ze współrzędnymi;
+  `tl_sbz` i `tl_iii` — gdy ma ≥1 zdarzenie, przy czym `tl_iii` zachowuje
+  rozróżnienie z pułapki 3 (brak zdarzeń ≠ zdarzenia bez pozycji).
+  **Bez templatu ścieżka nietknięta** — test złoty bajt w bajt.
+- **xG dla zmiennej templatu bez pojęcia.** Obroną przed „3 zawodników w polu
+  karnym" jest teraz KSZTAŁT LICZBY, a nie pojęcie: wartość musi mieć część
+  ułamkową i mieścić się w (0,1] — tak samo liczy szablon v21. `XG_POZA_STRZALEM`
+  zostaje dla przypadków, w których pojęcie JEST i nie jest strzałem.
+- **`tags_without_concept()`** odróżnia zmienną templatu bez pojęcia od
+  `NIE_ANALIZUJ` z kreatora. W profilu mapowań obie dają `concept: None`
+  i po kształcie reguły są nie do rozróżnienia — a to dwie różne decyzje
+  człowieka: „pokaż, nie umiem nazwać" kontra „to mnie nie interesuje".
+- **`coverage.xg_parsed` liczy wszystkie zdarzenia z xG**, nie tylko strzały —
+  tak samo jak `xg_sum`. Dwie podstawy dawałyby „xg_parsed 0" obok „xg_sum 4,40"
+  w jednym raporcie pokrycia. Bez templatu obie liczby są jak dotąd.
+
+Na eksporcie referencyjnym z templatem bez pojęć: `xg_sum` **4,40**, brak
+`XG_POZA_STRZALEM`, mapy i obie osie dostępne.
+
 ## [0.13.0] — 2026-09-24
 ### `--out-events`: zdarzenia meczu po SUROWYCH nazwach tagów
 Sesja 2 pivotu. Nowy, OPCJONALNY parametr komendy `build`. Bez niego pipeline

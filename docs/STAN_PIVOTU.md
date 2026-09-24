@@ -46,6 +46,21 @@ zobaczy pierwszy raport.
 > niewidoczny. Wyłączenie `--out-canon` „bo i tak nieużywane" zabrałoby archiwum,
 > a raport wyglądałby identycznie — czyli nic by nie zapaliło się na czerwono.
 
+**Od sesji 1b dostępność sekcji i xG przestały zależeć od pojęć — GDY JEST TEMPLAT.**
+To była realna blokada odbioru: templat ze zmiennymi `canon: null` dawał raport bez
+map i bez osi SBZ, a `xg_sum` wynosiło 0 przy ostrzeżeniu `XG_POZA_STRZALEM` na
+własnych strzałach klubu. Szablon liczył poprawnie, a silnik wycinał policzony DOM —
+uśpiona warstwa egzekwowała regułę wycofaną w §2.3. Odtąd `coverage.build_sections`
+liczy dostępność `mapy`, `tl_sbz` i `tl_iii` z SUROWYCH TAGÓW zmiennych templatu,
+a `canon.py` czyta xG zmiennej bez pojęcia po kształcie liczby (ułamek w (0,1]) —
+tą samą regułą, co szablon v21. **Bez templatu nic się nie zmienia.**
+
+> **Zostało: `duels`.** Ta sekcja dalej liczy się z pojęcia `duel`, więc przy
+> templacie bez pojęć znika z raportu dokładnie tak, jak znikały mapy. Zakres
+> sesji 1b jej nie obejmował; naprawa to jedna linia w `coverage._powody_z_templatu`.
+> Pilnuje tego asercja w `test_1b_sekcje_dostepne_mimo_braku_pojec`, żeby zmiana
+> tego zachowania była świadoma. **Do decyzji.**
+
 **Od sesji 2 warstwa kanoniczna ma następcę dla warstwy widocznej.** `--out-events`
 i tabela `events` (migracja 014) zapisują zdarzenia po **surowych nazwach tagów** —
 tą samą miarą, którą liczy raport. `events_canonical` zostaje nietknięta i dalej
