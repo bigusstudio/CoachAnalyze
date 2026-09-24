@@ -17,6 +17,15 @@ engine/tests/golden/*.json
 # Python
 venv/
 .venv/
+# BEZ UKOŚNIKA NA KOŃCU, i to jest cała różnica.
+#
+# Na serwerze venv leży POZA repozytorium i jest do niego DOWIĄZANE na czas
+# testów (`repo/venv` -> `~/CoachAnalyze/venv`). Git traktuje dowiązanie jak
+# plik, nie katalog, więc wzorzec z ukośnikiem go nie łapie: przy `venv/`
+# i przy `/venv/` `git status` pokazuje `?? venv`, a drzewo wygląda na brudne
+# dokładnie wtedy, gdy ktoś sprawdza, czy można wdrażać. Sprawdzone oboma
+# wzorcami; łapie dopiero ten.
+/venv
 __pycache__/
 *.py[cod]
 .pytest_cache/
