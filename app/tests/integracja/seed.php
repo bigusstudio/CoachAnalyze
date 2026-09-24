@@ -6,6 +6,52 @@ use CoachAnalyze\Auth;
 use CoachAnalyze\Db;
 use CoachAnalyze\Stats;
 
+/**
+ * Syntetyczny eksport LiveTag w pliku tymczasowym. Zwraca ścieżkę.
+ *
+ * ═══════════════════════════════════════════════════════════════════════════
+ * DLACZEGO DANE TESTOWE NIE LEŻĄ W PLIKACH OBOK.
+ *
+ * `.gitignore` wyklucza `*.csv` w całym repozytorium — to dane meczowe klienta
+ * (CLAUDE.md §7). Zestaw czytający przykład z dysku był więc zielony wyłącznie
+ * na maszynie, na której ten przykład powstał, i czerwony na każdym świeżym
+ * klonie. Trafiło to trzy zestawy naraz i za każdym razem wyglądało na inną
+ * usterkę: raz brak asercji, raz błąd krytyczny w niepowiązanym miejscu.
+ *
+ * Wyjątek w reguach ignorowania też by to naprawił — to dane wymyślone, nie
+ * klienta. Generowanie jest jednak odporniejsze: nie da się przypadkiem dopisać
+ * do takiego pliku prawdziwego eksportu ani przeoczyć go przy porządkach.
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * PISZEMY `fputcsv`, NIE SKLEJAMY NAPISÓW. Cytowanie ma wyglądać tak jak
+ * w prawdziwym eksporcie: `POZYCYJNIE, CELNY` to JEDNO pole z przecinkiem
+ * w środku (pułapka 11). Ręcznie sklejony CSV rozjechałby kolumny na pierwszym
+ * przecinku, a test sprawdzałby coś innego, niż obiecuje jego nazwa.
+ *
+ * Plik sprząta się sam, także przy przerwaniu przebiegu — razem z pustym
+ * plikiem bez rozszerzenia, który zostawia po sobie `tempnam()`.
+ *
+ * @param list<list<string>> $wiersze pierwszy wiersz to nagłówki
+ */
+function ca_test_csv(array $wiersze, string $prefiks = 'ca_test_'): string
+{
+    $bez = tempnam(sys_get_temp_dir(), $prefiks);
+    $sciezka = $bez . '.csv';
+
+    $fh = fopen($sciezka, 'w');
+    foreach ($wiersze as $w) {
+        fputcsv($fh, $w);
+    }
+    fclose($fh);
+
+    register_shutdown_function(static function () use ($sciezka, $bez): void {
+        @unlink($sciezka);
+        @unlink($bez);
+    });
+
+    return $sciezka;
+}
+
 function ca_test_db(string $file, bool $withData = true): PDO
 {
     $fresh = !is_file($file);

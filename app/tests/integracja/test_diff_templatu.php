@@ -165,50 +165,24 @@ if (!is_file($realny)) {
 echo "\n== TOR SYNTETYCZNY: dziesięć wierszy z tego pliku (przypadki brzegowe) ==\n";
 
 /*
- * DANE SYNTETYCZNE POWSTAJĄ TUTAJ, NIE LEŻĄ OBOK W PLIKU.
- *
- * Leżały — jako `wiazownica.csv` — i test padał na świeżym klonie, bo `.gitignore`
- * wyklucza `*.csv` w całym repozytorium (dane meczowe klienta, CLAUDE.md §7).
- * Plik istniał wyłącznie na maszynie, na której powstał, więc zestaw był zielony
- * u autora i czerwony u każdego innego.
- *
- * Wyjątek w `.gitignore` też by to naprawił — to są dane wymyślone, nie klienta.
- * Generowanie jest jednak odporniejsze: nie da się przypadkiem dopisać do tego
- * pliku prawdziwego eksportu ani przeoczyć go przy porządkach w regułach ignorowania.
- *
- * Piszemy `fputcsv`, a nie sklejamy napisów: cytowanie ma wyglądać tak jak
- * w prawdziwym eksporcie. `POZYCYJNIE, CELNY` w jednym polu to pułapka 11
- * (przecinki wewnątrz cudzysłowów) — ręcznie sklejony CSV rozjechałby kolumny
- * na pierwszym przecinku i test sprawdzałby coś innego, niż obiecuje.
+ * Dane syntetyczne powstają TUTAJ, nie leżą obok w pliku — powód przy
+ * `ca_test_csv()` w seed.php (krótko: `.gitignore` wyklucza `*.csv` w całym
+ * repozytorium, więc plik obok istniałby tylko u autora).
  */
-$wiersze = [
+$synt = ca_test_csv([
     ['tag_name', 'begin', 'end', 'team', 'labels', 'comment', 'pos_x_meters', 'pos_y_meters'],
-    ['STRZAŁ',              '10',  '20',  'KLUB A', 'POZYCYJNIE, CELNY',   'X 0,5',  '88', '31'],
-    ['AKCJA DEFENSYWNA',    '30',  '40',  'KLUB A', 'UDANA',               '',       '50', '30'],
-    ['SBZ PODAJĄCY',        '45',  '55',  'KLUB A', 'STRZAŁ',              'xG 0,22','85', '33'],
-    // `1x1 DEF` bez kropki — wariant nazwy, który ma zostać dopasowany do `1x1 DEF.`
-    ['1x1 DEF',             '60',  '70',  'KLUB A', 'WYGRANY',             '',       '40', '20'],
-    ['PRESSING WYSOKI',     '75',  '85',  'KLUB A', 'SKUTECZNY',           '',       '60', '25'],
-    ['WYJŚCIE Z PRESSINGU', '90',  '99',  'KLUB A', 'UDANA',               '',       '35', '22'],
-    ['DOŚRODKOWANIE',       '100', '110', 'KLUB A', 'CELNE',               '',       '80', '10'],
-    ['STAŁY FRAGMENT',      '120', '130', 'KLUB A', 'ROŻNY',               '',       '88', '1'],
+    ['STRZAŁ',              '10',  '20',  'KLUB A', 'POZYCYJNIE, CELNY',   'X 0,5',   '88', '31'],
+    ['AKCJA DEFENSYWNA',    '30',  '40',  'KLUB A', 'UDANA',               '',        '50', '30'],
+    ['SBZ PODAJĄCY',        '45',  '55',  'KLUB A', 'STRZAŁ',              'xG 0,22', '85', '33'],
+    // `1x1 DEF` bez kropki — wariant nazwy, który ma NIE zlać się z `1x1 DEF.`
+    ['1x1 DEF',             '60',  '70',  'KLUB A', 'WYGRANY',             '',        '40', '20'],
+    ['PRESSING WYSOKI',     '75',  '85',  'KLUB A', 'SKUTECZNY',           '',        '60', '25'],
+    ['WYJŚCIE Z PRESSINGU', '90',  '99',  'KLUB A', 'UDANA',               '',        '35', '22'],
+    ['DOŚRODKOWANIE',       '100', '110', 'KLUB A', 'CELNE',               '',        '80', '10'],
+    ['STAŁY FRAGMENT',      '120', '130', 'KLUB A', 'ROŻNY',               '',        '88', '1'],
     ['STRZAŁ',              '140', '150', 'DRUZYNA SPOZA BAZY', 'POZYCYJNIE, NIECELNY', '', '20', '30'],
     ['STRATA',              '160', '170', 'DRUZYNA SPOZA BAZY', 'NASZA POŁOWA',         '', '30', '25'],
-];
-
-$synt = tempnam(sys_get_temp_dir(), 'ca_diff_') . '.csv';
-$fhSynt = fopen($synt, 'w');
-foreach ($wiersze as $w) {
-    fputcsv($fhSynt, $w);
-}
-fclose($fhSynt);
-
-// Sprzątamy także przy przerwaniu — plik tymczasowy przeżywający przebieg
-// jest śmieciem, którego nikt nie skojarzy z tym testem.
-register_shutdown_function(static function () use ($synt): void {
-    @unlink($synt);
-    @unlink(substr($synt, 0, -4));   // `tempnam` tworzy plik BEZ rozszerzenia
-});
+], 'ca_diff_');
 
 check('dane syntetyczne zapisane', is_file($synt) && filesize($synt) > 0, $synt);
 

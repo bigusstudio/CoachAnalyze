@@ -77,13 +77,24 @@ echo "== przygotowanie ==\n";
 check('konfiguracja wczytana z pliku testowego', Config::loadedFrom() === $envFile, (string) Config::loadedFrom());
 check('interpreter Pythona istnieje', is_file($python), $python);
 
-// Eksport LiveTag: bierzemy przykład używany przez pozostałe zestawy.
-$csvZrodlo = $here . '/synt.csv';
+/*
+ * Eksport LiveTag wypisujemy TUTAJ, do pliku tymczasowego (`ca_test_csv`
+ * w seed.php — tam też powód). Leżał obok jako `synt.csv` i zestaw padał
+ * na świeżym klonie, bo `.gitignore` wyklucza `*.csv` w całym repozytorium.
+ *
+ * Wiersze przepisane 1:1 z tamtego pliku, żeby asercje nie zmieniły znaczenia:
+ * ujemny `begin` (pułapka 10), xG w komentarzu z polskim przecinkiem
+ * (pułapka 1), literówka `MASZA POŁOWA` (pułapka 9) i wektor wejścia w SBZ.
+ */
+$csvZrodlo = ca_test_csv([
+    ['tag_name', 'begin', 'end', 'team', 'labels', 'comment',
+     'pos_x_meters', 'pos_y_meters', 'pos_target_x_meters', 'pos_target_y_meters'],
+    ['STRZAŁ',       '-3.2',  '10.0',  'KLUB A', 'POZYCYJNIE, NIECELNY',       'X 0,81',  '88.4', '31.2', '',     ''],
+    ['STRZAŁ',       '120.5', '130.0', 'KLUB A', 'KONTRATAK, CELNY',           'xG 0,09', '90.1', '34.0', '',     ''],
+    ['ZDOBYCIE SBZ', '200.0', '210.0', 'KLUB B', 'MASZA POŁOWA, BRAK STRZAŁU', '',        '97.0', '59.3', '95.6', '48.3'],
+], 'ca_kolejka_');
+
 check('jest przykładowy eksport', is_file($csvZrodlo), $csvZrodlo);
-if (!is_file($csvZrodlo)) {
-    echo "\n=== OK: {$ok}, BŁĘDÓW: {$fail} ===\n";
-    exit(1);
-}
 
 $csv = $magazyn . '/uploads/' . bin2hex(random_bytes(6)) . '.csv';
 copy($csvZrodlo, $csv);

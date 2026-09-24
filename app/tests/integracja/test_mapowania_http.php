@@ -260,9 +260,42 @@ check('token CSRF po zalogowaniu', $csrf !== '');
 // ---------------------------------------------------------------- scenariusz 1
 echo "\n== świeży import: kreator MUSI zatrzymać ==\n";
 
+/*
+ * Eksport z NIEZNANYMI tagami wypisujemy tutaj, do pliku tymczasowego
+ * (`ca_test_csv` w seed.php — tam powód). Leżał obok jako `nowe_tagi.csv`
+ * i na świeżym klonie ten zestaw przewracał się błędem krytycznym
+ * w `Mappings::unknown()` — czyli dwieście linii dalej, w miejscu bez związku
+ * z przyczyną. Wiersze przepisane 1:1, żeby asercje nie zmieniły znaczenia.
+ *
+ * SEDNO TYCH DANYCH: `AKCJA DEFENSYWNA`, `1x1 DEF` i `SBZ PODAJĄCY` są dla
+ * silnika NIEZNANE, a `STRZAŁ` znany. Kreator ma się na tym zatrzymać.
+ */
+$csvNoweTagi = ca_test_csv([
+    ['tag_name', 'begin', 'end', 'team', 'labels', 'comment', 'pos_x_meters', 'pos_y_meters'],
+    ['STRZAŁ',           '10', '20', 'KLUB A', 'POZYCYJNIE, CELNY',        'X 0,5', '88', '31'],
+    ['AKCJA DEFENSYWNA', '30', '40', 'KLUB A', 'UDANA, NASZA POŁOWA',      '',      '50', '30'],
+    ['AKCJA DEFENSYWNA', '45', '55', 'KLUB A', 'NIEUDANA',                 '',      '52', '28'],
+    ['1x1 DEF',          '60', '70', 'KLUB A', 'WYGRANY, PRESSING WYSOKI', '',      '40', '20'],
+    ['SBZ PODAJĄCY',     '80', '90', 'KLUB A', 'STRZAŁ',                   '',      '85', '33'],
+    ['SBZ PODAJĄCY',     '95', '99', 'KLUB A', 'BRAK STRZAŁU',             '',      '86', '30'],
+], 'ca_mapowania_');
+
+/*
+ * SPRAWDZAMY PLIK PRZED UŻYCIEM I KOŃCZYMY CZYTELNIE.
+ *
+ * Bez tego brak eksportu objawiał się `TypeError` w `Mappings::unknown()`
+ * — komunikatem, z którego nie da się wyczytać, że zabrakło pliku wejściowego.
+ * Przebieg ma powiedzieć, czego brakuje, w miejscu, w którym tego brakuje.
+ */
+if (!is_file($csvNoweTagi) || filesize($csvNoweTagi) === 0) {
+    echo "  BŁĄD nie udało się zapisać syntetycznego eksportu: {$csvNoweTagi}\n";
+    echo "\n=== OK: {$ok}, BŁĘDÓW: " . ($fail + 1) . " ===\n";
+    exit(1);
+}
+
 $upload = http('POST', '/import', ['multipart' => multipart(
     ['csrf' => $csrf],
-    ['csv' => ['nowe_tagi.csv', (string) file_get_contents($here . '/nowe_tagi.csv')]]
+    ['csv' => ['nowe_tagi.csv', (string) file_get_contents($csvNoweTagi)]]
 )]);
 check('upload przekierowuje na stan zadania', $upload['status'] === 302
     && preg_match('#^/zadania/(\d+)$#', (string) $upload['location'], $m) === 1,
