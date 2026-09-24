@@ -104,6 +104,8 @@ $akcja = '/klub/' . (int) $club['id'] . '/konfigurator';
           $raw = (string) $z['source']['raw'];
           $dozwolone = $typ === Suggester::ETYKIETA ? $qualifiers : $concepts;
           $pewnosc = (string) ($z['confidence'] ?? Suggester::BRAK);
+          // Klasa zostaje jako STYL (lewa krawędź), nie jako znak ograniczenia:
+          // zmienna bez pojęcia kanonicznego niczego już nie ma zabronionego.
           $bezBindingu = ($z['canon'] ?? null) === null;
         ?>
         <div class="zmienna<?= $bezBindingu ? ' zmienna--generyczna' : '' ?>">
@@ -151,19 +153,6 @@ $akcja = '/klub/' . (int) $club['id'] . '/konfigurator';
 
           <div class="zmienna__pola">
             <label class="field">
-              <span class="field__label"><?= View::e(View::t('conf.var.canon')) ?></span>
-              <select class="field__input" name="canon[<?= View::e($vid) ?>]">
-                <option value=""><?= View::e(View::t('conf.var.canon.none')) ?></option>
-                <?php foreach ($dozwolone as $pojecie): ?>
-                  <option value="<?= View::e($pojecie) ?>"
-                          <?= ($z['canon'] ?? null) === $pojecie ? 'selected' : '' ?>>
-                    <?= View::e($pojecie) ?>
-                  </option>
-                <?php endforeach; ?>
-              </select>
-            </label>
-
-            <label class="field">
               <span class="field__label"><?= View::e(View::t('conf.var.label')) ?></span>
               <input class="field__input" type="text" maxlength="60"
                      name="label[<?= View::e($vid) ?>]"
@@ -188,30 +177,54 @@ $akcja = '/klub/' . (int) $club['id'] . '/konfigurator';
             <span class="field__label"><?= View::e(View::t('conf.var.sections')) ?></span>
             <?php foreach (Configurator::SEKCJE as $sekcja): ?>
               <?php
-                // TWARDA ZASADA (Sesja 4 pkt 2): zmienna bez pojęcia kanonicznego
-                // dostaje wyłącznie licznik w bilansie i pas na osi czasu.
-                // Widok BLOKUJE pole, żeby nie kusiło; o tym, co wolno zapisać,
-                // rozstrzyga `Configurator::bledyConfigu()` — pole wyboru da się
-                // odblokować w przeglądarce, walidacji po stronie serwera nie.
-                $zablokowana = $bezBindingu
-                    && !in_array($sekcja, Configurator::SEKCJE_GENERYCZNE, true);
+                // JEDYNY POWÓD BLOKADY: sekcja wyłączona w templacie.
+                //
+                // Do sesji 1 pivotu blokował też brak pojęcia kanonicznego
+                // (Sesja 4 przebudowy, pkt 2) — zasada wycofana, patrz
+                // `docs/STAN_PIVOTU.md` §2.3. Zmienna bez pojęcia wchodzi
+                // dziś do każdej sekcji włączonej w templacie.
+                //
+                // Sekcja spoza templatu zostaje zablokowana, bo zaznaczenie jej
+                // byłoby deklaracją bez skutku: raport i tak jej nie narysuje,
+                // a `bledyConfigu()` odbiłby zapis `conf.err.section_disabled`.
                 $wlaczonaWTemplacie = in_array($sekcja, $sections, true);
               ?>
-              <label class="field--check<?= $zablokowana ? ' is-disabled' : '' ?>"
-                     <?= $zablokowana ? 'title="' . View::e(View::t('conf.var.canon_required')) . '"' : '' ?>>
+              <label class="field--check<?= $wlaczonaWTemplacie ? '' : ' is-disabled' ?>">
                 <input type="checkbox"
                        name="vsections[<?= View::e($vid) ?>][]"
                        value="<?= View::e($sekcja) ?>"
-                       <?= in_array($sekcja, (array) $z['sections'], true) && !$zablokowana ? 'checked' : '' ?>
-                       <?= $zablokowana || !$wlaczonaWTemplacie ? 'disabled' : '' ?>>
+                       <?= in_array($sekcja, (array) $z['sections'], true) ? 'checked' : '' ?>
+                       <?= $wlaczonaWTemplacie ? '' : 'disabled' ?>>
                 <span><?= View::e(View::t('sekcja.' . $sekcja)) ?></span>
               </label>
             <?php endforeach; ?>
-
-            <?php if ($bezBindingu): ?>
-              <p class="hint"><?= View::e(View::t('conf.var.canon_required')) ?></p>
-            <?php endif; ?>
           </div>
+
+          <?php /*
+            POJĘCIE KANONICZNE ZESZŁO POD „ZAAWANSOWANE" — sesja 1 pivotu.
+            Jest opcjonalne i większość zmiennych go nie potrzebuje: raport
+            liczy po surowej nazwie z eksportu. Trzymanie go jako pierwszego
+            pola sugerowało, że bez niego nie da się ruszyć dalej.
+
+            `<details>` jest elementem HTML, nie skryptem — panel nadal działa
+            bez JS (CLAUDE.md §9). Domyślnie zwinięte.
+          */ ?>
+          <details class="zmienna__zaawansowane">
+            <summary><?= View::e(View::t('conf.var.canon.advanced')) ?></summary>
+            <p class="hint"><?= View::e(View::t('conf.var.canon_optional')) ?></p>
+            <label class="field">
+              <span class="field__label"><?= View::e(View::t('conf.var.canon')) ?></span>
+              <select class="field__input" name="canon[<?= View::e($vid) ?>]">
+                <option value=""><?= View::e(View::t('conf.var.canon.none')) ?></option>
+                <?php foreach ($dozwolone as $pojecie): ?>
+                  <option value="<?= View::e($pojecie) ?>"
+                          <?= ($z['canon'] ?? null) === $pojecie ? 'selected' : '' ?>>
+                    <?= View::e($pojecie) ?>
+                  </option>
+                <?php endforeach; ?>
+              </select>
+            </label>
+          </details>
         </div>
       <?php endforeach; ?>
     <?php endif; ?>

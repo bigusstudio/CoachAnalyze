@@ -61,19 +61,35 @@ Ostrzeżenie z tamtego backlogu zostaje w mocy i dotyczy każdej przyszłej pró
 do modelu wolno wysłać **nazwy tagów i policzone metryki, nigdy próbek zdarzeń**
 z `meta.dictionary[].samples` (CLAUDE.md §5).
 
-### 2.3 Reguła „brak bindingu = tylko licznik"
+### 2.3 Reguła „brak bindingu = tylko licznik" — WYCOFANA w sesji 1 (2026-09-24)
 
-Zasada z Sesji 4 przebudowy (pkt 2): zmienna bez bindingu kanonicznego dostaje
-wyłącznie widoki generyczne — licznik w bilansie i pas na osi czasu; sekcje
-wymagające semantyki (mapy, xG) są dla niej zablokowane.
+Zasada z Sesji 4 przebudowy (pkt 2) brzmiała: zmienna bez bindingu kanonicznego
+dostaje wyłącznie widoki generyczne — licznik w bilansie i pas na osi czasu;
+sekcje wymagające semantyki (mapy, xG) są dla niej zablokowane.
 
-**Reguła zostaje zapisana i przestaje być rozwijana.** Generyczny renderer, który
-miał ją obsłużyć po stronie szablonu (S5b, pkt 5), **nie powstał i w pivocie nie
-powstanie**. W praktyce znaczy to, że zmienna `canon: null` dziś nigdzie się nie
-rysuje — jest policzona w pokryciu i tyle.
+**Nie jest już uśpiona — została wycofana.** Pojęcie kanoniczne jest od sesji 1
+**opcjonalne i nie ogranicza sekcji**: zmienna bez niego wchodzi do każdej sekcji
+włączonej w templacie, a liczy się po **surowej nazwie z eksportu** — dokładnie
+tak, jak liczy ją szablon raportu w JS (`e.tag==='STRZAŁ'`). Skoro raport nigdy
+nie potrzebował pojęcia do narysowania czegokolwiek, blokada broniła dostępu do
+sekcji, których nic już nie broniło; jej jedynym skutkiem było zmuszanie operatora
+do wypełnienia pola, zanim zobaczył pierwszy raport — czyli dokładnie to, co pivot
+usuwa. Pole zeszło pod „Zaawansowane" i jest zwinięte.
 
-To jest dług, nie funkcja. Zapisany tutaj, żeby nikt nie odkrywał go przez
-zdziwienie, że tag „jest w templacie, a nie ma go w raporcie".
+Co zniknęło: błąd `conf.err.canon_required`, blokada pól sekcji w konfiguratorze
+i na ekranie diffu, odcinanie sekcji w `TemplateDiff::nowyConfig()`.
+Co zostało: `Configurator::SEKCJE_GENERYCZNE` jako **domyślne sekcje nowej
+zmiennej** (propozycja startowa, nie limit) oraz walidacja pojęcia spoza słownika
+(`conf.err.unknown_canon`) i sekcji spoza templatu (`conf.err.section_disabled`).
+
+**Świadoma cena.** Operator może wpuścić do mapy zmienną, której eksport nie niesie
+pozycji — wtedy mapa jest pusta, a powód stoi w raporcie pokrycia
+(`sections_unavailable`). To ten sam przypadek, co III STREFA bez `pos_*`
+(pułapka 3) i ma tę samą odpowiedź: brak danych ma być widoczny, a nie uprzedzony
+zakazem. Kafelek mapy bez współrzędnych dostanie własny komunikat — punkt 7.8.
+
+Generyczny renderer, który miał obsłużyć takie zmienne po stronie szablonu
+(S5b, pkt 5), **nie powstał i nie jest potrzebny**: szablon rysuje po nazwie tagu.
 
 ### 2.4 Czego NIE usypiamy
 

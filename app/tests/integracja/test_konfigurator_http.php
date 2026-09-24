@@ -271,22 +271,27 @@ echo "\n== twarda walidacja przy zapisie ==\n";
 $csrfS = csrfZ($poOdswiezeniu['body']);
 
 /*
- * Próba obejścia interfejsu: zmienna BEZ pojęcia kanonicznego wpychana do map.
- * Ekran te pola blokuje, ale żądanie da się wysłać z konsoli — o tym, co wolno
- * zapisać, rozstrzyga serwer.
+ * SESJA 1 PIVOTU: stała tu próba „obejścia" twardej zasady — zapis zmiennej bez
+ * pojęcia kanonicznego do map miał zostać ODBITY. Zasada została wycofana
+ * (docs/STAN_PIVOTU.md §2.3), więc to żądanie ma dziś po prostu przejść; sprawdza
+ * to test na końcu tego pliku, na prawdziwym zapisie do templatu.
+ *
+ * Walidacja po stronie serwera NIE ZNIKNĘŁA i dalej jest jedyną, której nie da
+ * się ominąć z konsoli — dlatego w tym miejscu próbujemy czegoś, co nadal jest
+ * błędem: sekcji zmiennej spoza sekcji włączonych w templacie. Zaznaczenie jej
+ * byłoby deklaracją bez skutku, bo raport i tak jej nie narysuje.
  */
-$doMap = [];
-foreach ($idy as $vid) { $doMap[$vid] = ['bilans', 'mapy']; }
+$pozaTemplatem = [];
+foreach ($idy as $vid) { $pozaTemplatem[$vid] = ['bilans', 'mapy']; }
 
 $obejscie = http('POST', '/klub/1/konfigurator/zapisz', ['form' => [
     'csrf' => $csrfS,
-    'sections' => ['bilans', 'mapy'],
+    'sections' => ['bilans'],          // mapy WYŁĄCZONE w templacie
     'label' => $etykiety,
-    'vsections' => $doMap,
+    'vsections' => $pozaTemplatem,     // ...a zmienne i tak je wskazują
     'visible' => array_fill_keys($idy, '1'),
-    // canon celowo pusty dla wszystkich
 ]]);
-check('zapis z pogwałceniem twardej zasady ODBITY',
+check('zapis z sekcją spoza templatu ODBITY',
     $obejscie['status'] === 302
     && $obejscie['location'] === '/klub/1/konfigurator/slownik',
     $obejscie['status'] . ' → ' . (string) $obejscie['location']);

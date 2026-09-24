@@ -267,6 +267,48 @@ check('nowy config przechodzi twardą walidację',
     Configurator::bledyConfigu($nowyConfig) === [],
     implode(', ', Configurator::bledyConfigu($nowyConfig)));
 
+// -------------------------------------------- Sesja 1 pivotu: canon opcjonalny
+echo "\n== pojęcie kanoniczne opcjonalne: sekcje operatora zostają ==\n";
+
+/*
+ * Do sesji 1 `TemplateDiff::nowyConfig()` ODCINAŁO sekcje do generycznych, gdy
+ * zmienna nie miała pojęcia kanonicznego. Ekran diffu pozwala dziś zaznaczyć
+ * każdą sekcję, więc odcinanie po cichu wyrzucałoby wybór operatora między
+ * kliknięciem a zapisem — a tego nie widać nigdzie poza gotowym raportem.
+ * Zasada wycofana: docs/STAN_PIVOTU.md §2.3.
+ */
+$bezPojecia = TemplateDiff::nowyConfig(
+    $config,
+    $diff['nowe'],
+    [$klucz('tag', 'DOŚRODKOWANIE') => TemplateDiff::DODAJ],
+    [$klucz('tag', 'DOŚRODKOWANIE') => [
+        'canon' => '',                       // operator nie wybrał pojęcia
+        'display_label' => 'Dośrodkowanie',
+        'color' => '#445566',
+        'sections' => ['bilans', 'mapy'],    // ...ale wskazał mapy
+    ]]
+);
+
+$dosrodkowanie = null;
+foreach ($bezPojecia['variables'] as $z) {
+    if ($z['source']['raw'] === 'DOŚRODKOWANIE') {
+        $dosrodkowanie = $z;
+    }
+}
+
+check('zmienna bez pojęcia została dopisana', $dosrodkowanie !== null);
+// `??` reaguje TAKŻE na null, więc `$x['canon'] ?? 'brak'` nigdy nie zwróci
+// null — sprawdzamy obecność klucza osobno od jego wartości.
+check('nie ma pojęcia kanonicznego',
+    array_key_exists('canon', $dosrodkowanie) && $dosrodkowanie['canon'] === null,
+    json_encode($dosrodkowanie['canon'] ?? 'brak klucza'));
+check('sekcja map z formularza PRZEŻYŁA zapis',
+    in_array('mapy', (array) ($dosrodkowanie['sections'] ?? []), true),
+    json_encode($dosrodkowanie['sections'] ?? null));
+check('config ze zmienną bez pojęcia w mapach przechodzi walidację',
+    Configurator::bledyConfigu($bezPojecia) === [],
+    implode(', ', Configurator::bledyConfigu($bezPojecia)));
+
 // ---------------------------------------------------------------- brak dopisań
 echo "\n== brak dopisań = brak nowej wersji ==\n";
 

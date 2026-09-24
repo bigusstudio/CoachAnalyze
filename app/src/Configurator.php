@@ -27,16 +27,25 @@ final class Configurator
     public const SEKCJE = ['bilans', 'mapy', 'tl_sbz', 'tl_iii', 'tl_bilans', 'duels', 'noteam'];
 
     /**
-     * Sekcje dostępne dla zmiennej BEZ pojęcia kanonicznego.
+     * Sekcje proponowane domyślnie dla NOWEJ zmiennej.
      *
-     * Zmienna niestandardowa ma tylko nazwę i liczbę wystąpień — nie wiadomo
-     * o niej nic poza tym, że się zdarzyła. Wolno ją policzyć w bilansie
-     * i pokazać jako pas na osi czasu. Wszystko inne wymaga semantyki:
-     * mapa potrzebuje wiedzieć, że to strzał albo wejście w SBZ, oś SBZ
-     * potrzebuje wiedzieć, że zdarzenie SBZ dotyczy.
+     * ╔══════════════════════════════════════════════════════════════════════╗
+     * ║ TO JUŻ NIE JEST OGRANICZENIE. Zmieniono w SESJI 1 PIVOTU (2026-09-24).║
+     * ╚══════════════════════════════════════════════════════════════════════╝
      *
-     * Bez tego ograniczenia zmienna trafiałaby do mapy jako punkt bez
-     * znaczenia — czyli raport pokazywałby coś, czego nie umie wyjaśnić.
+     * Do sesji 1 ta lista była TWARDĄ ZASADĄ: zmienna bez pojęcia kanonicznego
+     * nie mogła wejść do żadnej innej sekcji (Sesja 4 przebudowy, pkt 2).
+     * Zasada została **wycofana** — powód i zakres w `docs/STAN_PIVOTU.md` §2.3.
+     *
+     * W skrócie: pivot „viewer" wyświetla zdarzenia **po surowej nazwie tagu**,
+     * tak jak robi to szablon w JS. Pojęcie kanoniczne przestało być warunkiem
+     * narysowania czegokolwiek, więc blokada zabierała operatorowi sekcje,
+     * których nic już nie broniło przed narysowaniem.
+     *
+     * Lista zostaje jako **rozsądna propozycja startowa**: nowa zmienna wchodzi
+     * do bilansu i na oś czasu, a sekcje wymagające pozycji operator dokłada
+     * świadomie. Propozycja przesądzająca o kształcie raportu bez niczyjej
+     * decyzji byłaby czymś innym niż propozycja — ale odmówić już nie może.
      */
     public const SEKCJE_GENERYCZNE = ['bilans', 'tl_bilans'];
 
@@ -138,10 +147,11 @@ final class Configurator
                     'reason'        => $podpowiedz['reason'],
                     'display_label' => self::etykietaZNazwy($raw),
                     'color'         => self::barwa($typ, $raw, $paleta, $barwyKlubu, $i),
-                    // Sekcje domyślne: same generyczne. Sekcje wymagające
-                    // semantyki operator włącza świadomie, po zatwierdzeniu
-                    // bindingu — inaczej propozycja przesądzałaby o kształcie
-                    // raportu bez niczyjej decyzji.
+                    // Sekcje domyślne: bilans i oś czasu. PROPOZYCJA, NIE LIMIT
+                    // (zasada sekcji generycznych wycofana w sesji 1 pivotu) —
+                    // operator dołoży, co zechce, także bez pojęcia kanonicznego.
+                    // Zaczynamy od dwóch, bo propozycja przesądzająca o kształcie
+                    // raportu bez niczyjej decyzji nie byłaby propozycją.
                     'sections'      => self::SEKCJE_GENERYCZNE,
                     'visible'       => true,
                 ];
@@ -287,17 +297,21 @@ final class Configurator
             }
 
             /*
-             * SEDNO TWARDEJ ZASADY: bez pojęcia kanonicznego wolno wyłącznie
-             * licznik w bilansie i pas na osi czasu.
+             * TU STAŁA TWARDA ZASADA „bez pojęcia kanonicznego wolno wyłącznie
+             * licznik w bilansie i pas na osi czasu" (Sesja 4 przebudowy, pkt 2).
+             * WYCOFANA W SESJI 1 PIVOTU, 2026-09-24 — `docs/STAN_PIVOTU.md` §2.3.
+             *
+             * Pojęcie kanoniczne jest odtąd OPCJONALNE i nie ogranicza sekcji.
+             * Zmienna bez niego liczy się po surowej nazwie z eksportu — dokładnie
+             * tak, jak liczy ją szablon raportu w JS. Blokada broniła dostępu do
+             * sekcji, których nic już nie broni przed narysowaniem.
+             *
+             * Świadoma cena: operator może wpuścić do mapy zmienną, której
+             * eksport nie niesie pozycji. Wtedy mapa jest pusta, a powód stoi
+             * w raporcie pokrycia (`sections_unavailable`) — to samo, co przy
+             * III STREFIE bez `pos_*` (pułapka 3). Brak danych ma być widoczny,
+             * a nie uprzedzony zakazem.
              */
-            if ($canon === null) {
-                foreach ($sekcjeZmiennej as $sekcja) {
-                    if (!in_array($sekcja, self::SEKCJE_GENERYCZNE, true)) {
-                        $bledy[] = 'conf.err.canon_required';
-                        break;
-                    }
-                }
-            }
         }
 
         return array_values(array_unique($bledy));

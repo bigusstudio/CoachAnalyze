@@ -843,9 +843,22 @@ form.chmurka__zamknij button:hover { color: var(--tekst); }
 }
 .zmienna:last-child { border-bottom: 0; }
 
-/* Zmienna bez pojęcia kanonicznego ma OGRANICZONE możliwości i widać to od razu,
-   zanim operator spróbuje wejść nią do mapy. */
+/* Zmienna bez pojęcia kanonicznego. Od sesji 1 pivotu to WYŁĄCZNIE odróżnienie
+   wzrokowe, nie znak ograniczenia — taka zmienna wchodzi do każdej sekcji
+   włączonej w templacie (docs/STAN_PIVOTU.md §2.3). */
 .zmienna--generyczna { border-left: 3px solid var(--obramowanie); padding-left: 12px; }
+
+/* Pojęcie kanoniczne jest opcjonalne, więc nie zajmuje pierwszego pola formularza.
+   `<details>` to element HTML — panel nadal nie używa skryptu (CLAUDE.md §9). */
+.zmienna__zaawansowane { margin-top: 10px; }
+.zmienna__zaawansowane > summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--tekst-slaby);
+  padding: 4px 0;
+}
+.zmienna__zaawansowane > summary:hover { color: var(--tekst); }
+.zmienna__zaawansowane .field { margin-top: 6px; max-width: 420px; }
 
 .zmienna__glowa { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .zmienna__usun { margin-left: auto; font-size: 12px; color: var(--tekst-slaby); }

@@ -135,12 +135,17 @@ def variables_by_source(template):
 
 
 def generic_variables(template):
-    """Zmienne BEZ pojęcia kanonicznego — do generycznego licznika w bilansie.
+    """Zmienne BEZ pojęcia kanonicznego. Służy RAPORTOWI POKRYCIA.
 
-    Wchodzą do raportu wyłącznie jako licznik i pas na osi czasu; sekcje
-    wymagające semantyki są dla nich zablokowane już w konfiguratorze
-    (`Configurator::bledyConfigu`). Tutaj zbieramy je, żeby raport pokrycia
-    mógł powiedzieć, ile ich jest i które to są.
+    Zbieramy je, żeby raport pokrycia mógł powiedzieć, ile ich jest i które to są.
+
+    ZMIANA W SESJI 1 PIVOTU (2026-09-24), docs/STAN_PIVOTU.md §2.3: takie zmienne
+    **nie są już blokowane w konfiguratorze**. Do tej sesji konfigurator wpuszczał
+    je wyłącznie do bilansu i na oś czasu; pojęcie kanoniczne jest odtąd opcjonalne
+    i nie ogranicza sekcji, bo raport liczy po surowej nazwie tagu.
+
+    Funkcja i tak nigdy tego nie egzekwowała — liczyła, nie zakazywała. Zmienia się
+    wyłącznie ten opis; logika i wyjście zostają bez zmiany.
 
     @return list[dict]
     """

@@ -158,9 +158,9 @@ check('etykieta ma typ label', ($poNazwie['CELNY']['source']['type'] ?? '') === 
 
 check('identyfikatory są unikalne',
     count(array_unique(array_column($zmienne, 'id'))) === count($zmienne));
-check('domyślne sekcje to wyłącznie generyczne',
+check('domyślne sekcje nowej zmiennej to bilans i oś czasu',
     $poNazwie['TAG WŁASNY']['sections'] === Configurator::SEKCJE_GENERYCZNE,
-    'propozycja nie ma przesądzać o kształcie raportu');
+    'to PROPOZYCJA startowa, nie limit — od sesji 1 pivotu nic nie blokuje reszty');
 check('etykieta wyświetlana proponowana z nazwy',
     ($poNazwie['STRZAŁ']['display_label'] ?? '') === 'Strzał',
     (string) ($poNazwie['STRZAŁ']['display_label'] ?? ''));
@@ -193,20 +193,27 @@ check('config bez sekcji odrzucony',
     in_array('conf.err.no_sections', Configurator::bledyConfigu(Configurator::config($poprawna, [])), true));
 
 /*
- * SEDNO SESJI 4: zmienna bez pojęcia kanonicznego wchodzi wyłącznie do bilansu
- * i na oś czasu. Mapy i xG wymagają semantyki.
+ * SESJA 1 PIVOTU: pojęcie kanoniczne jest OPCJONALNE i NIE ogranicza sekcji.
+ *
+ * Do tej sesji stała tu asercja odwrotna („zmienna BEZ pojęcia nie wejdzie
+ * do map") wraz z błędem `conf.err.canon_required`. Zasada z Sesji 4 przebudowy
+ * została wycofana — docs/STAN_PIVOTU.md §2.3 — bo raport liczy po surowej
+ * nazwie tagu i pojęcie przestało być warunkiem narysowania czegokolwiek.
  */
 $bezCanon = $poprawna;
 $bezCanon[0]['canon'] = null;
 $bezCanon[0]['sections'] = ['bilans', 'mapy'];
-check('zmienna BEZ pojęcia nie wejdzie do map',
-    in_array('conf.err.canon_required',
-        Configurator::bledyConfigu(Configurator::config($bezCanon, ['bilans', 'mapy'])), true),
-    'to jest twarda zasada, nie podpowiedź w interfejsie');
+check('zmienna BEZ pojęcia wchodzi do map i xG',
+    Configurator::bledyConfigu(Configurator::config($bezCanon, ['bilans', 'mapy'])) === [],
+    'pojęcie kanoniczne jest opcjonalne, nie warunkuje sekcji');
+
+check('błąd conf.err.canon_required już nie istnieje',
+    !array_key_exists('conf.err.canon_required', require __DIR__ . '/../../src/lang/pl.php'),
+    'klucz zniknął razem z zasadą, którą opisywał');
 
 $bezCanonOk = $bezCanon;
 $bezCanonOk[0]['sections'] = Configurator::SEKCJE_GENERYCZNE;
-check('zmienna BEZ pojęcia wchodzi do bilansu i osi czasu',
+check('zmienna BEZ pojęcia nadal wchodzi do bilansu i osi czasu',
     Configurator::bledyConfigu(Configurator::config($bezCanonOk, Configurator::SEKCJE_GENERYCZNE)) === []);
 
 $zlyCanon = $poprawna;

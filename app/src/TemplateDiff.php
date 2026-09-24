@@ -268,13 +268,14 @@ final class TemplateDiff
                 Configurator::SEKCJE,
                 array_map('strval', (array) ($wlasne['sections'] ?? []))
             ));
-            // Zmienna bez pojęcia kanonicznego wchodzi wyłącznie do sekcji
-            // generycznych. Pilnuje tego także `Configurator::bledyConfigu()`
-            // przy zapisie, ale odcinamy wcześniej, żeby nie odbijać operatora
-            // komunikatem o czymś, czego ekran mu nie pozwolił wybrać.
-            if ($canon === null) {
-                $sekcje = array_values(array_intersect($sekcje, Configurator::SEKCJE_GENERYCZNE));
-            }
+            // STAŁO TU ODCIĘCIE sekcji do generycznych przy `canon === null`.
+            // Usunięte w sesji 1 pivotu razem z samą zasadą (`docs/STAN_PIVOTU.md`
+            // §2.3): ekran diffu pozwala już zaznaczyć każdą sekcję, więc odcinanie
+            // po cichu wyrzucałoby wybór operatora między kliknięciem a zapisem.
+            //
+            // Pusty zestaw dalej schodzi na domyślny — pozycja „dodaj do templatu"
+            // bez ani jednej sekcji nie trafiłaby do raportu w żadnej postaci,
+            // a operator prosił o jej dodanie.
             if ($sekcje === []) {
                 $sekcje = Configurator::SEKCJE_GENERYCZNE;
             }

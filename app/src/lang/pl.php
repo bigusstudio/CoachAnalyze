@@ -458,7 +458,10 @@ return [
     'conf.var.visible'        => 'Widoczna w raporcie',
     'conf.var.sections'       => 'Sekcje',
     'conf.var.remove'         => 'usuń z templatu',
-    'conf.var.canon_required' => 'Zmienna bez pojęcia kanonicznego wchodzi wyłącznie do bilansu i na oś czasu. Podepnij pojęcie, żeby użyć jej w mapach albo xG.',
+    // Pojęcie kanoniczne jest OPCJONALNE od sesji 1 pivotu (docs/STAN_PIVOTU.md §2.3).
+    // Klucz `conf.var.canon_required` zniknął razem z zasadą, którą opisywał.
+    'conf.var.canon.advanced' => 'Zaawansowane: pojęcie kanoniczne (opcjonalne)',
+    'conf.var.canon_optional' => 'Pojęcie kanoniczne jest opcjonalne. Bez niego zmienna liczy się po nazwie z eksportu.',
 
     'conf.draft.save'      => 'Zapisz roboczo',
     'conf.draft.saved'     => 'Zapisano stan roboczy. Możesz wrócić do niego później.',
@@ -671,7 +674,6 @@ return [
     'conf.err.color'            => 'Któraś zmienna ma niepoprawną barwę.',
     'conf.err.label'            => 'Każda zmienna musi mieć etykietę wyświetlaną.',
     'conf.err.section_disabled' => 'Zmienna wskazuje sekcję wyłączoną w templacie.',
-    'conf.err.canon_required'   => 'Zmienna bez pojęcia kanonicznego może wejść wyłącznie do bilansu i na oś czasu.',
 
     // Nazwy sekcji. Terminologia klienta (SBZ, III strefa, bilans) NIE PODLEGA
     // tłumaczeniu — jest częścią produktu (CLAUDE.md §6).

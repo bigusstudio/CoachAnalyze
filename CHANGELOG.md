@@ -3,6 +3,46 @@
 Format: [wersja silnika] — data — opis.
 Każda zmiana, która modyfikuje wyjście silnika, MUSI mieć tu wpis wraz z powodem.
 
+## Aplikacja — 2026-09-24 · sesja 1 pivotu „viewer"
+### Pojęcie kanoniczne opcjonalne — zmienna liczy się po nazwie
+**Wpis APLIKACJI, nie silnika.** `engine/` zmienia wyłącznie jeden docstring
+(`report_template.generic_variables`), wyjście silnika jest bit w bit takie samo,
+test złoty nietknięty — dlatego wersja silnika NIE jest podbijana.
+
+Wycofana zasada z Sesji 4 przebudowy (pkt 2): „zmienna bez bindingu kanonicznego
+dostaje wyłącznie licznik w bilansie i pas na osi czasu". Powód w
+`docs/STAN_PIVOTU.md` §2.3 — raport liczy po **surowej nazwie tagu**
+(`e.tag==='STRZAŁ'` w szablonie), więc pojęcie kanoniczne nigdy nie było warunkiem
+narysowania czegokolwiek. Blokada broniła dostępu do sekcji, których nic już nie
+broniło, a jej jedynym skutkiem było kazanie operatorowi wypełnić pole, zanim
+zobaczy pierwszy raport.
+
+- **Zniknął błąd `conf.err.canon_required`** i jego klucz w `pl.php`.
+  `Configurator::bledyConfigu()` nie sprawdza już sekcji pod kątem pojęcia.
+- **`Configurator::SEKCJE_GENERYCZNE` zostaje, ale przestaje ograniczać** — jest
+  odtąd zestawem domyślnym nowej zmiennej (bilans + oś czasu), czyli propozycją
+  startową. Nowa zmienna nadal zaczyna od dwóch sekcji: propozycja przesądzająca
+  o kształcie raportu bez niczyjej decyzji nie byłaby propozycją.
+- **`TemplateDiff::nowyConfig()` przestało odcinać sekcje** przy `canon === null`.
+  To był cichy ubytek: ekran diffu pozwalał zaznaczyć sekcję, a zapis ją wyrzucał
+  — bez śladu poza gotowym raportem.
+- **Widoki**: checkbox sekcji jest blokowany WYŁĄCZNIE wtedy, gdy sekcja jest
+  wyłączona w templacie. Podpowiedź o blokadzie usunięta; klasa
+  `zmienna--generyczna` zostaje jako styl, bez znaczenia zakazu.
+- **Select pojęcia zszedł pod „Zaawansowane"** (`<details>`, domyślnie zwinięte)
+  w konfiguratorze i na ekranie diffu. `<details>` to element HTML, nie skrypt —
+  panel nadal działa bez JS (CLAUDE.md §9). Zapis w `index.php` bez zmian: `canon`
+  dalej opcjonalny i walidowany przez `dozwoloneCanon()`.
+
+**Czego to NIE zmienia:** walidacja pojęcia spoza słownika (`conf.err.unknown_canon`)
+i sekcji spoza templatu (`conf.err.section_disabled`) działa jak dotąd — serwer
+pozostaje jedyną kontrolą, której nie da się ominąć z konsoli.
+
+**Świadoma cena:** zmienna może trafić do mapy, choć eksport nie niesie dla niej
+pozycji. Mapa jest wtedy pusta, a powód stoi w `sections_unavailable` — ten sam
+przypadek co III STREFA bez `pos_*` (pułapka 3). Brak danych ma być widoczny,
+a nie uprzedzony zakazem; własny komunikat w kafelku mapy to `STAN_PIVOTU` §7.8.
+
 ## [0.12.0] — 2026-09-24
 ### Szablon raportu: druga generacja (`v21`) i przełącznik `--html-template`
 Sesja 0 pivotu „viewer". Szablon przestaje być jeden.

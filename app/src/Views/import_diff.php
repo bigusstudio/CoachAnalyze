@@ -181,19 +181,6 @@ $znaczniki = [
                  go nie ma poza chmurkami (CLAUDE.md §9). */ ?>
         <div class="zmienna__pola">
           <label class="field">
-            <span class="field__label"><?= View::e(View::t('conf.var.canon')) ?></span>
-            <select class="field__input" name="canon[<?= View::e($k) ?>]">
-              <option value=""><?= View::e(View::t('conf.var.canon.none')) ?></option>
-              <?php foreach ($dozwolone as $pojecie): ?>
-                <option value="<?= View::e($pojecie) ?>"
-                        <?= ($podp['canon'] ?? null) === $pojecie ? 'selected' : '' ?>>
-                  <?= View::e($pojecie) ?>
-                </option>
-              <?php endforeach; ?>
-            </select>
-          </label>
-
-          <label class="field">
             <span class="field__label"><?= View::e(View::t('conf.var.label')) ?></span>
             <input class="field__input" type="text" maxlength="60"
                    name="label[<?= View::e($k) ?>]"
@@ -217,8 +204,30 @@ $znaczniki = [
               <span><?= View::e(View::t('sekcja.' . $sekcja)) ?></span>
             </label>
           <?php endforeach; ?>
-          <p class="hint"><?= View::e(View::t('conf.var.canon_required')) ?></p>
         </div>
+
+        <?php /*
+          POJĘCIE KANONICZNE POD „ZAAWANSOWANE" — sesja 1 pivotu, tak samo
+          jak w konfiguratorze. Jest opcjonalne: bez niego zmienna liczy się
+          po surowej nazwie z eksportu i wchodzi do każdej zaznaczonej sekcji.
+          `<details>` to element HTML, nie skrypt (CLAUDE.md §9).
+        */ ?>
+        <details class="zmienna__zaawansowane">
+          <summary><?= View::e(View::t('conf.var.canon.advanced')) ?></summary>
+          <p class="hint"><?= View::e(View::t('conf.var.canon_optional')) ?></p>
+          <label class="field">
+            <span class="field__label"><?= View::e(View::t('conf.var.canon')) ?></span>
+            <select class="field__input" name="canon[<?= View::e($k) ?>]">
+              <option value=""><?= View::e(View::t('conf.var.canon.none')) ?></option>
+              <?php foreach ($dozwolone as $pojecie): ?>
+                <option value="<?= View::e($pojecie) ?>"
+                        <?= ($podp['canon'] ?? null) === $pojecie ? 'selected' : '' ?>>
+                  <?= View::e($pojecie) ?>
+                </option>
+              <?php endforeach; ?>
+            </select>
+          </label>
+        </details>
       </div>
     <?php endforeach; ?>
   </section>

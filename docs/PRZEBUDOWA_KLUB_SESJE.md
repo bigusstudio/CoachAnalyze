@@ -237,6 +237,14 @@ User dopina zmienne i zapisuje templat — kontrakt danych, na którym stanie ws
    - **widoczna** — toggle
    - akcje: usuń z templatu (nie trafi do raportów), dodaj ręcznie (np. zmienna wyliczana z istniejącego canon, bez nowego taga)
 2. **Twarda zasada w UI:** zmienna bez bindingu kanonicznego dostaje wyłącznie widoki generyczne — licznik w bilansie + pas na osi czasu. Sekcje wymagające semantyki (mapy, xG) są dla niej zablokowane z podpowiedzią „podepnij pojęcie kanoniczne, żeby użyć w mapach/xG". Zero cichego ignorowania.
+
+   > **WYCOFANE 2026-09-24 (sesja 1 pivotu) — `docs/STAN_PIVOTU.md` §2.3.**
+   > Pojęcie kanoniczne jest opcjonalne i nie ogranicza sekcji: zmienna bez niego
+   > wchodzi do każdej sekcji włączonej w templacie i liczy się po surowej nazwie
+   > z eksportu, tak jak liczy ją szablon raportu w JS. Błąd `conf.err.canon_required`
+   > i blokady pól w UI nie istnieją; select pojęcia zszedł pod „Zaawansowane".
+   > Zasada „zero cichego ignorowania" ZOSTAJE — brak pozycji w eksporcie nadal
+   > wraca w `sections_unavailable`, tylko nie jest uprzedzany zakazem.
 3. **Wybór sekcji raportu** dla templatu (istniejący rejestr sekcji): bilans, mapy współczynników, oś SBZ, oś III strefy, oś bilansu, pojedynki/straty/odbiory, bez przypisania drużyny + moduły M1/M3 jeśli już wpięte w raport.
 4. **Struktura `config` (JSON, zapisywana w `club_report_templates`):**
 ```json
