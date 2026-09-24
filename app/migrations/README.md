@@ -7,7 +7,7 @@ Zmiany DANYCH mają własny katalog i własne zasady — `app/repairs/README.md`
 
 | | |
 |---|---|
-| Pliki | `001`…`013`, **bez `003`** |
+| Pliki | `001`…`014`, **bez `003`** |
 | Tabela śledząca | **nie ma** |
 | Kto uruchamia | człowiek, ręcznie, po zrzucie bazy |
 | Baza produkcyjna | `serwer400227_coachanalyze` |
@@ -23,6 +23,25 @@ zabackfillowana „na wiarę" dla trzynastu pozycji. To zadanie na osobną decyz
 nie efekt uboczny innej pracy.
 
 ---
+
+## `014` — tabela `events` i kolejka meczu
+
+Pierwsza migracja objęta zasadą opisaną niżej i **wzorzec dla następnych**.
+
+| Co | Dlaczego addytywne |
+|---|---|
+| `CREATE TABLE events` | nowa tabela, nic zastanego nie znika |
+| `ALTER TABLE matches ADD COLUMN round … NULL` | kolumna nullable, kod `pro` jej nie zna i nie musi |
+
+`events_canonical` (migracja `002`) **nie jest ruszana**. To dwie różne tabele
+i tak ma zostać: tamta trzyma zdarzenia przetłumaczone na pojęcia (`shot`,
+`entry_sbz`), `events` — surowe nazwy tagów z eksportu. Scalenie ich w jedną
+dałoby kolumnę wypełnianą raz tak, raz inaczej, zależnie od tego, która warstwa
+pisała wiersz (docs/STAN_PIVOTU.md §2.1 i §2.3).
+
+`ON DELETE CASCADE` przy `events.match_id` jest tu jedynym kaskadowym kasowaniem
+w schemacie i jest świadome: zdarzenia są **odtwarzalne z surowego eksportu**,
+więc ich utrata razem z meczem niczego nieodwracalnego nie kosztuje.
 
 ## ZASADA OD `014`: WYŁĄCZNIE MIGRACJE ADDYTYWNE
 

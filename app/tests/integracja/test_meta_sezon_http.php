@@ -183,10 +183,31 @@ $numery = [];
 foreach ($migracje as $plik) {
     if (preg_match('/(\d{3})_/', basename($plik), $m) === 1) { $numery[] = (int) $m[1]; }
 }
-check('najwyższa migracja to 013', $numery !== [] && max($numery) === 13,
+/*
+ * POPRAWIONE 2026-09-24 (sesja 2 pivotu).
+ *
+ * Asercje brzmiały „najwyższa migracja to 013" i „nie dołożono migracji 014".
+ * Obie zapaliły się, gdy powstała migracja 014 — dla tabeli `events` i kolumny
+ * `round`, czyli z powodu niemającego z sezonem nic wspólnego. Numer migracji
+ * mierzy cudzą pracę, a nie intencję tego testu.
+ *
+ * Intencja brzmi: SEZON NIE WYMAGAŁ WŁASNEJ MIGRACJI, bo `matches.season_id`
+ * i `seasons.label` istnieją od 001. Tak to teraz sprawdzamy.
+ */
+$dodajaceSezon = [];
+foreach ($migracje as $plik) {
+    $kod = preg_replace('/^\s*--.*$/m', '', (string) file_get_contents($plik)) ?? '';
+    if (preg_match('/ADD\s+COLUMN\s+season/i', $kod) === 1
+        || preg_match('/CREATE\s+TABLE\s+seasons\b/i', $kod) === 1) {
+        $dodajaceSezon[] = basename($plik);
+    }
+}
+check('sezon nie dostał własnej migracji po 001',
+    $dodajaceSezon === [] || $dodajaceSezon === ['001_init.sql'],
+    implode(', ', $dodajaceSezon) . ' — kolumna jest od początku');
+check('migracje idą bez luki od ostatniej znanej',
+    $numery !== [] && max($numery) >= 13,
     'stan: ' . implode(', ', $numery));
-check('nie dołożono migracji dla sezonu', !in_array(14, $numery, true),
-    'kolumna już jest — pusta migracja tylko zaśmieciłaby historię');
 
 // ============================================================ B. import z sezonem
 echo "\n== B. sezon wybrany przy imporcie zapisuje się ==\n";

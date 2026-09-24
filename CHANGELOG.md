@@ -3,6 +3,76 @@
 Format: [wersja silnika] — data — opis.
 Każda zmiana, która modyfikuje wyjście silnika, MUSI mieć tu wpis wraz z powodem.
 
+## [0.13.0] — 2026-09-24
+### `--out-events`: zdarzenia meczu po SUROWYCH nazwach tagów
+Sesja 2 pivotu. Nowy, OPCJONALNY parametr komendy `build`. Bez niego pipeline
+zachowuje się dokładnie jak w 0.12.0 — test złoty nietknięty.
+
+**To NIE jest `--out-canon` w innym opakowaniu.** `--out-canon` tłumaczy tagi na
+pojęcia (`shot`, `entry_sbz`) dla archiwum; ta warstwa jest uśpiona
+(docs/STAN_PIVOTU.md §2.1). `--out-events` zapisuje to, co JEST W EKSPORCIE, pod
+nazwą wpisaną przez analityka — tak samo, jak liczy szablon raportu w przeglądarce
+(`e.tag==='STRZAŁ'`). Dzięki temu tabela i raport odpowiadają na pytania tą samą
+miarą. Mapowanie kanoniczne w tej warstwie jest **zakazane**: dołożone, rozjechałoby
+tabelę z raportem tak, że obie liczby wyglądałyby sensownie.
+
+Wejściem jest **ramka renderu** (D4), nie surowy CSV — ten sam obiekt, z którego
+powstaje HTML, daje wiersze do bazy.
+
+### Trzy reguły
+- **Minuta**: `ceil(t/60)`, **pierwsza połowa przycięta do 45**. Czas w eksporcie to
+  czas wideo (pułapka 8), więc doliczony czas rośnie dalej, a przerwa nie zeruje
+  licznika; bez przycięcia zdarzenie sprzed przerwy trafiałoby do 47. minuty,
+  a tuż po przerwie do 49. — i oś czasu pokazywałaby przerwę jako dwie minuty gry.
+  Druga połowa **bez** przycięcia: górnej granicy meczu nie znamy.
+- **Gol**: tag `Gol` przypisany do NAJBLIŻSZEGO W CZASIE `STRZAŁ` (okno 30 s),
+  drużyna gola brana ze strzału — `team_uuid` przy golu w eksporcie bywa błędny.
+  Strzał dostaje `is_goal: 1`, a **wiersz `Gol` zostaje** ze skorygowaną drużyną:
+  sklejenie ich zmieniłoby sumę zdarzeń meczu. Ta sama reguła co w szablonie v21,
+  bo rozjazd tutaj to rozjazd na WYNIKU MECZU.
+- **Strona**: `us`/`them` wg `config.teams` (to samo dopasowanie, co w renderze),
+  wiersz bez drużyny to `none`. Perspektywę klubu-tenanta interpretuje SZABLON,
+  nie silnik — tutaj zapisujemy stronę meczu, nie punkt widzenia.
+
+### Meta meczu: `config.match.tenant_club_id`
+Blok `match` z 0.12.0 przyjmuje dodatkowe pole — id klubu-tenanta. Render go
+jeszcze NIE UŻYWA; wchodzi teraz, bo od niego będzie zależeć, która drużyna zajmuje
+lewą stronę raportu (docs/STAN_PIVOTU.md §7.7d), a pole ma być na miejscu, zanim
+zacznie być potrzebne.
+
+### Zdarzenie bez czasu
+Pomijane i policzone w `skipped_no_time`, plus ostrzeżenie na stderr. Kolumna `t_ms`
+jest `NOT NULL`, a zera nie podstawiamy: zero to konkretna 0. sekunda i nie da się
+jej odróżnić od braku danych (CLAUDE.md §8). W eksportach referencyjnych takich
+wierszy nie ma — gdyby się pojawiły, licznik powie o tym głośno.
+
+## Aplikacja — 2026-09-24 · sesja 2 pivotu „viewer"
+### Tabela `events`, migracja 014 i meta meczu z bazy
+- **Migracja `014`** (addytywna): `CREATE TABLE events` + `ALTER TABLE matches ADD
+  COLUMN round`. `events_canonical` **nietknięta** — dwie tabele obok siebie są tańsze
+  niż jedna kolumna wypełniana raz tak, raz inaczej. `ON DELETE CASCADE` przy
+  `events.match_id` jest jedynym kaskadowym kasowaniem w schemacie i jest świadome:
+  zdarzenia są odtwarzalne z surowego eksportu.
+- **`Events::replaceForMatch()`** — `DELETE` + `INSERT` wsadowy (paczki po 500)
+  w JEDNEJ transakcji. Kasujemy całość, nie scalamy: eksport LiveTag nie niesie
+  identyfikatora zdarzenia, więc scalanie wymagałoby wymyślonego klucza.
+- **Awaria zapisu zdarzeń NIE unieważnia raportu.** Brak pliku, niepoprawny JSON
+  albo błąd bazy to wpis w logu. Zdarzenia są odtwarzalne przeliczeniem, raport —
+  który operator już rozesłał — nie. Wywrócenie zadania zabrałoby rzecz
+  nieodwracalną, żeby uratować odwracalną.
+- **`run_job.php` wypełnia `config.match` z bazy**: `date` z `matches.played_at`,
+  `season` z `seasons.label`, `round` z nowej kolumny, `tenant_club_id` z `matches.club_id`.
+  Do tej sesji `season_label` było wpisane na sztywno jako `null` i nagłówek v21
+  zostawał pusty także tam, gdzie dane w bazie są. Brak wartości daje PUSTY NAPIS,
+  nie `null` — szablon składa nagłówek z członów niepustych.
+
+### Poprawione przy okazji
+Trzy asercje w dwóch zestawach pinowały NUMER migracji („najwyższa migracja to 013",
+„nie dołożono migracji 014") i zapaliły się na czerwono, gdy migracja 014 powstała
+z powodu niemającego z nimi nic wspólnego. Mierzyły cudzą pracę zamiast własnej
+intencji; sprawdzają teraz to, co miały znaczyć — że sezon i hasła indeksu nie
+wymagały własnej migracji.
+
 ## Aplikacja — 2026-09-24 · sesja 1 pivotu „viewer"
 ### Pojęcie kanoniczne opcjonalne — zmienna liczy się po nazwie
 **Wpis APLIKACJI, nie silnika.** `engine/` zmienia wyłącznie jeden docstring

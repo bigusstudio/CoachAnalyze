@@ -125,6 +125,11 @@ final class EngineRunner
             '--out-meta'    => $paths['out_meta'] ?? null,
             '--out-canon'   => $paths['out_canon'] ?? null,
             '--out-metrics' => $paths['out_metrics'] ?? null,
+            // TABELA ZDARZEN (sesja 2). Pusty = nie zapisujemy zdarzen do bazy;
+            // raport powstaje tak czy tak. Brak tego pliku po udanym buildzie
+            // jest OSTRZEZENIEM w logu, nie bledem raportu — zdarzenia sa
+            // odtwarzalne z surowego eksportu, a raport juz nie.
+            '--out-events'  => $paths['out_events'] ?? null,
         ] as $flag => $value) {
             if ($value !== null && $value !== '') {
                 $args[] = $flag;

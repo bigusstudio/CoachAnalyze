@@ -29,6 +29,7 @@ use CoachAnalyze\Clubs;
 use CoachAnalyze\Config;
 use CoachAnalyze\Db;
 use CoachAnalyze\EngineRunner;
+use CoachAnalyze\Events;
 use CoachAnalyze\Imports;
 use CoachAnalyze\IndexTerms;
 use CoachAnalyze\Jobs;
@@ -265,7 +266,18 @@ function uruchomSilnik(int $jobId, array $import, string $outHtml): array
     $reportPath = $outHtml;
 
     // Nazwy i barwy klubów z bazy — silnik ich nie odgaduje (docs/KONTRAKT_CLI.md).
-    $match = Db::one('SELECT club_home_id, club_away_id FROM matches WHERE id = :id', ['id' => $matchId]);
+    //
+    // META MECZU LECI TYM SAMYM ZAPYTANIEM (sesja 2). Data, kolejka i sezon
+    // trafiają do nagłówka raportu v21; drugie zapytanie po te same wiersze
+    // byłoby drugim miejscem, w którym mogą się rozjechać.
+    $match = Db::one(
+        'SELECT m.club_home_id, m.club_away_id, m.club_id, m.played_at, m.round,
+                s.label AS season_label
+           FROM matches m
+           LEFT JOIN seasons s ON s.id = m.season_id
+          WHERE m.id = :id',
+        ['id' => $matchId]
+    );
     $teams = Clubs::engineConfig(
         $match['club_home_id'] !== null ? (int) $match['club_home_id'] : null,
         $match['club_away_id'] !== null ? (int) $match['club_away_id'] : null
@@ -293,10 +305,10 @@ function uruchomSilnik(int $jobId, array $import, string $outHtml): array
 
     // Tenant meczu — właściciel analizy, a więc i właściciel templatu.
     // Potrzebny PRZED wywołaniem silnika, bo od niego zależy `--template`.
-    $meczTenant = Db::one('SELECT club_id FROM matches WHERE id = :id', ['id' => $matchId]);
-    $clubIdTenanta = $meczTenant === null || $meczTenant['club_id'] === null
+    // Z TEGO SAMEGO WIERSZA co reszta mety — patrz zapytanie wyżej.
+    $clubIdTenanta = ($match === null || $match['club_id'] === null)
         ? null
-        : (int) $meczTenant['club_id'];
+        : (int) $match['club_id'];
 
     /*
      * TEMPLAT RAPORTU KLUBU (Sesja 5) — serializowany do pliku roboczego zadania.
@@ -324,10 +336,33 @@ function uruchomSilnik(int $jobId, array $import, string $outHtml): array
         $templateVersion = (int) $templat['version'];
     }
 
+    /*
+     * META MECZU DO NAGŁÓWKA RAPORTU (sesja 2, docs/KONTRAKT_CLI.md).
+     *
+     * Silnik nie chodzi do bazy (CLAUDE.md §4), więc dostaje gotowe wartości.
+     * Czego NIE MA, to pusty napis, a nie wymyślona data: szablon v21 składa
+     * nagłówek z członów niepustych, więc brak kolejki zabiera CAŁY człon
+     * razem z separatorem (CLAUDE.md §8 — brak danych ma być widoczny).
+     *
+     * `tenant_club_id` jedzie tu dla sesji 4: to od niego będzie zależeć,
+     * która drużyna zajmuje LEWĄ stronę raportu (docs/STAN_PIVOTU.md §7.7d).
+     * Dziś render go nie używa i to jest w porządku — pole ma być na miejscu,
+     * zanim zacznie być potrzebne.
+     */
+    $metaMeczu = [
+        'date'           => (string) ($match['played_at'] ?? ''),
+        'season'         => (string) ($match['season_label'] ?? ''),
+        'round'          => (string) ($match['round'] ?? ''),
+        'tenant_club_id' => $clubIdTenanta,
+    ];
+
     $configPath = $dir . '/config.json';
     file_put_contents($configPath, json_encode([
         'match_id'        => $matchId,
-        'season_label'    => null,
+        'match'           => $metaMeczu,
+        // Zostaje dla zgodności wstecz — silnik schodzi na nie, gdy `match.season`
+        // jest puste. Wypełniamy z tego samego źródła, co `match.season`.
+        'season_label'    => $metaMeczu['season'] !== '' ? $metaMeczu['season'] : null,
         'teams'           => $teams === [] ? new stdClass() : $teams,
         // PROFIL MAPOWAŃ KLUBU, nie pusty zestaw.
         //
@@ -365,6 +400,8 @@ function uruchomSilnik(int $jobId, array $import, string $outHtml): array
         'out_meta'    => $dir . '/meta.json',
         'out_canon'   => $dir . '/canon.json',
         'out_metrics' => $dir . '/metrics.json',
+        // Zdarzenia po surowych nazwach tagów — do tabeli `events` (migracja 014).
+        'out_events'  => $dir . '/events.json',
     ]);
 
     return [
@@ -373,7 +410,61 @@ function uruchomSilnik(int $jobId, array $import, string $outHtml): array
         'template_version' => $templateVersion,
         'club_id'          => $clubIdTenanta,
         'dir'              => $dir,
+        'events_path'      => $dir . '/events.json',
     ];
+}
+
+/**
+ * Zdarzenia meczu z artefaktu silnika do tabeli `events` (migracja 014).
+ *
+ * ═══════════════════════════════════════════════════════════════════════════
+ * AWARIA TEGO KROKU NIE UNIEWAŻNIA RAPORTU — to jest cała decyzja projektowa.
+ *
+ * Zdarzenia są ODTWARZALNE: surowy eksport leży na dysku i wystarczy przeliczyć
+ * raport, żeby wstawić je ponownie. Raport odtwarzalny nie jest w tym sensie,
+ * że operator już go dostał i rozesłał link. Wywrócenie zadania z powodu tabeli
+ * pomocniczej zabrałoby rzecz nieodwracalną, żeby uratować odwracalną.
+ *
+ * Dlatego: brak pliku, niepoprawny JSON albo błąd zapisu to WPIS W LOGU.
+ * Cisza byłaby gorsza — zdarzenia po prostu by nie powstały i nikt by nie
+ * wiedział dlaczego.
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+function zapiszZdarzenia(int $jobId, int $matchId, int $importId, ?string $sciezka): void
+{
+    if ($sciezka === null || !is_file($sciezka)) {
+        error_log(sprintf(
+            '[job %d] brak artefaktu zdarzeń (%s) — tabela events dla meczu %d nietknięta',
+            $jobId, (string) $sciezka, $matchId
+        ));
+        return;
+    }
+
+    $payload = json_decode((string) file_get_contents($sciezka), true);
+    if (!is_array($payload) || !isset($payload['events']) || !is_array($payload['events'])) {
+        error_log(sprintf(
+            '[job %d] artefakt zdarzeń nie jest poprawnym JSON-em — tabela events dla meczu %d nietknięta',
+            $jobId, $matchId
+        ));
+        return;
+    }
+
+    try {
+        $wstawione = Events::replaceForMatch($matchId, $importId, $payload['events']);
+        $pominiete = (int) ($payload['skipped_no_time'] ?? 0);
+        error_log(sprintf(
+            '[job %d] events: %d wierszy dla meczu %d%s',
+            $jobId, $wstawione, $matchId,
+            $pominiete > 0 ? sprintf(' (pominięto %d bez czasu)', $pominiete) : ''
+        ));
+    } catch (\Throwable $e) {
+        // Transakcja w `Events` już się wycofała — mecz ma albo komplet
+        // zdarzeń, albo poprzedni stan, nigdy połowę.
+        error_log(sprintf(
+            '[job %d] zapis zdarzeń meczu %d nie powiódł się: %s',
+            $jobId, $matchId, $e->getMessage()
+        ));
+    }
 }
 
 /** Pełny render HTML wraz z artefaktami. Powstaje NOWY wiersz w `reports`. */
@@ -395,6 +486,10 @@ function wykonajRender(int $jobId, int $importId, array $import, array $payload 
     $clubIdTenanta   = $bieg['club_id'];
 
     if ($wynik['exit'] === 0 && is_file($reportPath)) {
+        // Zdarzenia PRZED wierszem raportu, ale po sprawdzeniu, że render się udał.
+        // Awaria tego kroku nie zatrzymuje zadania — patrz `zapiszZdarzenia()`.
+        zapiszZdarzenia($jobId, $matchId, $importId, $bieg['events_path'] ?? null);
+
         /*
          * TENANT RAPORTU — przepisany z meczu, nie zgadywany.
          *
@@ -585,6 +680,10 @@ function wykonajPrzeliczenie(int $jobId, int $importId, array $import, array $pa
      * `is_sample` przepisujemy ze starego ładunku: raport przykładowy z
      * konfiguratora zostaje przykładowym także po przeliczeniu.
      */
+    // Przeliczenie podmienia też zdarzenia: nowy templat albo poprawiony eksport
+    // mogą dać inne liczby, a tabela ma odpowiadać temu, co pokazuje raport.
+    zapiszZdarzenia($jobId, $matchId, $importId, $bieg['events_path'] ?? null);
+
     $stareParams = json_decode((string) ($report['params_json'] ?? ''), true);
     $stareParams = is_array($stareParams) ? $stareParams : [];
 

@@ -92,8 +92,28 @@ function ca_test_db(string $file, bool $withData = true): PDO
         -- Migracja 013: wynik w DWOCH kolumnach, nie w napisie „3:1".
         -- NULL znaczy „nie wiemy" i tak zostaje dla calej historii.
         score_us INT NULL, score_them INT NULL,
+        -- Migracja 014: kolejka do naglowka raportu. VARCHAR, bo bywa „1/8 finalu".
+        round TEXT NULL,
         competition TEXT NULL, half_split_ms INT NULL, status TEXT DEFAULT "draft",
         created_at TEXT DEFAULT CURRENT_TIMESTAMP)');
+
+    /*
+     * Migracja 014: zdarzenia po SUROWYCH nazwach tagow.
+     *
+     * SCHEMAT TESTOWY ODWZOROWUJE PRODUKCYJNY WRAZ Z `NOT NULL`. Lagodniejszy
+     * schemat w testach to ta sama klasa bledu, co powtorzony symbol nazwany:
+     * przepuszcza kod, ktory wywala sie dopiero u klienta (tak samo jak przy 012).
+     */
+    $pdo->exec('CREATE TABLE events (id INTEGER PRIMARY KEY AUTOINCREMENT,
+        match_id INT NOT NULL, import_id INT NULL,
+        tag_name TEXT NOT NULL, labels_json TEXT NULL,
+        team TEXT NULL, team_side TEXT NOT NULL, player TEXT NULL,
+        t_ms INT NOT NULL, t_end_ms INT NULL, half INT NOT NULL, minute INT NOT NULL,
+        xg REAL NULL, xg_source TEXT NULL,
+        x REAL NULL, y REAL NULL, tx REAL NULL, ty REAL NULL,
+        is_goal INT NOT NULL DEFAULT 0)');
+    $pdo->exec('CREATE INDEX idx_events_match_tag ON events (match_id, tag_name)');
+    $pdo->exec('CREATE INDEX idx_events_match_side ON events (match_id, team_side, t_ms)');
     $pdo->exec('CREATE TABLE imports (id INTEGER PRIMARY KEY AUTOINCREMENT, match_id INT,
         csv_path TEXT, json_path TEXT NULL, checksum_csv TEXT, format_fingerprint TEXT NULL,
         coverage_json TEXT NULL, warnings_json TEXT NULL, engine_version TEXT NULL,

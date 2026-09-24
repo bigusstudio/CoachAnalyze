@@ -46,6 +46,12 @@ zobaczy pierwszy raport.
 > niewidoczny. Wyłączenie `--out-canon` „bo i tak nieużywane" zabrałoby archiwum,
 > a raport wyglądałby identycznie — czyli nic by nie zapaliło się na czerwono.
 
+**Od sesji 2 warstwa kanoniczna ma następcę dla warstwy widocznej.** `--out-events`
+i tabela `events` (migracja 014) zapisują zdarzenia po **surowych nazwach tagów** —
+tą samą miarą, którą liczy raport. `events_canonical` zostaje nietknięta i dalej
+obsługuje archiwum; nowa tabela nie jest jej zamiennikiem, tylko warstwą, która
+odpowiada na pytania raportu bez pośrednictwa pojęć.
+
 ### 2.2 Wizard AI mapowań
 
 Kreator (`Mappings`, `HeuristicSuggester`, `mapping_profiles`) i konfigurator

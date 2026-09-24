@@ -20,7 +20,8 @@ $PYTHON_BIN -m coachanalyze build \
   --out-html   /storage/reports/881.html \
   --out-meta   /tmp/job_881_meta.json \
   --out-canon  /tmp/job_881_canon.json \
-  --out-metrics /tmp/job_881_metrics.json
+  --out-metrics /tmp/job_881_metrics.json \
+  --out-events /tmp/job_881_events.json
 ```
 
 `--json` jest opcjonalny. Bez niego oś czasu traci paletę LiveTag i używa barw klubu jako zapasowych —
@@ -30,6 +31,9 @@ fakt odnotowany w `meta.warnings`.
 `--html-template` opcjonalny; GENERACJA SZABLONU HTML — inna rzecz, opis niżej.
 
 `--out-canon` opcjonalny; używany, gdy zdarzenia kanoniczne mają trafić do bazy.
+
+`--out-events` opcjonalny; zdarzenia meczu **po surowych nazwach tagów** do tabeli `events`
+(migracja 014). Opis niżej — to NIE jest `--out-canon` w innym opakowaniu.
 
 `--out-metrics` opcjonalny; pakiet metryk policzony przez silnik regułowy. Wejście warstwy AI (D5)
 i modułu porównań sezonowych. **PHP go nie interpretuje** — przekazuje dalej albo pomija.
@@ -124,6 +128,52 @@ nie jest do niego wstrzykiwany. Silnik porównuje jedno z drugim i przy rozjeźd
 ostrzeżenie **na stderr** (nie do `meta.json`): profil klubu mapujący własną nazwę tagu na
 pojęcie kanoniczne rozjeżdża raport z archiwum, a to musi być widoczne.
 
+### Wyjście `--out-events`
+
+Zdarzenia meczu **pod nazwą, którą wpisał analityk** — bez tłumaczenia na pojęcia.
+
+```json
+{
+  "match_id": 881,
+  "engine_version": "0.13.0",
+  "count": 294,
+  "skipped_no_time": 0,
+  "events": [
+    {
+      "tag_name": "ZDOBYCIE SBZ", "labels": ["POZYCYJNIE", "BRAK STRZAŁU"],
+      "team": "KLUB A", "team_side": "us", "player": null,
+      "t_ms": 200000, "t_end_ms": 210000, "half": 1, "minute": 4,
+      "xg": null, "xg_source": null,
+      "x": 97.01, "y": 59.34, "tx": 95.68, "ty": 48.31, "is_goal": 0
+    }
+  ]
+}
+```
+
+> **TO NIE JEST `--out-canon` W INNYM OPAKOWANIU.** `--out-canon` tłumaczy tagi na
+> POJĘCIA (`shot`, `entry_sbz`) dla archiwum i porównań sezonowych. `--out-events`
+> zapisuje SUROWE nazwy — tak samo, jak liczy szablon raportu w przeglądarce
+> (`e.tag==='STRZAŁ'`). Dzięki temu tabela i raport odpowiadają na pytania tą samą
+> miarą; mapowanie kanoniczne w tej warstwie jest **zakazane**, bo rozjazd między
+> nimi wyglądałby na dwie sensowne liczby.
+
+Trzy reguły, na których stoi to wyjście:
+
+| Reguła | Zachowanie |
+|---|---|
+| **minuta** | `ceil(t/60)`, **pierwsza połowa przycięta do 45**. Czas w eksporcie to czas wideo (pułapka 8), więc doliczony czas rośnie dalej, a przerwa nie zeruje licznika. Druga połowa bez przycięcia — górnej granicy meczu nie znamy |
+| **gol** | tag `Gol` przypisany do **najbliższego w czasie** `STRZAŁ` (okno 30 s); strzał dostaje `is_goal: 1`, a wiersz `Gol` **zostaje** ze skorygowaną drużyną. `team_uuid` przy golu w eksporcie bywa błędny — dlatego drużyna idzie ze strzału, nie z własnego wiersza |
+| **strona** | `us` / `them` wg `config.teams` (to samo dopasowanie, co w renderze); wiersz bez drużyny to `none`, nie zgadywanie (pułapka 5). Perspektywę klubu-tenanta interpretuje SZABLON, nie silnik |
+
+`xg_source` to zawsze `analyst`: ramka renderu niesie wyłącznie wartości odczytane
+z komentarza (pułapka 1). xG z modelu (M3) żyje w warstwie kanonicznej.
+
+**Zdarzenie bez czytelnego czasu jest pomijane** i policzone w `skipped_no_time`
+(plus ostrzeżenie na stderr). Kolumna `t_ms` jest `NOT NULL`, a zera nie podstawiamy:
+zero to konkretna 0. sekunda i nie da się jej odróżnić od braku danych.
+
+Plik powstaje **przed renderem**, tak samo jak `--out-canon`.
+
 ### Wyjście `--out-canon`
 
 Plik gotowy do wstawienia w `events_canonical` (app/migrations/002 + 003):
@@ -212,7 +262,7 @@ wykryte w danych, a wszystkie zdarzenia mają `team_side: "none"`.
 {
   "match_id": 881,
   "season_label": "2026/2027",
-  "match": { "season": "2026/2027", "round": "3", "date": "2026-08-01" },
+  "match": { "season": "2026/2027", "round": "3", "date": "2026-08-01", "tenant_club_id": 7 },
   "teams": {
     "us":   { "name": "Klub A", "short": "KLA", "color": "#E8722C", "color_light": "#A8780A",
               "crest": "/storage/crests/3.png", "source_names": ["KLUB A", "KLUB A II"] },
@@ -285,6 +335,7 @@ Blok czysto opisowy: sezon, kolejka i data rozegrania w nagłówku transmisyjnym
 | `match.season` | `__SEZON__` | zapasowo `season_label` z korzenia konfiguracji, dalej puste |
 | `match.round` | `__KOLEJKA__` | puste |
 | `match.date` | `__DATA_MECZU__` | puste |
+| `match.tenant_club_id` | — (jeszcze nieużywane) | `null` |
 
 **Puste znaczy puste, nie „dziś" ani „—"** (CLAUDE.md §8). Szablon v21 składa nagłówek
 z NIEPUSTYCH części, więc brak kolejki zabiera CAŁY CZŁON razem z separatorem, zamiast

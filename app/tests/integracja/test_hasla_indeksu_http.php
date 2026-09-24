@@ -184,13 +184,32 @@ foreach (['club_id', 'slug', 'version', 'created_by'] as $kol) {
     check("index_terms ma kolumnę {$kol}", in_array($kol, $kolumny, true));
 }
 
+/*
+ * POPRAWIONE 2026-09-24 (sesja 2 pivotu).
+ *
+ * Asercja brzmiała „nie dołożono migracji 014" i zapalała się na czerwono
+ * w chwili, gdy migracja 014 powstała — dla tabeli `events`, czyli z powodu
+ * niemającego z hasłami indeksu nic wspólnego. Pinowanie NUMERU migracji
+ * mierzy cudzą pracę, a nie własną intencję.
+ *
+ * Sprawdzamy więc to, co naprawdę ma być prawdą: ŻADNA migracja nie dokłada
+ * niczego do `index_terms`. Tabela z migracji 010 unosi hasła klubowe taka,
+ * jaka jest.
+ */
 $migracje = glob($root . '/app/migrations/*.sql') ?: [];
-$numery = [];
+$dotykajaceHasel = [];
 foreach ($migracje as $plik) {
-    if (preg_match('/(\d{3})_/', basename($plik), $m) === 1) { $numery[] = (int) $m[1]; }
+    $tresc = (string) file_get_contents($plik);
+    // Pomijamy komentarze — migracja 010 opisuje `index_terms` we własnym nagłówku.
+    $kod = preg_replace('/^\s*--.*$/m', '', $tresc) ?? $tresc;
+    if (preg_match('/\b(ALTER\s+TABLE|CREATE\s+TABLE)\s+index_terms\b/i', $kod) === 1
+        && !str_contains(basename($plik), '010_')) {
+        $dotykajaceHasel[] = basename($plik);
+    }
 }
-check('nie dołożono migracji 014', !in_array(14, $numery, true),
-    'tabela z migracji 010 już trzyma wersje klubowe');
+check('żadna migracja po 010 nie rusza index_terms', $dotykajaceHasel === [],
+    implode(', ', $dotykajaceHasel));
+
 
 $login = http('GET', '/login');
 check('zalogowano', http('POST', '/login', ['form' => [

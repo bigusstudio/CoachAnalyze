@@ -7,7 +7,7 @@ import argparse
 import json
 import sys
 
-from . import __version__, canon, coverage, metrics, render, report_template
+from . import __version__, canon, coverage, events as events_mod, metrics, render, report_template
 from .errors import EngineError, MissingColumns
 from .sources.livetag import parse
 
@@ -41,6 +41,10 @@ def build_parser() -> argparse.ArgumentParser:
     b.add_argument("--out-meta", required=True)
     b.add_argument("--out-canon")
     b.add_argument("--out-metrics")
+    # TABELA ZDARZEN (sesja 2 pivotu). OPCJONALNY — bez niego pipeline zachowuje
+    # sie dokladnie jak dotad. Zapis idzie po SUROWYCH nazwach tagow, tak jak
+    # liczy szablon raportu; model kanoniczny jest tu nieuzywany (events.py).
+    b.add_argument("--out-events")
 
     i = sub.add_parser("inspect", help="Sam raport pokrycia, bez renderu")
     i.add_argument("--csv", required=True)
@@ -89,6 +93,38 @@ def write_canon(path, canon_result, config, expected_count):
         "engine_version": __version__,
         "count": len(records),
         "events": records,
+    }
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(payload, fh, ensure_ascii=False, indent=1)
+    return payload
+
+
+def write_events(path, frame, config):
+    """Wiersze tabeli `events` — artefakt dla warstwy PHP.
+
+    Powstaje PRZED renderem, tak samo jak `--out-canon`: awaria szablonu nie może
+    kasować wyniku parsowania.
+
+    Zdarzenia BEZ CZASU są pomijane (kolumna `t_ms` jest `NOT NULL`), a ich liczba
+    wraca w `skipped_no_time` i na stderr. Cicha utrata zdarzenia przy imporcie
+    ujawniłaby się dopiero przy porównaniu z raportem, miesiące później.
+    """
+    wynik = events_mod.build(frame, config=config, players=frame.get("players"))
+
+    if wynik["skipped_no_time"]:
+        print(
+            "UWAGA: {} zdarzeń bez czytelnego czasu — pominięte w tabeli events".format(
+                wynik["skipped_no_time"]
+            ),
+            file=sys.stderr,
+        )
+
+    payload = {
+        "match_id": config.get("match_id"),
+        "engine_version": __version__,
+        "count": len(wynik["events"]),
+        "skipped_no_time": wynik["skipped_no_time"],
+        "events": wynik["events"],
     }
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(payload, fh, ensure_ascii=False, indent=1)
@@ -194,6 +230,8 @@ def cmd_build(args) -> int:
         write_canon(args.out_canon, canon_result, config, len(frame["events"]))
     if args.out_metrics:
         write_json(args.out_metrics, metrics_pack)
+    if getattr(args, "out_events", None):
+        write_events(args.out_events, frame, config)
 
     # COVERAGE TEMPLAT x EKSPORT. Sekcja wlaczona w templacie, ale bez danych
     # w TYM eksporcie, znika z HTML-a i zostaje z powodem w raporcie pokrycia.

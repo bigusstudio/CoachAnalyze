@@ -430,6 +430,78 @@ if ($templatePliki !== []) {
         'przepakowanie po drodze odbieraloby dowodowi wartosc');
 }
 
+// --- Sesja 2: config.match z bazy i tabela events ---
+echo "\n== Sesja 2: meta meczu z bazy i zdarzenia w tabeli ==\n";
+
+$configPliki = glob($magazyn . '/jobs/*/config.json') ?: [];
+check('config zadania zapisany na dysku', $configPliki !== []);
+
+if ($configPliki !== []) {
+    $cfg = json_decode((string) file_get_contents($configPliki[0]), true);
+    $metaMeczu = $cfg['match'] ?? null;
+
+    check('config niesie blok match', is_array($metaMeczu), json_encode($cfg['match'] ?? null));
+    /*
+     * MECZ ZALOZYCIELSKI Z KONFIGURATORA NIE MA METY i to jest poprawny stan:
+     * operator wgral sam eksport, formularza daty ani sezonu nie bylo.
+     *
+     * Pola maja byc PUSTYMI NAPISAMI, nie `null` ani „—": szablon v21 sklada
+     * naglowek z czlonow niepustych, wiec pusty czlon znika razem z separatorem
+     * (CLAUDE.md §8 — brak danych ma byc widoczny, nie zamaskowany).
+     *
+     * Ze meta Z BAZY faktycznie dojezdza do configu, sprawdza
+     * `test_meta_sezon_http.php` — tam mecz ma date i sezon.
+     */
+    foreach (['date', 'season', 'round'] as $pole) {
+        check("brak mety daje pusty napis, nie null ({$pole})",
+            ($metaMeczu[$pole] ?? null) === '', var_export($metaMeczu[$pole] ?? null, true));
+    }
+    /*
+     * Tenant leci do configu dla sesji 4 (lewa strona raportu, STAN_PIVOTU §7.7d).
+     * Render go dzis nie uzywa — pole ma byc na miejscu, zanim bedzie potrzebne.
+     */
+    check('config niesie id klubu-tenanta',
+        ($metaMeczu['tenant_club_id'] ?? null) === 1,
+        var_export($metaMeczu['tenant_club_id'] ?? null, true));
+}
+
+$eventsPliki = glob($magazyn . '/jobs/*/events.json') ?: [];
+check('artefakt zdarzen powstal', $eventsPliki !== [],
+    'bez niego tabela events zostaje pusta, a raport i tak powstaje');
+
+$meczImportu = Db::one('SELECT match_id FROM imports WHERE id = :i',
+    ['i' => (int) $payload['import_id']]);
+$meczId = (int) ($meczImportu['match_id'] ?? 0);
+$zdarzenia = Db::all('SELECT * FROM events WHERE match_id = :m ORDER BY t_ms, id',
+    ['m' => $meczId]);
+check('zdarzenia trafily do tabeli', $zdarzenia !== [], 'wierszy: ' . count($zdarzenia));
+
+if ($zdarzenia !== []) {
+    // Suma zdarzen w tabeli ma sie zgadzac z artefaktem — cicha utrata wiersza
+    // przy wstawianiu ujawnilaby sie dopiero przy porownaniu z raportem.
+    $zPliku = json_decode((string) file_get_contents($eventsPliki[0]), true);
+    check('liczba wierszy zgadza sie z artefaktem silnika',
+        count($zdarzenia) === (int) ($zPliku['count'] ?? -1),
+        count($zdarzenia) . ' w bazie, ' . ($zPliku['count'] ?? '?') . ' w pliku');
+
+    $tagi = array_column($zdarzenia, 'tag_name');
+    check('zapis idzie po SUROWEJ nazwie taga',
+        in_array('STRZAŁ', $tagi, true), implode(', ', array_unique($tagi)));
+
+    $pierwsze = $zdarzenia[0];
+    check('strona druzyny jest jedna z trzech dozwolonych',
+        in_array($pierwsze['team_side'], ['us', 'them', 'none'], true),
+        (string) $pierwsze['team_side']);
+    check('minuta policzona przez silnik i ZAPISANA',
+        $pierwsze['minute'] !== null && (int) $pierwsze['minute'] >= 0);
+    check('etykiety zapisane jako JSON, nie napis z przecinkami',
+        is_array(json_decode((string) $pierwsze['labels_json'], true)),
+        (string) $pierwsze['labels_json']);
+    check('import_id wskazuje wgranie, z ktorego powstaly zdarzenia',
+        (int) ($pierwsze['import_id'] ?? 0) === (int) $payload['import_id'],
+        var_export($pierwsze['import_id'] ?? null, true));
+}
+
 // --- historia wersji ---
 $historia = http('GET', '/klub/1/templaty');
 check('historia wersji odpowiada', $historia['status'] === 200, 'status ' . $historia['status']);
