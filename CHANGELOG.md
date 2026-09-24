@@ -3,6 +3,81 @@
 Format: [wersja silnika] — data — opis.
 Każda zmiana, która modyfikuje wyjście silnika, MUSI mieć tu wpis wraz z powodem.
 
+## Aplikacja — 2026-09-24 · sesja 3,5 pivotu „viewer"
+### Lifting panelu wg `docs/podglad_pulpit_v1.html`
+**Wpis APLIKACJI.** Silnik zmienia się wyłącznie w ucieczce nazw klubów (niżej);
+wyjście renderu dla nazw bez znaków specjalnych jest bit w bit takie samo,
+test złoty nietknięty, wersja silnika NIE podbijana.
+
+- **Arkusz v2 na tokenach wspólnych z szablonem v21.** Panel i raport pokazywały
+  ten sam mecz w dwóch paletach — panel pomarańczowy na chłodnej szarości, raport
+  zielony na ciemnej zieleni. Ten sam klub wyglądał na dwa produkty. Nazwy polskie
+  (`--tlo`, `--akcent`) ZOSTAJĄ jako warstwa zgodności dla 196 selektorów w 41
+  widokach; nazwy z v21 (`--bg`, `--acc`) stoją obok i wskazują na te same barwy.
+- **Fonty self-hosted**, bez jednego odwołania do `fonts.googleapis.com`:
+  Barlow Condensed 500–800, IBM Plex Sans 400–600, IBM Plex Mono 400–500,
+  woff2, podzbiory `latin` + `latin-ext` (polskie znaki), `font-display: swap`.
+  Razem 364 kB w 18 plikach. Panel działa w sieci klubowej, która bywa
+  filtrowana — dwa źródła krojów znaczyłyby, że wygląda inaczej, gdy CDN milczy.
+- **Ciemna szyna boczna, ZAWSZE ciemna**, także w motywie jasnym: kontekst klubu
+  i sezonu u góry, grupy PULPIT · KLUB · NARZĘDZIA · ADMINISTRACJA, liczniki
+  przy pozycjach z istniejących danych, wersja silnika i stan kolejki w stopce.
+  Pozycja bez czego liczyć NIE DOSTAJE licznika — zero obok nazwy wygląda jak
+  awaria danych, a nie jak „nic nie czeka".
+- **Górny pasek**: okruszki, wyszukiwarka prowadząca do istniejącej listy meczów
+  z filtrem `q`, powiadomienia z kropką, motyw, awatar z inicjałami.
+- **Mobile poniżej 900 px**: szyna jako wysuwany panel na `:target` (bez skryptu),
+  górny pasek w dwóch wierszach, tabele przewijane we własnym kontenerze.
+  Sprawdzone na 390 px: ZERO poziomego przewijania na czterech ekranach.
+
+### Pulpit i lista meczów na danych z tabeli `events`
+- Karta „Ostatni mecz": wynik z `SUM(is_goal)` po `team_side`, xG z `SUM(xg)`.
+  **PHP nic tu nie liczy** (CLAUDE.md §4) — `is_goal` i `xg` policzył silnik
+  i zapisał w wierszach (migracja 014); tutaj jest `SUM()` po gotowej kolumnie.
+- **Mecz bez zdarzeń pokazuje KRESKI, nie zera.** Mecz sprzed migracji 014 albo
+  sprzed przeliczenia raportu nie ma jeszcze wierszy, a „0:0" jest wynikiem.
+- Sześć kafli: trzy wypełnione danymi, które są dziś; **trzy z kreską i podpisem
+  „od sesji 3"** — SBZ na mecz, pressing, reakcja na stratę wymagają metryk,
+  których warstwa żądań nie ma. Wpisanie tam czegokolwiek byłoby wymyśloną
+  liczbą pokazaną zarządowi klubu (CLAUDE.md §8, D5).
+- Lista meczów: kolumny Import / Raport / Link jako pastylki. Filtry i
+  stronicowanie bez zmian.
+
+### Dług 7.5 spłacony: nazwy klubów z ucieczką, w DWÓCH kontekstach
+Nazwa klubu pochodzi z bazy, czyli od użytkownika, a raport wisi pod publicznym
+adresem (CLAUDE.md §5). Ucieczka nie może być jedna:
+
+| Znacznik | Kontekst | Ucieczka |
+|---|---|---|
+| `__TEAM_*_LABEL__`, `__TEAM_*_SHORT__` | treść HTML i literał szablonowy | HTML |
+| `__TEAM_*__` | **literał JS porównywany ze zdarzeniami** (`e.team === HUT`) | JS, **nigdy HTML** |
+
+Ucieczka HTML w drugim przypadku zamieniłaby `&` na `&amp;` i klub „Test & Spółka"
+dostałby raport z ZEREM własnych zdarzeń — po obu stronach porównania stałyby
+różne napisy, bez żadnego ostrzeżenia. `view_data()` przepuszcza nazwę przez tę
+samą funkcję, więc obie strony porównania są z definicji identyczne.
+Test na nazwie `<Test & Spółka's>`.
+
+### Poprawione przy okazji
+- `Stats::seasonMatches()` powtarzał symbol nazwany `:tag` — PDO bez emulacji
+  tego nie przyjmuje. Złapał to `test_sql_parametry.php`.
+- Zmienne murawy kalkulatora xG wypadły z bloku `prefers-color-scheme` przy
+  przepisywaniu tokenów. Złapał to `test_xg_boisko.php`.
+- `app/tests/podglad_router.php`: router wbudowanego serwera do podglądu.
+  Bez niego `php -S … index.php` kieruje do routera także `/assets/app.css`,
+  a strona renderuje się BEZ STYLÓW i wygląda na zepsutą. Kosztowało to jedną
+  turę zrzutów ekranu — wszystkie cztery wyszły identyczne, bo były tą samą
+  stroną logowania bez arkusza.
+
+### Rozszerzenie odstępstwa na skrypty — ZATWIERDZONE
+`layout.php` niesie **jeden skrypt inline w `<head>`**, ustawiający motyw przed
+pierwszym malowaniem. Nie da się tego zrobić plikiem zewnętrznym: ten wczytuje
+się PO pierwszym malowaniu, czyli za późno, a skutkiem jest mignięcie jasnym
+tłem przy każdym wejściu na każdą podstronę. **Liczba PLIKÓW skryptu nadal
+wynosi jeden.** Granice pilnuje `test_chmurki.php`: jeden inline, wyłącznie
+w `<head>`, wyłącznie o motywie, bez ani jednego polskiego zdania, poniżej
+400 znaków.
+
 ## [0.13.1] — 2026-09-24
 ### Dostępność sekcji i xG po surowych tagach templatu
 **Naprawa. Odbiór sesji 1 na serwerze tego nie przeszedł.**

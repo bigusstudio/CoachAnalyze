@@ -28,9 +28,9 @@ $link = static function (array $zmiany) use ($filtr, $basePath): string {
     return $basePath . ($q === [] ? '' : '?' . http_build_query($q));
 };
 ?>
-<div class="actions actions--head">
-  <h1 class="h1"><?= View::e($club !== null ? View::t('nav.matches') : View::t('matches.title')) ?></h1>
-  <a class="btn btn--ghost" href="<?= $club !== null ? '/klub/' . (int) $club['id'] . '/import' : '/import' ?>">
+<div class="head">
+  <h1><?= View::e($club !== null ? View::t('nav.matches') : View::t('matches.title')) ?></h1>
+  <a class="btn p" href="<?= $club !== null ? '/klub/' . (int) $club['id'] . '/import' : '/import' ?>">
     <?= View::e(View::t('import.nav')) ?>
   </a>
 </div>
@@ -39,7 +39,7 @@ $link = static function (array $zmiany) use ($filtr, $basePath): string {
   <p class="notice" role="status"><?= View::e($notice) ?></p>
 <?php endif; ?>
 
-<section class="panel">
+<section class="card">
   <form class="filtr" method="get" action="<?= View::e($basePath) ?>">
     <?php if ($club === null): ?>
     <label class="field">
@@ -82,7 +82,7 @@ $link = static function (array $zmiany) use ($filtr, $basePath): string {
   </form>
 </section>
 
-<section class="panel">
+<section class="card">
   <?php if ($rows === []): ?>
     <p class="empty">
       <?= View::e(View::t($wynik['total'] === 0 && empty($filtr['klub']) && empty($filtr['sezon'])
@@ -91,6 +91,7 @@ $link = static function (array $zmiany) use ($filtr, $basePath): string {
     </p>
   <?php else: ?>
     <p class="hint"><?= View::e(View::t('matches.count', $wynik['total'], $wynik['page'], $wynik['pages'])) ?></p>
+    <div class="tbl-scroll">
     <table class="tbl">
       <thead>
         <tr>
@@ -98,6 +99,9 @@ $link = static function (array $zmiany) use ($filtr, $basePath): string {
           <th><?= View::e(View::t('match.us')) ?></th>
           <th><?= View::e(View::t('match.them')) ?></th>
           <th><?= View::e(View::t('matches.season')) ?></th>
+          <th><?= View::e(View::t('dash.pill.import')) ?></th>
+          <th><?= View::e(View::t('dash.pill.report')) ?></th>
+          <th><?= View::e(View::t('dash.pill.link')) ?></th>
           <th><?= View::e(View::t('match.status')) ?></th>
           <th><?= View::e(View::t('match.action')) ?></th>
         </tr>
@@ -117,6 +121,29 @@ $link = static function (array $zmiany) use ($filtr, $basePath): string {
           <td><?= !empty($m['season_label'])
               ? View::e((string) $m['season_label'])
               : '<span class="muted">' . View::e(View::t('common.dash')) . '</span>' ?></td>
+          <?php /*
+            TRZY PASTYLKI STANU. Każda mówi o innym kroku drogi meczu: wgrany
+            eksport, wygenerowany raport, działający link publiczny. Dotąd
+            trzeba było wejść w mecz, żeby się tego dowiedzieć.
+
+            Dane pochodzą WYŁĄCZNIE z wiersza, który tabela już ma — żadnego
+            dodatkowego zapytania na wiersz.
+          */ ?>
+          <td>
+            <span class="pill<?= !empty($m['import_id']) ? ' pill--ok' : '' ?>"><i></i>
+              <?= View::e(View::t(!empty($m['import_id']) ? 'common.yes' : 'common.dash')) ?>
+            </span>
+          </td>
+          <td>
+            <span class="pill<?= ($m['status'] ?? '') === 'done' ? ' pill--ok' : (($m['status'] ?? '') === 'failed' ? ' pill--bad' : '') ?>"><i></i>
+              <?= View::e(View::t(($m['status'] ?? '') === 'done' ? 'common.yes' : 'common.dash')) ?>
+            </span>
+          </td>
+          <td>
+            <?php /* Link publiczny: kolumny nie ma w tym zapytaniu, więc kreska
+                     i odsyłacz do listy linków — nie zgadujemy stanu. */ ?>
+            <a class="pill pill--club" href="/linki"><i></i><?= View::e(View::t('dash.pill.link')) ?></a>
+          </td>
           <td><?= View::status((string) $m['status']) ?></td>
           <td class="akcje">
             <?php if (!empty($m['import_id'])): ?>
@@ -132,6 +159,7 @@ $link = static function (array $zmiany) use ($filtr, $basePath): string {
       <?php endforeach; ?>
       </tbody>
     </table>
+    </div>
 
     <?php if ($wynik['pages'] > 1): ?>
       <nav class="strony" aria-label="<?= View::e(View::t('matches.pages')) ?>">

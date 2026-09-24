@@ -278,6 +278,8 @@ switch (true) {
         break;
 
     case $path === '/pulpit' && $method === 'GET':
+        $sezonPulpitu = Stats::currentSeason();
+        $ostatniMecz  = Stats::lastFinishedMatch();
         View::page('dashboard', [
             'title'    => View::t('dash.title'),
             'active'   => 'pulpit',
@@ -286,6 +288,14 @@ switch (true) {
             'jobs'     => Stats::jobsNeedingAttention(),
             'alerts'   => \CoachAnalyze\Alerts::all(),
             'notice'   => Session::flash('notice'),
+            // Sesja 3,5 — liczby ze zdarzeń (tabela `events`, migracja 014).
+            'season'      => $sezonPulpitu,
+            'lastMatch'   => $ostatniMecz,
+            'lastFacts'   => $ostatniMecz !== null
+                ? Stats::matchFacts((int) $ostatniMecz['id']) : null,
+            'seasonRows'  => Stats::seasonMatches(
+                $sezonPulpitu !== null ? (int) $sezonPulpitu['id'] : null, 40
+            ),
         ]);
         break;
 
@@ -735,6 +745,29 @@ switch (true) {
 
     case preg_match('#^/mecze/(\\d+)/notatki$#', $path, $m) === 1 && $method === 'GET':
         showMatchNotes((int) $m[1]);
+        break;
+
+    /*
+     * Pozycje szyny, których widok jeszcze nie powstał (sesja 3,5).
+     *
+     * Strona zapowiedzi zamiast 404: menu pokazuje docelowy kształt panelu,
+     * a operator dowiaduje się, że funkcja jest w planie, a nie że kliknął zły
+     * adres. Trasy są czysto prezentacyjne — nic nie czytają i nic nie zapisują.
+     */
+    case $path === '/zawodnicy' && $method === 'GET':
+        View::page('soon', [
+            'title'   => View::t('nav.players'),
+            'active'  => 'players',
+            'heading' => View::t('nav.players'),
+        ]);
+        break;
+
+    case $path === '/kalendarz' && $method === 'GET':
+        View::page('soon', [
+            'title'   => View::t('nav.calendar'),
+            'active'  => 'calendar',
+            'heading' => View::t('nav.calendar'),
+        ]);
         break;
 
     // -------------------------------------------------------- notatnik (Etap 6)

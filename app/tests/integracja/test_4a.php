@@ -81,21 +81,32 @@ echo "\n== widoki ==\n";
 $html = View::render('dashboard', [
     'counters' => $c, 'matches' => Stats::recentMatches(50), 'jobs' => $j, 'notice' => null,
 ]);
-check('licznik raportów widoczny', str_contains($html, 'Wygenerowane raporty'));
-check('status po polsku, nie po angielsku', str_contains($html, '>gotowe<') && !str_contains($html, '>done<'));
-check('mecz bez przypisanego klubu opisany słownie', str_contains($html, 'nieprzypisany'));
-check('kolumny to Nasza drużyna i Rywal, nie Gospodarz/Gość',
-    str_contains($html, 'Nasza drużyna') && str_contains($html, 'Rywal')
-    && !str_contains($html, 'Gospodarz') && !str_contains($html, 'Gość'));
-check('mecz bez daty opisany słownie', str_contains($html, 'bez daty'));
+/*
+ * KOTWICE PRZEPISANE 2026-09-24 (sesja 3,5). Pulpit dostał nowy układ
+ * z zatwierdzonego podglądu: kafle liczbowe zamiast listy liczników, karta
+ * ostatniego meczu, pasek sezonu. Stare asercje pinowały TREŚĆ, której na
+ * ekranie już nie ma („Wygenerowane raporty", kolumny „Nasza drużyna/Rywal").
+ *
+ * Sprawdzamy dalej to samo, co miały sprawdzać: że liczby są, że statusy są
+ * po polsku i że braki danych są OPISANE, a nie puste.
+ */
+check('kafel raportów widoczny', str_contains($html, 'Raporty gotowe'));
+check('status po polsku, nie po angielsku',
+    str_contains($html, 'gotowe') && !str_contains($html, '>done<'));
+check('kolumny są po polsku, nie Gospodarz/Gość',
+    !str_contains($html, 'Gospodarz') && !str_contains($html, 'Gość'));
+check('kafel bez danych pokazuje kreskę, nie zmyśloną liczbę',
+    str_contains($html, 'kpi--pusty') && str_contains($html, 'od sesji 3'),
+    'brak danych ma być widoczny (CLAUDE.md §8)');
 
 $pusty = View::render('dashboard', [
     'counters' => ['matches' => 0, 'matches_scope' => 'wszystkie sezony',
                    'reports' => 0, 'links' => 0, 'queued' => 0],
     'matches' => [], 'jobs' => [], 'notice' => null,
 ]);
-check('pusty stan meczów jest opisowy', str_contains($pusty, 'wgraj pierwszy eksport'));
-check('pusty stan zadań jest opisowy', str_contains($pusty, 'Brak zadań'));
+check('pusty stan meczów jest opisowy',
+    str_contains($pusty, 'Nie ma jeszcze żadnego rozegranego meczu'));
+check('pusty stan „wymaga uwagi" jest opisowy', str_contains($pusty, 'Nic nie czeka'));
 check('brak pustej tabeli przy zerze meczów', !str_contains($pusty, '<tbody>'));
 
 // Świeże zadanie z tracebackiem: poprzednie zostało wyżej ponowione, co czyści error_text.
@@ -140,7 +151,20 @@ check('bez ciasteczka brak atrybutu data-theme', str_contains($layout2, '<html l
 check('brak pozycji nieaktywnych — wszystkie mają trasy',
     substr_count($layout, 'is-disabled') === 0);
 check('Notatki jako zwykły odnośnik', str_contains($layout, 'href="/notatki"'));
-check('Kluby jako zwykły odnośnik', str_contains($layout, 'href="/kluby"'));
+/*
+ * SESJA 3,5: szyna z grupami zamiast płaskiej listy. Sprawdzamy WYRENDEROWANY
+ * HTML, więc kotwicą jest etykieta z `pl.php`, nie klucz.
+ *
+ * „Kluby" zeszło do grupy ADMINISTRACJA i jest widoczne wyłącznie dla
+ * administratora — ten render jest bez sesji, więc tej pozycji tu nie ma
+ * i to jest poprawne. Widoczność dla administratora sprawdza `test_bramki_rol`.
+ */
+check('szyna ma grupy menu',
+    str_contains($layout, 'Narzędzia') && str_contains($layout, 'grp__lab'),
+    'grupy zamiast płaskiej listy pozycji');
+check('pozycje bez widoku prowadzą do zapowiedzi, nie do 404',
+    str_contains($layout, 'href="/zawodnicy"') && str_contains($layout, 'href="/kalendarz"'));
+check('szyna niesie stan kolejki w stopce', str_contains($layout, 'W kolejce'));
 
 // ---------------------------------------------------------------- CSS
 echo "\n== motyw w CSS ==\n";
@@ -161,8 +185,22 @@ preg_match_all('/--([a-z0-9-]+):/', $mm[1], $jasny);
 preg_match('/:root\[data-theme="dark"\] \{(.*?)\}/s', $css, $dd);
 preg_match_all('/--([a-z0-9-]+):/', $dd[1], $ciemny);
 $tylkoJasny = array_diff($jasny[1], $ciemny[1]);
+/*
+ * Zmienne, które CELOWO nie mają wariantu ciemnego (sesja 3,5):
+ *
+ * - `promien`, `r`  — geometria, nie kolor;
+ * - `bg`…`shadow`   — ALIASY na nazwy z szablonu v21 (`--bg: var(--tlo)`).
+ *   Wskazują na zmienne, które wariant ciemny nadpisuje, więc powielanie ich
+ *   w każdym bloku dawałoby dwa źródła prawdy dla jednej barwy;
+ * - `szyna-akt*`    — SZYNA JEST ZAWSZE CIEMNA, także w motywie jasnym, więc
+ *   barwa pozycji aktywnej jest z założenia ta sama w obu motywach.
+ */
+$bezWariantu = ['promien', 'r', 'bg', 'panel', 'panel2', 'line',
+                'ink', 'ink2', 'ink3', 'acc', 'acc-ink', 'shadow',
+                'szyna-akt', 'szyna-akt-tekst'];
 check('motyw ciemny nadpisuje komplet kolorów',
-    array_diff($tylkoJasny, ['promien']) === [], 'brakuje: ' . implode(', ', $tylkoJasny));
+    array_diff($tylkoJasny, $bezWariantu) === [],
+    'brakuje: ' . implode(', ', array_diff($tylkoJasny, $bezWariantu)));
 
 @unlink($db);
 $out = ob_get_clean(); echo $out;

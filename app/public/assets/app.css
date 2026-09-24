@@ -1,81 +1,205 @@
-/* CoachAnalyze — panel operatora.
+/* CoachAnalyze — panel operatora. ARKUSZ v2 (sesja 3,5).
  *
- * ZASADA: wszystkie kolory wyłącznie przez zmienne. Poza tym plikiem (a w nim —
- * poza blokami :root / [data-theme]) nie ma prawa pojawić się żadna wartość
- * szesnastkowa. Przełącznik motywu przestaje wtedy być pracą do wykonania
- * i staje się podmianą jednego zestawu zmiennych.
+ * ZASADA BEZ ZMIAN: wszystkie kolory wyłącznie przez zmienne. Poza blokami
+ * :root / [data-theme] nie ma prawa pojawić się żadna wartość szesnastkowa.
+ *
+ * ═══════════════════════════════════════════════════════════════════════════
+ * TOKENY SĄ WSPÓLNE Z SZABLONEM RAPORTU v21 i to jest cały sens tej wersji.
+ *
+ * Panel i raport pokazywał dotąd ten sam mecz w dwóch różnych paletach: panel
+ * pomarańczowy na chłodnej szarości, raport zielony na ciemnej zieleni. Ten sam
+ * klub wyglądał na dwa różne produkty. Wartości poniżej są przepisane z v21
+ * (i z zatwierdzonego podglądu `docs/podglad_pulpit_v1.html`), więc przejście
+ * z listy meczów do raportu przestaje być zmianą świata.
+ *
+ * NAZWY POLSKIE ZOSTAJĄ jako warstwa zgodności. 196 selektorów w 41 widokach
+ * używa `--tlo`, `--akcent`, `--tekst-slaby`; przemianowanie ich na `--bg`
+ * i `--acc` byłoby przepisywaniem całego arkusza po to, żeby nic się nie
+ * zmieniło. Nowe nazwy z v21 są zdefiniowane obok i jedne wskazują na drugie.
+ * ═══════════════════════════════════════════════════════════════════════════
  *
  * Motyw domyślny bierze się z prefers-color-scheme. Jawny wybór użytkownika
  * nadpisuje go atrybutem data-theme na <html>, ustawianym po stronie serwera
- * z ciasteczka — dzięki temu nie ma mignięcia przy pierwszym renderze.
+ * z ciasteczka ORAZ przez skrypt inline w <head> (localStorage) — dzięki temu
+ * nie ma mignięcia przy pierwszym renderze w żadnym z dwóch przypadków.
  */
 
+/* ───────────────────────────────────────────────────────── fonty (self-hosted)
+ *
+ * ŻADNEGO ODWOŁANIA DO fonts.googleapis.com. Panel działa w sieci klubowej,
+ * która bywa filtrowana, a raport i tak musi być samowystarczalny — dwa różne
+ * źródła krojów znaczyłyby, że panel wygląda inaczej, gdy CDN nie odpowie.
+ *
+ * Podzbiory `latin` i `latin-ext`: ten drugi niesie polskie znaki diakrytyczne.
+ * Bez niego „Jędrzejów" renderuje się krojem zastępczym w połowie wyrazu.
+ * `font-display: swap` — tekst widoczny od pierwszej klatki, bez pustych pól.
+ */
+@font-face{font-family:'Barlow Condensed';font-style:normal;font-weight:500;font-display:swap;src:url('/assets/fonts/barlow-condensed-500-latin-ext.woff2') format('woff2');unicode-range:U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF}
+@font-face{font-family:'Barlow Condensed';font-style:normal;font-weight:500;font-display:swap;src:url('/assets/fonts/barlow-condensed-500-latin.woff2') format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD}
+@font-face{font-family:'Barlow Condensed';font-style:normal;font-weight:600;font-display:swap;src:url('/assets/fonts/barlow-condensed-600-latin-ext.woff2') format('woff2');unicode-range:U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF}
+@font-face{font-family:'Barlow Condensed';font-style:normal;font-weight:600;font-display:swap;src:url('/assets/fonts/barlow-condensed-600-latin.woff2') format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD}
+@font-face{font-family:'Barlow Condensed';font-style:normal;font-weight:700;font-display:swap;src:url('/assets/fonts/barlow-condensed-700-latin-ext.woff2') format('woff2');unicode-range:U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF}
+@font-face{font-family:'Barlow Condensed';font-style:normal;font-weight:700;font-display:swap;src:url('/assets/fonts/barlow-condensed-700-latin.woff2') format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD}
+@font-face{font-family:'Barlow Condensed';font-style:normal;font-weight:800;font-display:swap;src:url('/assets/fonts/barlow-condensed-800-latin-ext.woff2') format('woff2');unicode-range:U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF}
+@font-face{font-family:'Barlow Condensed';font-style:normal;font-weight:800;font-display:swap;src:url('/assets/fonts/barlow-condensed-800-latin.woff2') format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD}
+@font-face{font-family:'IBM Plex Sans';font-style:normal;font-weight:400;font-display:swap;src:url('/assets/fonts/ibm-plex-sans-400-latin-ext.woff2') format('woff2');unicode-range:U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF}
+@font-face{font-family:'IBM Plex Sans';font-style:normal;font-weight:400;font-display:swap;src:url('/assets/fonts/ibm-plex-sans-400-latin.woff2') format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD}
+@font-face{font-family:'IBM Plex Sans';font-style:normal;font-weight:500;font-display:swap;src:url('/assets/fonts/ibm-plex-sans-500-latin-ext.woff2') format('woff2');unicode-range:U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF}
+@font-face{font-family:'IBM Plex Sans';font-style:normal;font-weight:500;font-display:swap;src:url('/assets/fonts/ibm-plex-sans-500-latin.woff2') format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD}
+@font-face{font-family:'IBM Plex Sans';font-style:normal;font-weight:600;font-display:swap;src:url('/assets/fonts/ibm-plex-sans-600-latin-ext.woff2') format('woff2');unicode-range:U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF}
+@font-face{font-family:'IBM Plex Sans';font-style:normal;font-weight:600;font-display:swap;src:url('/assets/fonts/ibm-plex-sans-600-latin.woff2') format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD}
+@font-face{font-family:'IBM Plex Mono';font-style:normal;font-weight:400;font-display:swap;src:url('/assets/fonts/ibm-plex-mono-400-latin-ext.woff2') format('woff2');unicode-range:U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF}
+@font-face{font-family:'IBM Plex Mono';font-style:normal;font-weight:400;font-display:swap;src:url('/assets/fonts/ibm-plex-mono-400-latin.woff2') format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD}
+@font-face{font-family:'IBM Plex Mono';font-style:normal;font-weight:500;font-display:swap;src:url('/assets/fonts/ibm-plex-mono-500-latin-ext.woff2') format('woff2');unicode-range:U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF}
+@font-face{font-family:'IBM Plex Mono';font-style:normal;font-weight:500;font-display:swap;src:url('/assets/fonts/ibm-plex-mono-500-latin.woff2') format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD}
+
+/* ──────────────────────────────────────────────────────────────── tokeny
+ * Wartości z szablonu v21 i z zatwierdzonego podglądu pulpitu.
+ * Nazwy polskie = warstwa zgodności dla 41 widoków; nazwy z v21 obok. */
 :root {
-  --tlo:            #F4F6F8;
+  --tlo:            #F2F4F1;
   --tlo-panel:      #FFFFFF;
   --tlo-pole:       #FFFFFF;
-  --tekst:          #1B2430;
-  --tekst-slaby:    #5A6B7B;
-  --obramowanie:    #D6DEE6;
-  --akcent:         #C25A16;
+  --tlo-drugi:      #EDF1ED;
+  --tekst:          #12201A;
+  --tekst-slaby:    #4B5E54;
+  --tekst-slabszy:  #7C8E84;
+  --obramowanie:    #D9E1DA;
+  --akcent:         #1E4D3A;
   --akcent-tekst:   #FFFFFF;
-  --blad-tlo:       #FDECEA;
-  --blad-tekst:     #8C1D13;
-  --info-tlo:       #E8F1FB;
-  --info-tekst:     #14405F;
-  --murawa:        #20402A;
-  --murawa-siatka: #FFFFFF;
-  --strzal:        #E8722C;
-  --strzal-obrys:  #FFFFFF;
-  --cien:           0 1px 2px rgb(27 36 48 / 8%), 0 8px 24px rgb(27 36 48 / 6%);
-  --promien:        10px;
+  --akcent-mikkie:  #DCE9E1;
+  /* Barwy klubu i rywala. Podmieniane w layout.php z `clubs.color_primary`
+     — tutaj stoi wartość, gdy kontekstu klubu nie ma. */
+  --klub:           #2B5FD9;
+  --klub-mikkie:    #DCE5F8;
+  --rywal:          #A8780A;
+  --ok:             #1F8A4C;
+  --ostrzezenie:    #B7791F;
+  --blad:           #C6423A;
+  --ok-mikkie:      #DFF1E6;
+  --ostrzez-mikkie: #F6EBD4;
+  --blad-mikkie:    #F7DEDC;
+  --blad-tlo:       #F7DEDC;
+  --blad-tekst:     #C6423A;
+  --info-tlo:       #DCE9E1;
+  --info-tekst:     #1E4D3A;
+  /* SZYNA JEST ZAWSZE CIEMNA, także w motywie jasnym. To nie jest
+     niedopatrzenie: ciemny pas po lewej trzyma wzrok na treści i sprawia,
+     że przełączenie motywu nie przestawia całego ekranu. */
+  --szyna-tlo:      #12201A;
+  --szyna-tekst:    #C9D3CC;
+  --szyna-tekst2:   #7C8E84;
+  --szyna-akt:      #1E4D3A;
+  --szyna-akt-tekst:#FFFFFF;
+  --murawa:         #131E19;
+  --murawa-siatka:  #FFFFFF;
+  --strzal:         #E8722C;
+  --strzal-obrys:   #FFFFFF;
+  --cien:           0 1px 2px rgb(18 32 26 / 6%), 0 10px 30px rgb(18 32 26 / 6%);
+  --promien:        12px;
+
+  /* Nazwy z v21 — dla nowych komponentów pulpitu. */
+  --bg: var(--tlo); --panel: var(--tlo-panel); --panel2: var(--tlo-drugi);
+  --line: var(--obramowanie); --ink: var(--tekst); --ink2: var(--tekst-slaby);
+  --ink3: var(--tekst-slabszy); --acc: var(--akcent); --acc-ink: var(--akcent-tekst);
+  --r: var(--promien); --shadow: var(--cien);
+
+  /* Herb klubu jest projektowany pod BIAŁE tło i takie zostaje w obu
+     motywach — herb na ciemnym polu bywa nieczytelny. Szyna jest zawsze
+     ciemna, więc jej tytuł też jest stały. */
+  --herb-tlo:       #FFFFFF;
+  --szyna-tytul:    #FFFFFF;
+  color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --tlo:          #10151B;
-    --tlo-panel:    #182029;
-    --tlo-pole:     #10161D;
-    --tekst:        #E7EDF3;
-    --tekst-slaby:  #9DAFBF;
-    --obramowanie:  #2A3642;
-    --akcent:       #E8722C;
-    --akcent-tekst: #10151B;
-    --blad-tlo:     #3A1714;
-    --blad-tekst:   #F5B8B1;
-    --info-tlo:     #12293C;
-    --info-tekst:   #BBD8F0;
-    --ok-obram:     #3FA46A;
-    --ok-tekst:     #7FD3A3;
-    --murawa:        #20402A;
-    --murawa-siatka: #FFFFFF;
-    --strzal:        #E8722C;
-    --strzal-obrys:  #FFFFFF;
-    --cien:         0 1px 2px rgb(0 0 0 / 40%), 0 8px 24px rgb(0 0 0 / 30%);
+    --tlo:            #0F1614;
+    --tlo-panel:      #161F1C;
+    --tlo-pole:       #0F1614;
+    --tlo-drugi:      #1B2622;
+    --tekst:          #E9EFEA;
+    --tekst-slaby:    #9DAFA6;
+    --tekst-slabszy:  #647A70;
+    --obramowanie:    #26332E;
+    --akcent:         #4EC98A;
+    --akcent-tekst:   #0F1614;
+    --akcent-mikkie:  #173327;
+    --klub:           #5B8DEF;
+    --klub-mikkie:    #1B2A45;
+    --rywal:          #E8C558;
+    --ok:             #4EC98A;
+    --ostrzezenie:    #E8C558;
+    --blad:           #E0655C;
+    --ok-mikkie:      #173327;
+    --ostrzez-mikkie: #3A3117;
+    --blad-mikkie:    #3A1F1C;
+    --blad-tlo:       #3A1F1C;
+    --blad-tekst:     #E0655C;
+    --info-tlo:       #173327;
+    --info-tekst:     #4EC98A;
+    --szyna-tlo:      #0B100E;
+    --szyna-tekst:    #9DAFA6;
+    --szyna-tekst2:   #647A70;
+    --ok-obram:       #3FA46A;
+    --ok-tekst:       #4EC98A;
+    /* Boisko kalkulatora xG. Murawa jest ciemna w OBU motywach — znaczniki
+       strzałów są dobrane pod ciemne tło i na jasnym przestają być czytelne. */
+    --murawa:         #131E19;
+    --murawa-siatka:  #FFFFFF;
+    --strzal:         #E8722C;
+    --strzal-obrys:   #FFFFFF;
+    --cien:           0 1px 2px rgb(0 0 0 / 40%), 0 10px 30px rgb(0 0 0 / 35%);
+    /* Herb klubu jest projektowany pod BIAŁE tło i takie zostaje w obu
+       motywach — herb na ciemnym polu bywa nieczytelny. Szyna jest zawsze
+       ciemna, więc jej tytuł też jest stały. */
+    --herb-tlo:       #FFFFFF;
+    --szyna-tytul:    #FFFFFF;
+    color-scheme: dark;
   }
 }
 
-/* Jawny wybór wygrywa w obie strony — także gdy system mówi coś innego. */
 :root[data-theme="dark"] {
-  --tlo:          #10151B;
-  --tlo-panel:    #182029;
-  --tlo-pole:     #10161D;
-  --tekst:        #E7EDF3;
-  --tekst-slaby:  #9DAFBF;
-  --obramowanie:  #2A3642;
-  --akcent:       #E8722C;
-  --akcent-tekst: #10151B;
-  --blad-tlo:     #3A1714;
-  --blad-tekst:   #F5B8B1;
-  --info-tlo:     #12293C;
-  --info-tekst:   #BBD8F0;
-  --ok-obram:     #3FA46A;
-  --ok-tekst:     #7FD3A3;
-  --murawa:        #20402A;
-  --murawa-siatka: #FFFFFF;
-  --strzal:        #E8722C;
-  --strzal-obrys:  #FFFFFF;
-  --cien:         0 1px 2px rgb(0 0 0 / 40%), 0 8px 24px rgb(0 0 0 / 30%);
+  --tlo:            #0F1614;
+  --tlo-panel:      #161F1C;
+  --tlo-pole:       #0F1614;
+  --tlo-drugi:      #1B2622;
+  --tekst:          #E9EFEA;
+  --tekst-slaby:    #9DAFA6;
+  --tekst-slabszy:  #647A70;
+  --obramowanie:    #26332E;
+  --akcent:         #4EC98A;
+  --akcent-tekst:   #0F1614;
+  --akcent-mikkie:  #173327;
+  --klub:           #5B8DEF;
+  --klub-mikkie:    #1B2A45;
+  --rywal:          #E8C558;
+  --ok:             #4EC98A;
+  --ostrzezenie:    #E8C558;
+  --blad:           #E0655C;
+  --ok-mikkie:      #173327;
+  --ostrzez-mikkie: #3A3117;
+  --blad-mikkie:    #3A1F1C;
+  --blad-tlo:       #3A1F1C;
+  --blad-tekst:     #E0655C;
+  --info-tlo:       #173327;
+  --info-tekst:     #4EC98A;
+  --szyna-tlo:      #0B100E;
+  --szyna-tekst:    #9DAFA6;
+  --szyna-tekst2:   #647A70;
+  --ok-obram:       #3FA46A;
+  --ok-tekst:       #4EC98A;
+  --murawa:         #131E19;
+  --murawa-siatka:  #FFFFFF;
+  --strzal:         #E8722C;
+  --strzal-obrys:   #FFFFFF;
+  --cien:           0 1px 2px rgb(0 0 0 / 40%), 0 10px 30px rgb(0 0 0 / 35%);
+  /* Herb klubu jest projektowany pod BIAŁE tło i takie zostaje w obu
+     motywach — herb na ciemnym polu bywa nieczytelny. Szyna jest zawsze
+     ciemna, więc jej tytuł też jest stały. */
+  --herb-tlo:       #FFFFFF;
+  --szyna-tytul:    #FFFFFF;
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -156,76 +280,276 @@ body {
 .alert  { background: var(--blad-tlo); color: var(--blad-tekst); }
 .notice { background: var(--info-tlo); color: var(--info-tekst); }
 
-/* --- szkielet panelu --- */
-.shell {
-  min-height: 100dvh;
-  display: grid;
-  grid-template-columns: 220px 1fr;
-  grid-template-rows: auto 1fr auto;
-  grid-template-areas:
-    "top  top"
-    "side main"
-    "foot foot";
-}
-
-.top {
-  grid-area: top;
-  display: flex;
+/* ─────────────────────────────────────────────────────── przyciski (v2)
+ *
+ * `.btn` zostaje pełnej szerokości, bo tak używa go KAŻDY formularz w panelu
+ * (logowanie, filtry, zapis) i zmiana tego przestawiłaby 41 widoków naraz.
+ *
+ * Warianty z podglądu dokładają się obok:
+ *   `.btn.p` — JEDEN przycisk podstawowy na ekran, wypełniony akcentem;
+ *   `.btn.s` — mały, do kolumny akcji w tabeli.
+ * Oba są `inline-flex` i `width: auto` — inaczej wiersz tabeli rozpychał się
+ * na całą szerokość, a przyciski układały się jeden pod drugim.
+ */
+.btn.p, .btn.s {
+  width: auto;
+  margin-top: 0;
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 12px 20px;
-  background: var(--tlo-panel);
-  border-bottom: 1px solid var(--obramowanie);
+  gap: 8px;
+  text-decoration: none;
 }
-
-.brand { text-decoration: none; color: inherit; display: flex; align-items: baseline; gap: 8px; }
-.brand__name { font-weight: 700; letter-spacing: -0.01em; }
-.brand__tag { font-size: 13px; color: var(--tekst-slaby); }
-
-.top__actions { display: flex; gap: 8px; align-items: center; margin: 0; }
-
-.side {
-  grid-area: side;
-  padding: 16px 12px;
-  border-right: 1px solid var(--obramowanie);
+.btn.p {
+  background: var(--akcent);
+  border-color: var(--akcent);
+  color: var(--akcent-tekst);
+  font-weight: 600;
+  border-radius: 9px;
+  padding: 8px 14px;
+}
+.btn.s {
+  padding: 6px 10px;
+  font-size: 12px;
+  border-radius: 7px;
   background: var(--tlo-panel);
+  border: 1px solid var(--obramowanie);
+  color: var(--tekst);
+  font-weight: 500;
+}
+.btn.s:hover { background: var(--tlo-drugi); filter: none; }
+
+/* ══════════════════════════════════════════════════ szkielet panelu (v2) */
+
+body { font: 14px/1.5 'IBM Plex Sans', system-ui, -apple-system, sans-serif; }
+h1, h2, h3, .h1, .h2, .h3, .num, .cond, .kpi .v, .res, .sc {
+  font-family: 'Barlow Condensed', 'Arial Narrow', system-ui, sans-serif;
+}
+.mono, td.num, th.num { font-family: 'IBM Plex Mono', ui-monospace, monospace; }
+
+/* Odnośniki w powłoce nie są podkreślane — podkreślenie zostaje dla treści,
+   gdzie faktycznie znaczy „to jest odnośnik". */
+.rail a, .top a, .card > h2 a, .q, .pill { text-decoration: none; }
+
+.shell { min-height: 100dvh; display: grid; grid-template-columns: 232px 1fr; }
+
+/* ───────────────────────────────────────────── szyna boczna (zawsze ciemna) */
+.rail {
+  background: var(--szyna-tlo);
+  color: var(--szyna-tekst);
+  padding: 18px 14px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 18px;
+  position: sticky;
+  top: 0;
+  height: 100dvh;
+  overflow-y: auto;
 }
+.rail .brand {
+  display: flex; align-items: center; gap: 10px;
+  padding: 2px 6px 10px; border-bottom: 1px solid rgb(255 255 255 / 8%);
+}
+.rail .brand__logo {
+  width: 32px; height: 32px; border-radius: 8px; background: var(--akcent);
+  display: grid; place-items: center; color: var(--akcent-tekst);
+  font: 800 15px 'Barlow Condensed', sans-serif;
+}
+.rail .brand__name { font: 700 18px 'Barlow Condensed', sans-serif; letter-spacing: .03em; color: var(--szyna-tytul); display: block; line-height: 1; }
+.rail .brand__tag  { font-size: 10.5px; color: var(--szyna-tekst2); letter-spacing: .1em; text-transform: uppercase; }
 
-.side__item {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 9px 12px;
-  border-radius: 8px;
-  color: var(--tekst);
+/* Kontekst klubu i sezonu — u góry, bo to pierwsza rzecz, którą trzeba wiedzieć. */
+.ctx {
+  background: rgb(255 255 255 / 5%); border: 1px solid rgb(255 255 255 / 8%);
+  border-radius: 10px; padding: 10px 12px; display: flex; gap: 10px; align-items: center;
+  color: inherit; text-decoration: none;
+}
+.ctx__crest { width: 34px; height: 34px; border-radius: 50%; background: var(--herb-tlo); display: grid; place-items: center; flex: none; overflow: hidden; }
+.ctx__crest img { width: 28px; height: 28px; object-fit: contain; }
+.ctx__name { display: block; color: var(--szyna-tytul); font: 700 15px 'Barlow Condensed', sans-serif; line-height: 1.1; }
+.ctx__season { font-size: 11px; color: var(--szyna-tekst2); }
+.ctx__sw { margin-left: auto; color: var(--szyna-tekst2); font-size: 14px; }
+
+.grp { display: flex; flex-direction: column; gap: 2px; }
+.grp__lab { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--szyna-tekst2); padding: 6px 8px 4px; }
+.it {
+  display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+  border-radius: 8px; color: var(--szyna-tekst); font-size: 13.5px; text-decoration: none;
+}
+.it:hover { background: rgb(255 255 255 / 6%); color: var(--szyna-tytul); }
+.it.is-active { background: var(--szyna-akt); color: var(--szyna-akt-tekst); }
+.it__cnt { margin-left: auto; font: 500 11px 'IBM Plex Mono', monospace; background: rgb(255 255 255 / 10%); border-radius: 999px; padding: 1px 7px; }
+.it.is-active .it__cnt { background: rgb(255 255 255 / 20%); }
+.it--sub { padding: 6px 10px 6px 24px; font-size: 13px; }
+.rail .foot { margin-top: auto; font-size: 11px; color: var(--szyna-tekst2); padding: 0 8px; line-height: 1.7; border: 0; }
+
+/* Wysuwany panel poniżej 900 px. `:target` zamiast skryptu — panel nadal
+   nie używa JavaScriptu poza chmurkami i wskaźnikiem (CLAUDE.md §9). */
+.rail__toggle, .rail__close { display: none; }
+
+/* ─────────────────────────────────────────────────────────── obszar treści */
+.main { padding: 0 28px 40px; min-width: 0; max-width: none; }
+
+.top {
+  position: sticky; top: 0; z-index: 5; background: var(--tlo);
+  display: flex; align-items: center; gap: 14px;
+  padding: 16px 0 14px; border-bottom: 1px solid var(--obramowanie); margin-bottom: 22px;
+}
+.crumbs { font-size: 12.5px; color: var(--tekst-slabszy); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.crumbs a { color: inherit; text-decoration: none; }
+.crumbs a:hover { color: var(--tekst); }
+.crumbs b { color: var(--tekst); font-weight: 500; }
+
+.search {
+  margin-left: auto; background: var(--tlo-panel); border: 1px solid var(--obramowanie);
+  border-radius: 999px; padding: 4px 6px 4px 14px; width: 280px;
+  display: flex; gap: 8px; align-items: center;
+}
+.search__input { border: 0; background: transparent; color: var(--tekst); font: 13px 'IBM Plex Sans', sans-serif; width: 100%; padding: 3px 0; }
+.search__input::placeholder { color: var(--tekst-slabszy); }
+.search__input:focus-visible { outline: none; }
+.search:focus-within { border-color: var(--akcent); }
+.search__go { border: 0; background: transparent; color: var(--tekst-slabszy); cursor: pointer; font-size: 13px; padding: 2px 6px; }
+
+.top__actions { display: flex; gap: 8px; align-items: center; margin: 0; }
+.ico {
+  width: 34px; height: 34px; padding: 0; justify-content: center; border-radius: 50%;
+  position: relative; display: inline-flex; align-items: center;
+  border: 1px solid var(--obramowanie); background: var(--tlo-panel); color: var(--tekst);
+  cursor: pointer; font-size: 14px; text-decoration: none; margin-top: 0; width: 34px;
+}
+.ico .dot { position: absolute; top: 6px; right: 7px; width: 8px; height: 8px; border-radius: 50%; background: var(--blad); border: 2px solid var(--tlo-panel); }
+.av { width: 34px; height: 34px; border-radius: 50%; background: var(--klub); color: var(--szyna-tytul); display: grid; place-items: center; font: 700 13px 'Barlow Condensed', sans-serif; text-decoration: none; }
+
+/* ──────────────────────────────────────────────────────── nagłówek ekranu */
+.head { display: flex; align-items: end; gap: 16px; margin-bottom: 18px; flex-wrap: wrap; }
+.head h1 { font-size: 34px; font-weight: 700; line-height: 1; letter-spacing: .01em; margin: 0; }
+.head .sub2 { color: var(--tekst-slaby); font-size: 13px; margin-top: 4px; }
+.head .acts { margin-left: auto; display: flex; gap: 8px; }
+
+/* ──────────────────────────────────────────────────────────────── siatka */
+.grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 16px; }
+.c12 { grid-column: span 12; } .c8 { grid-column: span 8; }
+.c6  { grid-column: span 6; }  .c4 { grid-column: span 4; } .c3 { grid-column: span 3; }
+
+/* Karty 12 px BEZ OBRAMOWAŃ — cień zamiast kreski. Obramowanie na jasnym tle
+   dzieli ekran na pudełka; cień pozwala treści oddychać. */
+.card {
+  background: var(--tlo-panel); border-radius: var(--promien);
+  box-shadow: var(--cien); padding: 18px 20px; min-width: 0; border: 0;
+}
+.card > h2 {
+  font-size: 15px; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--tekst-slaby); display: flex; align-items: center; gap: 10px; margin: 0 0 12px;
+}
+.card > h2 .more { margin-left: auto; font: 500 12px 'IBM Plex Sans', sans-serif; text-transform: none; letter-spacing: 0; color: var(--akcent); text-decoration: none; }
+
+/* ─────────────────────────────────────────────────────────── kafle liczbowe */
+.kpi { display: flex; flex-direction: column; gap: 6px; position: relative; overflow: hidden; }
+.kpi .l { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--tekst-slaby); }
+.kpi .v { font-size: 38px; font-weight: 700; line-height: 1; }
+.kpi .v small { font-size: 16px; color: var(--tekst-slabszy); font-weight: 500; margin-left: 6px; }
+.kpi .d { font-size: 12.5px; color: var(--tekst-slaby); }
+/* Kafel bez danych. Kreska i podpis, SKĄD dane przyjdą — nie wymyślona liczba
+   (CLAUDE.md §8: brak danych ma być widoczny, nie zamaskowany). */
+.kpi--pusty .v { color: var(--tekst-slabszy); }
+.kpi--pusty .d { color: var(--tekst-slabszy); font-style: italic; }
+
+/* ───────────────────────────────────────────────── ostatni mecz (nagłówek) */
+.hero { display: grid; grid-template-columns: 1fr auto 1fr; gap: 14px; align-items: center; padding: 6px 0 4px; }
+.hero__t { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.hero__t--r { justify-content: flex-end; text-align: right; }
+.hero__crest { width: 46px; height: 46px; border-radius: 50%; background: var(--herb-tlo); border: 2px solid var(--obramowanie); display: grid; place-items: center; overflow: hidden; flex: none; }
+.hero__crest img { width: 38px; height: 38px; object-fit: contain; }
+.hero__t b { font: 700 20px 'Barlow Condensed', sans-serif; line-height: 1.05; display: block; }
+.hero__t small { color: var(--tekst-slaby); font-size: 12px; }
+.hero__sc { font: 800 52px 'Barlow Condensed', sans-serif; line-height: 1; text-align: center; display: flex; gap: 10px; align-items: center; }
+.hero__sc small { font-size: 22px; color: var(--tekst-slabszy); font-weight: 500; }
+.hero__xg { grid-column: 1 / -1; display: grid; grid-template-columns: 52px 1fr 52px; gap: 8px; align-items: center; font: 600 12px 'IBM Plex Mono', monospace; }
+.hero__t2 { height: 8px; border-radius: 4px; background: var(--tlo-drugi); display: flex; gap: 2px; overflow: hidden; }
+.hero__t2 i { display: block; height: 100%; }
+.hero__t2 i.a { background: var(--klub); } .hero__t2 i.b { background: var(--rywal); }
+.hero__meta { grid-column: 1 / -1; display: flex; gap: 8px; flex-wrap: wrap; font-size: 12px; color: var(--tekst-slaby); align-items: center; }
+
+/* ─────────────────────────────────────────────────────────────── pastylki */
+.pill {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 500;
+  padding: 2px 9px; border-radius: 999px; background: var(--tlo-drugi); color: var(--tekst-slaby);
   text-decoration: none;
-  font-size: 15px;
+}
+.pill--ok   { background: var(--ok-mikkie); color: var(--ok); }
+.pill--warn { background: var(--ostrzez-mikkie); color: var(--ostrzezenie); }
+.pill--bad  { background: var(--blad-mikkie); color: var(--blad); }
+.pill--club { background: var(--klub-mikkie); color: var(--klub); }
+.pill i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; display: inline-block; }
+
+/* ───────────────────────────────────────────────── lista „wymaga uwagi" */
+.todo { display: flex; flex-direction: column; gap: 8px; }
+.todo__row { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 10px; background: var(--tlo-drugi); }
+.todo__ic { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; flex: none; font-size: 14px; }
+.todo__ic--w { background: var(--ostrzez-mikkie); color: var(--ostrzezenie); }
+.todo__ic--b { background: var(--blad-mikkie); color: var(--blad); }
+.todo__ic--o { background: var(--ok-mikkie); color: var(--ok); }
+.todo__row b { display: block; font-weight: 600; font-size: 13.5px; }
+.todo__row small { color: var(--tekst-slaby); font-size: 12px; }
+.todo__row .btn { margin-left: auto; margin-top: 0; width: auto; }
+
+/* ──────────────────────────────────────────────────────────── pasek sezonu */
+.season { display: flex; gap: 5px; flex-wrap: wrap; }
+.q { width: 42px; height: 44px; border-radius: 9px; background: var(--tlo-drugi); display: grid; place-items: center; font: 700 14px 'Barlow Condensed', sans-serif; position: relative; color: var(--tekst-slaby); text-decoration: none; }
+.q--w { background: var(--ok-mikkie); color: var(--ok); }
+.q--l { background: var(--blad-mikkie); color: var(--blad); }
+.q--d { background: var(--tlo-drugi); color: var(--tekst); }
+.q--next { border: 1.5px dashed var(--obramowanie); background: transparent; color: var(--tekst-slabszy); }
+.q small { position: absolute; bottom: 3px; font: 500 8.5px 'IBM Plex Mono', monospace; color: inherit; opacity: .7; }
+.legend { display: flex; gap: 14px; font-size: 12px; color: var(--tekst-slaby); margin-top: 10px; flex-wrap: wrap; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+
+/* ───────────────────────────────────────────────────────── wiersz meczu */
+.match { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.match .k { font: 600 12px 'IBM Plex Mono', monospace; color: var(--tekst-slabszy); width: 26px; flex: none; }
+.match b { font-weight: 600; }
+.match small { display: block; color: var(--tekst-slabszy); font-size: 11.5px; }
+.res { font: 700 16px 'Barlow Condensed', sans-serif; letter-spacing: .04em; }
+.res--w { color: var(--ok); } .res--l { color: var(--blad); } .res--d { color: var(--tekst-slaby); }
+.acts2 { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }
+
+/* ───────────────────────────────────────────────────────────── stopka */
+.foot { padding: 12px 20px; border-top: 1px solid var(--obramowanie); color: var(--tekst-slaby); font-size: 13px; }
+
+/* ─────────────────────────────────────────────────────────────── mobile */
+@media (max-width: 900px) {
+  .shell { grid-template-columns: 1fr; }
+  /* Szyna jako wysuwany panel. Domyślnie poza ekranem; `:target` otwiera.
+     Bez skryptu — to samo rozwiązanie, co reszta panelu. */
+  .rail {
+    position: fixed; inset: 0 auto 0 0; width: 268px; z-index: 40;
+    transform: translateX(-100%); transition: transform .18s ease;
+    box-shadow: 0 0 0 100vmax rgb(0 0 0 / 0%);
+  }
+  .rail:target { transform: translateX(0); box-shadow: 0 0 0 100vmax rgb(0 0 0 / 45%); }
+  .rail__close { display: block; position: absolute; top: 14px; right: 14px; color: var(--szyna-tekst2); font-size: 20px; text-decoration: none; }
+  .rail__toggle { display: inline-flex; }
+  .main { padding: 0 16px 32px; }
+  /* Dwa wiersze: okruszki na górze, akcje pod nimi. Bez poziomego przewijania. */
+  .top { flex-wrap: wrap; gap: 10px; padding: 12px 0 10px; }
+  .crumbs { width: 100%; order: 1; }
+  .top__actions { order: 2; margin-left: auto; }
+  .search { order: 2; margin-left: 0; width: auto; flex: 1 1 160px; min-width: 0; }
+  .c8, .c6, .c4, .c3 { grid-column: span 12; }
+  .hero { grid-template-columns: 1fr; text-align: center; }
+  .hero__t, .hero__t--r { justify-content: center; }
 }
 
-.side__item:hover { background: var(--tlo); }
-.side__item.is-active { background: var(--tlo); font-weight: 600; }
-.side__item.is-disabled { color: var(--tekst-slaby); cursor: default; }
-.side__item.is-disabled:hover { background: transparent; }
-.side__soon { font-size: 11px; font-style: normal; color: var(--tekst-slaby); }
-
-.main { grid-area: main; padding: 24px 20px; max-width: 1100px; }
-
-.foot {
-  grid-area: foot;
-  padding: 12px 20px;
-  border-top: 1px solid var(--obramowanie);
-  color: var(--tekst-slaby);
-  font-size: 13px;
+@media (max-width: 560px) {
+  .search { display: none; }
+  .head h1 { font-size: 26px; }
+  .kpi .v { font-size: 30px; }
 }
 
-@media (max-width: 720px) {
-  .shell { grid-template-columns: 1fr; grid-template-areas: "top" "side" "main" "foot"; }
-  .side { flex-direction: row; flex-wrap: wrap; border-right: 0; border-bottom: 1px solid var(--obramowanie); }
+/* Poziome przewijanie tabel zamiast rozpychania strony. */
+.tbl-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+
 }
 
 /* --- typografia i bloki --- */

@@ -49,19 +49,53 @@ echo "== skrypt: jeden plik, bez zależności ==\n";
 
 check('skrypt istnieje', $js !== '', $skrypt);
 
-// Cały panel ma mieć DOKŁADNIE JEDEN skrypt. Drugi znaczy, że odstępstwo się
-// rozlało — a wtedy „panel bez JavaScriptu" przestaje być prawdą.
-preg_match_all('/<script\b[^>]*>/i', bezKomentarzy($layout), $znaczniki);
-check('layout ładuje dokładnie jeden skrypt', count($znaczniki[0]) === 1,
-    count($znaczniki[0]) . ' znaczników <script>');
+/*
+ * DOKŁADNIE JEDEN PLIK SKRYPTU. Drugi znaczyłby, że odstępstwo się rozlało —
+ * a wtedy „panel bez JavaScriptu" przestaje być prawdą (CLAUDE.md §9).
+ *
+ * ROZSZERZENIE ODSTĘPSTWA, 2026-09-24 (sesja 3,5), zatwierdzone przez
+ * właściciela w zleceniu: layout niesie JEDEN skrypt INLINE w `<head>`,
+ * ustawiający motyw przed pierwszym malowaniem. Nie da się tego zrobić
+ * plikiem zewnętrznym — ten wczytuje się PO pierwszym malowaniu, czyli
+ * dokładnie za późno, a skutkiem jest mignięcie jasnym tłem przy każdym
+ * wejściu na każdą podstronę.
+ *
+ * Granice tego rozszerzenia pilnujemy niżej i są wąskie: jeden skrypt inline,
+ * wyłącznie w `<head>`, wyłącznie o motywie, bez ani jednego polskiego zdania.
+ * Liczba PLIKÓW skryptu nadal wynosi jeden.
+ */
+preg_match_all('/<script\b[^>]*>(.*?)<\/script>/is', bezKomentarzy($layout), $znaczniki, PREG_SET_ORDER);
+$zewnetrzne = array_values(array_filter($znaczniki, fn($z) => str_contains($z[0], 'src=')));
+$inline     = array_values(array_filter($znaczniki, fn($z) => !str_contains($z[0], 'src=')));
 
-$znacznik = $znaczniki[0][0] ?? '';
+check('layout ładuje dokładnie jeden PLIK skryptu', count($zewnetrzne) === 1,
+    count($zewnetrzne) . ' znaczników <script src>');
+check('inline jest najwyżej jeden', count($inline) <= 1,
+    count($inline) . ' skryptów inline');
+
+$trescInline = $inline[0][1] ?? '';
+if ($trescInline !== '') {
+    check('skrypt inline dotyczy WYŁĄCZNIE motywu',
+        str_contains($trescInline, 'data-theme') && str_contains($trescInline, 'ca-theme'),
+        'rozszerzenie odstępstwa obejmuje motyw i nic poza nim');
+    check('skrypt inline stoi w <head>, przed pierwszym malowaniem',
+        strpos(bezKomentarzy($layout), '<script') < strpos(bezKomentarzy($layout), '</head>'),
+        'po pierwszym malowaniu nie miałby po co istnieć');
+    check('skrypt inline nie zawiera polskich zdań',
+        !preg_match('/[ąćęłńóśźż]/ui', $trescInline),
+        'teksty idą z pl.php — wersja anglojęzyczna nie ma wymagać ruszania kodu');
+    check('skrypt inline jest krótki',
+        strlen($trescInline) < 400, strlen($trescInline) . ' znaków');
+}
+
+$znacznik = $zewnetrzne[0][0] ?? '';
 check('skrypt ma atrybut defer', str_contains($znacznik, 'defer'), $znacznik);
 check('skrypt jest własny, nie z obcego serwera',
     str_contains($znacznik, '/assets/powiadomienia.js') && !str_contains($znacznik, '//'),
     $znacznik);
-check('skrypt stoi na końcu dokumentu',
-    strpos(bezKomentarzy($layout), '<script') > strpos(bezKomentarzy($layout), '</footer>'));
+check('plik skryptu stoi na końcu dokumentu',
+    strrpos(bezKomentarzy($layout), '<script') > strpos(bezKomentarzy($layout), '</main>'),
+    'skrypt przed treścią blokowałby renderowanie');
 
 // Brak `import`, `require` i adresów zewnętrznych — jeden plik ma być całością.
 check('skrypt nie ciągnie zależności',

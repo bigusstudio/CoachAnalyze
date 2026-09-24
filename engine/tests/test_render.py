@@ -11,6 +11,7 @@ już raz kosztowały czas:
 """
 
 import json
+import re
 
 import pytest
 
@@ -633,3 +634,56 @@ def test_paleta_z_parsera_wchodzi_do_html(tmp_path):
 
     html, _ = render.render(RAMKA, palette=parse.prep_palette(str(projekt)))
     assert '"STRZAŁ": "#4C3380"' in html
+
+
+# ------------------------------------------------------------------ dług 7.5
+def test_nazwa_klubu_ze_znakami_specjalnymi_nie_rozbija_raportu():
+    """Dług 7.5 z docs/STAN_PIVOTU.md: nazwa klubu pochodzi z bazy, czyli od
+    użytkownika, a raport wisi pod publicznym adresem (CLAUDE.md §5).
+
+    ═══════════════════════════════════════════════════════════════════════════
+    DWA KONTEKSTY, DWIE UCIECZKI — i to jest sedno tego testu.
+
+    `__TEAM_*_LABEL__` idzie do treści HTML → ucieczka HTML.
+    `__TEAM_*__` idzie do literału JS PORÓWNYWANEGO ZE ZDARZENIAMI → ucieczka
+    HTML jest tam ZABRONIONA: `&amp;` po jednej stronie i `&` po drugiej znaczą
+    raport z zerem zdarzeń dla klubu z ampersandem w nazwie, bez ostrzeżenia.
+    ═══════════════════════════════════════════════════════════════════════════
+    """
+    zlosliwa = "<Test & Spółka's>"
+    config = {"teams": {
+        "us": {"name": zlosliwa, "source_names": [zlosliwa]},
+        "them": {"name": "Rywal"},
+    }}
+    frame = {"events": [dict(RAMKA["events"][0], team=zlosliwa)], "half_split": 1.0}
+    canon_result = canon.build(frame, teams=config["teams"])
+
+    html, raport = render.render(frame, canon_result=canon_result, config=config)
+
+    # 1. Nic nie wyszło z kontekstu HTML.
+    assert "<Test" not in html, "nazwa klubu wstrzyknięta jako znacznik HTML"
+    assert "&lt;Test &amp; Spółka" in html, "etykieta bez ucieczki HTML"
+
+    # 2. Literał JS nie został rozbity apostrofem.
+    dopasowanie = re.search(r"const HUT\s*=\s*'([^']*)'", html)
+    assert dopasowanie, "literał nazwy drużyny rozbity — apostrof wyszedł z napisu"
+    klucz = dopasowanie.group(1)
+
+    # 3. NAJWAŻNIEJSZE: klucz w literale i `team` w danych to TEN SAM napis.
+    #    Rozjazd tutaj daje raport z zerem zdarzeń i bez żadnego ostrzeżenia.
+    dane = json.loads(re.search(r"const DATA = (.*?);\n", html, re.S).group(1))
+    assert dane["events"][0]["team"] == klucz, (
+        "klucz dopasowania rozjechał się z nazwą w danych: "
+        "{!r} != {!r}".format(klucz, dane["events"][0]["team"])
+    )
+
+    assert raport["unresolved_placeholders"] == []
+
+
+def test_ampersand_w_nazwie_nie_znika_z_klucza_dopasowania():
+    """`&` ma ZOSTAĆ w literale JS. Ucieczka HTML zamieniłaby go na `&amp;`
+    i zdarzenia klubu przestałyby się dopasowywać."""
+    slots, _ = render.team_slots(RAMKA, {"us": {"name": "Test & Spółka"}})
+    assert "&" in slots["__TEAM_HOME__"]
+    assert "&amp;" not in slots["__TEAM_HOME__"]
+    assert "&amp;" in slots["__TEAM_HOME_LABEL__"], "etykieta idzie do HTML"

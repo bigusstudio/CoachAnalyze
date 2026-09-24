@@ -376,9 +376,26 @@ def team_slots(frame, teams=None):
         color_light = cfg.get("color_light") or hex_to_light(color)
         crest = cfg.get("crest")
 
-        slots["__TEAM_{}__".format(slot)] = label.upper()
-        slots["__TEAM_{}_LABEL__".format(slot)] = label
-        slots["__TEAM_{}_SHORT__".format(slot)] = cfg.get("short") or label.upper()
+        # ═══════════════════════════════════════════════════════════════════
+        # DWA KONTEKSTY, DWIE UCIECZKI — i to nie jest niekonsekwencja.
+        #
+        # `__TEAM_*__` idzie do LITERAŁU JS porównywanego ze zdarzeniami
+        # (`e.team === HUT`). Ucieczka HTML zamieniłaby „&" na „&amp;" i klub
+        # o nazwie „Test & Spółka" dostałby raport z ZEREM własnych zdarzeń —
+        # po obu stronach porównania stałyby wtedy różne napisy. Dlatego tutaj
+        # ucieczka JS: neutralizujemy apostrof, cudzysłów, ukośnik i grawis,
+        # zostawiając sam znak `&` nietknięty.
+        #
+        # `__TEAM_*_LABEL__` i `__TEAM_*_SHORT__` idą do TREŚCI HTML i do
+        # literałów szablonowych — tam obowiązuje ucieczka HTML. Nazwa klubu
+        # pochodzi z bazy, czyli od użytkownika, a raport wisi pod publicznym
+        # adresem `/r/{club_key}/{token}` (CLAUDE.md §5).
+        # ═══════════════════════════════════════════════════════════════════
+        slots["__TEAM_{}__".format(slot)] = _js_literal(label.upper())
+        slots["__TEAM_{}_LABEL__".format(slot)] = _tekst_do_szablonu(label)
+        slots["__TEAM_{}_SHORT__".format(slot)] = _tekst_do_szablonu(
+            cfg.get("short") or label.upper()
+        )
         slots["__TEAM_{}_COLOR__".format(slot)] = color
         slots["__TEAM_{}_DIM__".format(slot)] = hex_to_dim(color)
         slots["__TEAM_{}_COLOR_L__".format(slot)] = color_light
@@ -388,6 +405,23 @@ def team_slots(frame, teams=None):
         )
 
     return slots, podstawione
+
+
+def _js_literal(wartosc):
+    """Napis bezpieczny w LITERALE JS, bez ucieczki HTML.
+
+    Używany dla `__TEAM_*__`, czyli klucza dopasowania drużyn. Ucieczka HTML
+    jest tu ZABRONIONA: `&amp;` po jednej stronie porównania i `&` po drugiej
+    znaczą raport z zerem zdarzeń dla klubu o nazwie z ampersandem.
+
+    Neutralizujemy to, co potrafi wyjść z literału: apostrof, cudzysłów,
+    grawis, ukośnik odwrotny, `${` i domknięcie znacznika `</`. Znaki narodowe
+    i `&` zostają nietknięte — szablon czyta je jako zwykły tekst.
+    """
+    tekst = "" if wartosc is None else str(wartosc)
+    for znak in ("\\", "'", '"', "`"):
+        tekst = tekst.replace(znak, "")
+    return tekst.replace("${", "").replace("</", "")
 
 
 def _tekst_do_szablonu(wartosc):
@@ -467,11 +501,15 @@ def view_data(frame, canon_result=None, teams=None):
             )
         )
 
+    # TA SAMA POSTAĆ NAZWY, CO W `__TEAM_*__`. Szablon porównuje `e.team`
+    # z tym literałem przez równość, więc obie strony muszą przejść przez
+    # dokładnie tę samą funkcję — inaczej klub z apostrofem w nazwie dostaje
+    # raport z zerem własnych zdarzeń i bez żadnego ostrzeżenia.
     nazwy = {}
     for side, _slot in TEAM_SLOTS:
         cfg = (teams or {}).get(side) or {}
         if cfg.get("name"):
-            nazwy[side] = cfg["name"].upper()
+            nazwy[side] = _js_literal(cfg["name"].upper())
 
     dane["events"] = [
         dict(raw, team=nazwy.get(canonical["team_side"], raw.get("team")))
