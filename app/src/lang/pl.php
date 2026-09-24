@@ -242,6 +242,7 @@ return [
     'nav.search'          => 'Szukaj meczu…',
     'nav.search.go'       => 'Szukaj',
     'nav.queue'           => 'W kolejce: %d',
+    'nav.matches_count'   => '%d meczów',
     'nav.breadcrumb'      => 'Ścieżka',
 
     // --- pulpit ---
@@ -1092,6 +1093,7 @@ return [
     'dash.open'           => 'otwórz',
     'dash.soon.from'      => 'od sesji 3',
     'dash.of_total'       => 'z %d zdarzeń',
+    'dash.in_matches'     => '%d w %d meczach',
     'dash.kpi.matches'    => 'Mecze w sezonie',
     'dash.kpi.reports'    => 'Raporty gotowe',
     'dash.kpi.queue'      => 'Zadania w kolejce',

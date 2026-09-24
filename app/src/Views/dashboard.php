@@ -53,6 +53,19 @@ $metryka = static function (string $id, bool $procent = false) use ($mPoId): str
 $lub = static fn($w, string $format = '%s'): string =>
     $w === null ? View::t('common.dash') : sprintf($format, $w);
 
+/*
+ * LICZBA UŁAMKOWA PO POLSKU — PRZECINEK, nie kropka.
+ *
+ * Raport pokazuje `1,27` (szablon woła `toLocaleString('pl-PL')`), a pulpit
+ * pokazywał `1.27`. Ta sama wartość w dwóch zapisach na dwóch ekranach tego
+ * samego produktu każe się zastanawiać, czy to na pewno ta sama liczba.
+ */
+$dziesietna = static function (?float $w, int $miejsca = 2) use ($lub): string {
+    return $w === null
+        ? View::t('common.dash')
+        : number_format($w, $miejsca, ',', ' ');
+};
+
 /** Klasa wyniku z perspektywy klubu: wygrana / remis / porażka. */
 $klasaWyniku = static function (?int $nas, ?int $ich): string {
     if ($nas === null || $ich === null) {
@@ -134,14 +147,53 @@ $klasaWyniku = static function (?int $nas, ?int $ich): string {
 
         <?php /* Pasek xG. Bez zdarzeń nie rysujemy proporcji — rysowalibyśmy zero. */ ?>
         <div class="hero__xg">
-          <span><?= View::e($lub($xgNas, '%.2f')) ?></span>
+          <span><?= View::e($dziesietna($xgNas)) ?></span>
           <span class="hero__t2" aria-hidden="true">
             <?php if ($lastFacts !== null && $suma > 0): ?>
               <i class="a" style="width: <?= round($xgNas / $suma * 100, 1) ?>%"></i>
               <i class="b" style="width: <?= round($xgIch / $suma * 100, 1) ?>%"></i>
             <?php endif; ?>
           </span>
-          <span style="text-align:right"><?= View::e($lub($xgIch, '%.2f')) ?></span>
+          <span style="text-align:right"><?= View::e($dziesietna($xgIch)) ?></span>
+        </div>
+
+        <?php
+          /*
+           * CZTERY LICZBY TEGO MECZU, z tej samej definicji co kafle wyżej.
+           * Wskaźniki jako procent, liczniki wprost; `null` zostaje kreską.
+           */
+          $zakresMeczu = ($tenantId ?? null) !== null
+              ? ['club_id' => (int) $tenantId, 'match_id' => (int) $lastMatch['id']]
+              : null;
+          $liczbaMeczu = static function (string $id, bool $procent = false) use ($zakresMeczu): ?string {
+              if ($zakresMeczu === null) {
+                  return null;
+              }
+              $d = \CoachAnalyze\Metrics::definicje()[$id] ?? null;
+              if ($d === null) {
+                  return null;
+              }
+              $w = \CoachAnalyze\Metrics::compute($d, $zakresMeczu)['value'];
+              if ($w === null) {
+                  return null;
+              }
+              return $procent ? round((float) $w * 100) . '%' : (string) $w;
+          };
+          $fakty = [
+              ['strzaly',           View::t('dash.col.shots'), false],
+              ['sbz',               View::t('dash.col.sbz'),   false],
+              ['pressing',          View::t('dash.kpi.press'), true],
+              ['reakcja_na_strate', View::t('dash.kpi.reaction'), true],
+          ];
+        ?>
+        <div class="hero__facts">
+          <?php foreach ($fakty as [$id, $etykieta, $procent]): ?>
+            <?php $w = $liczbaMeczu($id, $procent); ?>
+            <div class="hero__fact<?= $w === null ? ' hero__fact--pusty' : '' ?>">
+              <b><?= View::e($w ?? View::t('common.dash')) ?></b>
+              <small><?= View::e($etykieta) ?></small>
+            </div>
+          <?php endforeach; ?>
         </div>
 
         <div class="hero__meta">
@@ -213,8 +265,13 @@ $klasaWyniku = static function (?int $nas, ?int $ich): string {
          'd' => View::t('nav.queue', $counters['queued']), 'pusty' => false],
         // Sesja 3: trzy kafle liczone z tabeli `events`. Kreska zostaje
         // WYŁĄCZNIE wtedy, gdy metryka nie ma wartości.
+        // Podpis mówi, Z CZEGO liczba powstała — powtórzenie nazwy kafla
+        // („SBZ na mecz" pod „SBZ NA MECZ") nie niosło żadnej informacji.
         ['l' => View::t('dash.kpi.sbz'), 'v' => $metryka('sbz_na_mecz'),
-         'd' => (string) ($mPoId['sbz_na_mecz']['label'] ?? ''),
+         'd' => ($mPoId['sbz_na_mecz']['d'] ?? null) !== null
+             ? View::t('dash.in_matches', (int) $mPoId['sbz_na_mecz']['n'],
+                       (int) $mPoId['sbz_na_mecz']['d'])
+             : '',
          'pusty' => ($mPoId['sbz_na_mecz']['value'] ?? null) === null],
         ['l' => View::t('dash.kpi.press'), 'v' => $metryka('pressing', true),
          'd' => ($mPoId['pressing']['d'] ?? null) !== null
@@ -246,7 +303,21 @@ $klasaWyniku = static function (?int $nas, ?int $ich): string {
       <p class="empty"><?= View::e(View::t('dash.no_match')) ?></p>
     <?php else: ?>
       <div class="season">
-        <?php foreach (array_reverse($seasonRows) as $r): ?>
+        <?php
+          /*
+           * KAFELKI NUMEROWANE PORZĄDKOWO PO DACIE, od najstarszego.
+           *
+           * Dotąd każdy kafelek bez `matches.round` pokazywał kropkę — czyli
+           * pasek sezonu był ciągiem identycznych kropek i nie dało się
+           * powiedzieć, który mecz jest który. Numer porządkowy wynika z danych,
+           * które mamy (kolejność dat), i NIE UDAJE numeru kolejki: gdy kolejka
+           * jest zapisana, pokazujemy ją, bo jest faktem, a nie wyliczeniem.
+           *
+           * `$seasonRows` przychodzi od najnowszego — odwracamy raz i numerujemy.
+           */
+          $chronologicznie = array_reverse($seasonRows);
+        ?>
+        <?php foreach ($chronologicznie as $nr => $r): ?>
           <?php
             $ma  = (int) $r['events'] > 0;
             $nas = $ma ? (int) $r['goals_us'] : null;
@@ -257,11 +328,18 @@ $klasaWyniku = static function (?int $nas, ?int $ich): string {
             } elseif ($ma) {
                 $kl .= $nas > $ich ? ' q--w' : ($nas < $ich ? ' q--l' : ' q--d');
             }
+            $kolejka = $r['round'] !== null && $r['round'] !== '' ? (string) $r['round'] : null;
+            $podpis  = !empty($r['played_at'])
+                ? substr((string) $r['played_at'], 5, 5)   // MM-DD, na kafelku nie ma miejsca na rok
+                : View::t('common.dash');
+            $tytul = trim(((string) ($r['home_name'] ?? '?')) . ' – ' . ((string) ($r['away_name'] ?? '?')))
+                . ' · ' . ($r['played_at'] ?? View::t('match.no_date'))
+                . ($ma ? ' · ' . $nas . ':' . $ich : '');
           ?>
           <a class="<?= $kl ?>" href="/mecze/<?= (int) $r['id'] ?>/historia"
-             title="<?= View::e(trim(((string) ($r['home_name'] ?? '?')) . ' – ' . ((string) ($r['away_name'] ?? '?')))) ?>">
-            <?= View::e($r['round'] !== null && $r['round'] !== '' ? (string) $r['round'] : '·') ?>
-            <small><?= $ma ? View::e($nas . ':' . $ich) : View::e(View::t('common.dash')) ?></small>
+             title="<?= View::e($tytul) ?>">
+            <?= View::e($kolejka ?? (string) ($nr + 1)) ?>
+            <small><?= View::e($podpis) ?></small>
           </a>
         <?php endforeach; ?>
         <?php /* SUMA prowadzi do zapowiedzi: zestawienia sezonowego jeszcze nie ma. */ ?>
@@ -324,7 +402,7 @@ $klasaWyniku = static function (?int $nas, ?int $ich): string {
                 </td>
                 <td class="num">
                   <?= $ma
-                      ? View::e(sprintf('%.2f : %.2f', (float) $r['xg_us'], (float) $r['xg_them']))
+                      ? View::e($dziesietna((float) $r['xg_us']) . ' : ' . $dziesietna((float) $r['xg_them']))
                       : View::e(View::t('common.dash')) ?>
                 </td>
                 <td class="num">

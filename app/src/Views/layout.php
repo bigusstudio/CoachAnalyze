@@ -61,6 +61,23 @@ $kolejka  = $liczniki['queued'] ?? 0;
 $uzytkownik = $zalogowany ? \CoachAnalyze\Auth::currentUser() : null;
 $admin      = $uzytkownik !== null && \CoachAnalyze\Users::isAdmin($uzytkownik);
 
+/*
+ * KONTEKST W SZYNIE JEST ZAWSZE, nie tylko na ekranach klubu.
+ *
+ * Dotąd blok pojawiał się wyłącznie tam, gdzie trasa podała `$club` — czyli
+ * na pulpicie, liście meczów i w połowie panelu szyna nie mówiła, czyje to
+ * w ogóle dane. Przy jednym kliencie to nie przeszkadza; przy drugim staje się
+ * pytaniem „na czyim koncie jestem", zadawanym przy każdym wejściu.
+ *
+ * Bez kontekstu trasy bierzemy KLUB-TENANTA (`is_own_team = 1`). To ten sam
+ * klub, którego dotyczą metryki pulpitu — więc szyna i liczby mówią o tym samym.
+ */
+$klubSzyny = $club;
+if ($klubSzyny === null && $zalogowany) {
+    $idTenanta = \CoachAnalyze\Clubs::tenantDefault();
+    $klubSzyny = $idTenanta !== null ? \CoachAnalyze\Clubs::find($idTenanta) : null;
+}
+
 /** Inicjały do awatara. Nazwa bywa pusta — wtedy znak zastępczy, nie puste kółko. */
 $inicjaly = static function (?array $u): string {
     $nazwa = trim((string) ($u['display_name'] ?? $u['email'] ?? ''));
@@ -145,19 +162,25 @@ $pozycja = static function (
       </span>
     </a>
 
-    <?php if ($club !== null): ?>
-      <?php /* Kontekst klubu i sezonu u góry: pierwsza rzecz, którą trzeba wiedzieć. */ ?>
-      <a class="ctx" href="/klub/<?= (int) $club['id'] ?>">
+    <?php if ($klubSzyny !== null): ?>
+      <?php /* Kontekst klubu, sezonu i liczby meczów: pierwsza rzecz, którą
+               trzeba wiedzieć, zanim spojrzy się na jakąkolwiek liczbę niżej. */ ?>
+      <a class="ctx" href="/klub/<?= (int) $klubSzyny['id'] ?>">
         <span class="ctx__crest">
-          <?php if (!empty($club['crest_path'])): ?>
-            <img src="/herb/<?= (int) $club['id'] ?>" alt="">
+          <?php if (!empty($klubSzyny['crest_path'])): ?>
+            <img src="/herb/<?= (int) $klubSzyny['id'] ?>" alt="">
           <?php else: ?>
-            <span aria-hidden="true"><?= View::e(mb_substr((string) $club['name'], 0, 1)) ?></span>
+            <span aria-hidden="true"><?= View::e(mb_substr((string) $klubSzyny['name'], 0, 1)) ?></span>
           <?php endif; ?>
         </span>
-        <span>
-          <span class="ctx__name"><?= View::e((string) $club['name']) ?></span>
-          <span class="ctx__season"><?= View::e($liczniki['season'] ?? View::t('dash.all_seasons')) ?></span>
+        <span class="ctx__opis">
+          <span class="ctx__name"><?= View::e((string) $klubSzyny['name']) ?></span>
+          <span class="ctx__season">
+            <?= View::e($liczniki['season'] ?? View::t('dash.all_seasons')) ?>
+            <?php if (isset($liczniki['matches'])): ?>
+              · <?= View::e(View::t('nav.matches_count', (int) $liczniki['matches'])) ?>
+            <?php endif; ?>
+          </span>
         </span>
         <span class="ctx__sw" aria-hidden="true">⇄</span>
       </a>
