@@ -158,6 +158,27 @@ svg text{font-family:'IBM Plex Mono',monospace}
 
 /* breakdown grid */
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+/* v22: tabele (makro, zawodnicy, siatka ilości) */
+.tblwrap{overflow-x:auto}
+.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
+.tbl th,.tbl td{padding:5px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+.tbl th:first-child,.tbl td:first-child{text-align:left;white-space:normal}
+.tbl thead th{font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;letter-spacing:.06em;color:var(--ink3);font-weight:600}
+.tbl thead th.grp{text-align:center;border-bottom:1px solid var(--line)}
+.tbl td.num{font-family:'IBM Plex Mono',monospace}
+.tbl td.sum{font-weight:700}
+.tbl td.mut,.tbl th.mut{color:var(--ink3)}
+.tbl tbody tr:last-child td{border-bottom:none}
+/* v22: donuty */
+.donuts{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px}
+.donut{display:flex;align-items:center;gap:14px}
+.donut svg{flex:none}
+.donut .lg{font-size:12px;color:var(--ink2);line-height:1.7}
+.donut .lg i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:7px;vertical-align:baseline}
+.donut .lg b{font-family:'IBM Plex Mono',monospace;font-weight:600}
+/* v22: kafelek bez danych — komunikat zamiast pustego pola (STAN_PIVOTU 7.8) */
+.nodata{display:none;padding:18px;border:1px dashed var(--line);border-radius:10px;color:var(--ink3);font-size:12.5px;line-height:1.6}
+.nodata b{color:var(--ink2)}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px}
 .card h3{font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px}
 .card .n{color:var(--ink3);font-size:12px;margin-bottom:10px}
@@ -242,20 +263,26 @@ svg text{font-family:'IBM Plex Mono',monospace}
   <style id="pagesize"></style>
 </nav>
 
-<section id="sec-przeglad">
+<section id="sec-przeglad" data-widget="przeglad">
   <h2>Przegląd</h2>
   <div class="sub">Liczby i fakty dla fragmentu wybranego w fragmentatorze map (sekcja Mapy). Progi faktów: zielony = powyżej, czerwony = poniżej progu roboczego; ustawiane per klub.</div>
   <div class="ov" id="ov-kpi"></div>
   <div class="ov" id="ov-facts"></div>
 </section>
 
-<section id="sec-bilans">
+<section id="sec-makro" data-widget="makro">
+  <h2>Tabela makro</h2>
+  <div class="sub">Liczby zdarzeń dla każdej zmiennej, w podziale na drużyny i połowy. Zakres — fragmentator map. Kolumna „bez drużyny” nie jest odpadem: w eksportach referencyjnych dwie trzecie zdarzeń (straty, odbiory, pojedynki) tagowano bez pola „team”, a tabela bez tej kolumny nie sumowałaby się do liczby zdarzeń meczu.</div>
+  <div class="tblwrap" id="makro-box"></div>
+</section>
+
+<section id="sec-bilans" data-widget="bilans">
   <h2>Bilans drużyn — porównanie fragmentów</h2>
   <div class="sub">Dwa niezależne panele: w każdym włącz dowolną kombinację przedziałów 15-minutowych (albo skróty CAŁY MECZ / POŁOWA), żeby porównać np. końcówki obu połów. Przedziały minutowe liczone w obrębie połowy (czas wideo). Metryki bez podziału na drużyny (szare) — zdarzenia tagowane bez pola „team”.</div>
   <div id="bilans-panels"></div>
 </section>
 
-<section id="sec-mapy">
+<section id="sec-mapy" data-widget="mapy">
   <h2>Mapy współczynników</h2>
   <div class="sub">Trzy współczynniki: strzały (wynik), strzały (xG) i zdobycie SBZ — mapa po lewej, przebieg w czasie po prawej. Fragmentatory u góry sterują wszystkimi wierszami; przedziały 15-minutowe działają jak przełączniki — możesz włączyć wszystkie, jeden albo dowolną kombinację (CAŁY MECZ / POŁOWA to skróty). Szerokość wykresów stała, oś czasu obejmuje wybrany zakres. Filtr wyniku (celne/niecelne/zablokowane) dotyczy wiersza 1; wiersz 2 ma własny fragmentator typu akcji. __KIERUNEK_OPIS__</div>
   <div class="pitchbox" style="margin-bottom:14px">
@@ -276,33 +303,57 @@ svg text{font-family:'IBM Plex Mono',monospace}
   <div id="metric-rows"></div>
 </section>
 
-<section id="sec-tlsbz">
+<section id="sec-donuty" data-widget="donuty">
+  <h2>Skuteczność w udziałach</h2>
+  <div class="sub">Strzały wg wyniku i wejścia w SBZ wg tego, czy skończyły się strzałem. Udziały, nie liczby bezwzględne — dwie drużyny o różnej liczbie akcji da się porównać dopiero po sprowadzeniu do procentów. Zakres — fragmentator map.</div>
+  <div class="donuts" id="donuty-box"></div>
+</section>
+
+<section id="sec-okazje" data-widget="okazje">
+  <h2>Najlepsze okazje</h2>
+  <div class="sub">Pięć strzałów o najwyższym xG w wybranym fragmencie. xG pochodzi od analityka (komentarz taga), nie z modelu — strzał bez wpisanego xG nie trafia na tę listę i nie jest to zero.</div>
+  <div class="tblwrap" id="okazje-box"></div>
+</section>
+
+<section id="sec-tlsbz" data-widget="tl_sbz">
   <h2>Oś czasu — zdobycie SBZ</h2>
   <div class="sub">Dwa tory drużyn, tylko wejścia w SBZ. Kolor = typ akcji (jak na mapach), kształt = wynik strzału po wejściu, mała kropka = bez strzału. Zakres i filtry — te same fragmentatory co przy mapach.</div>
   <div class="tlbox"><svg id="tl" width="100%" role="img" aria-label="Oś czasu wejść w SBZ per drużyna"></svg></div>
 </section>
 
-<section id="sec-tl3">
+<section id="sec-tl3" data-widget="tl_iii">
   <h2>Oś czasu — zdobycie III strefy</h2>
   <div class="sub">Dwa tory drużyn, tylko wejścia w III strefę: <span style="color:var(--ok)">udane ●</span>, <span style="color:var(--bad)">nieudane ○</span>, <span style="color:var(--neut)">brak podania ◆</span>. Te same fragmentatory co przy mapach.</div>
   <div class="tlbox"><svg id="tl3" width="100%" role="img" aria-label="Oś czasu wejść w III strefę per drużyna"></svg></div>
 </section>
 
-<section id="sec-tlm">
+<section id="sec-tlm" data-widget="tl_bilans">
   <h2>Oś czasu — bilans meczu</h2>
   <div class="sub">Wszystkie współczynniki bilansu na jednej osi. Tory drużynowe (strzały, xG, SBZ, III strefa) w kolorach drużyn; tory bez przypisania — zielony ● / czerwony ○ tam, gdzie etykiety dają wynik, szare kreski dla pozostałych. Te same fragmentatory co przy mapach.</div>
   <div class="tlbox"><svg id="tlm" width="100%" role="img" aria-label="Zbiorcza oś czasu współczynników bilansu"></svg></div>
 </section>
 
-<section id="sec-duels">
+<section id="sec-duels" data-widget="duels">
   <h2>Pojedynki, straty, odbiory — ilościowo i %</h2>
   <div class="sub">Zdarzenia bez przypisania drużyny, w zakresie wybranego fragmentu. Straty w podziale na strony boiska i reakcję; pierwszy kontakt z rozwinięciem wygranych (drugi kontakt / strata).</div>
   <div class="grid" id="duels-grid"></div>
 </section>
 
-<section id="sec-noteam">
+<section id="sec-zawodnicy" data-widget="zawodnicy">
+  <h2>Zawodnicy</h2>
+  <div class="sub">Warstwa indywidualna — wyłącznie wtedy, gdy eksport niesie kolumnę zawodnika (pułapka 4). Dopasowanie po PEŁNEJ nazwie, przez równość; fragment nazwiska łapałby dwóch różnych zawodników.</div>
+  <div class="tblwrap" id="zawodnicy-box"></div>
+</section>
+
+<section id="sec-siatka" data-widget="siatka">
+  <h2>Siatka ilości</h2>
+  <div class="sub">Wszystkie tagi eksportu — także te bez zmiennej w słowniku — w podziale na połowy i drużyny. Kafelek kontrolny: pokazuje, co w pliku faktycznie jest, zanim ktokolwiek zdecyduje, co z tego liczyć.</div>
+  <div class="tblwrap" id="siatka-box"></div>
+</section>
+
+<section id="sec-noteam" data-widget="noteam">
   <h2>Zdarzenia bez przypisania drużyny</h2>
-  <div class="sub">196 akcji (straty, odbiory, pojedynki, pierwsze kontakty) otagowano bez pola „team” — rozkład wg etykiet.</div>
+  <div class="sub">Akcje (straty, odbiory, pojedynki, pierwsze kontakty) otagowane bez pola „team” — rozkład wg etykiet. Liczba przy każdym kafelku pochodzi z tego eksportu.</div>
   <div class="grid" id="cards"></div>
 </section>
 
@@ -317,6 +368,11 @@ svg text{font-family:'IBM Plex Mono',monospace}
  apply(t); b.onclick=()=>apply(r.dataset.theme==='dark'?'light':'dark');})();
 const DATA = /*__DATA__*/;
 const PAL = /*__PAL__*/;
+/* v22: progi faktów Przeglądu. Globalne z engine/coachanalyze/config/progi.json,
+   nadpisywane przez `thresholds` templatu klubu. W PROCENTACH (0-100).
+   Do sesji 4b siedziały tu jako literały (>=.7, >=.6) — zmiana progu wymagała
+   edycji pliku HTML, czyli tej samej czynności co zmiana układu raportu. */
+const PROGI = __PROGI__;
 const tagCol=t=>PAL.tags[t]||'#9DAFA6';
 const labCol=l=>PAL.labels[l]||'#9DAFA6';
 /* v19: słownik zmiennych. Liczymy po kluczu, nazwy w aliases to inne nazwy tego samego tagu w innych eksportach.
@@ -546,7 +602,7 @@ function chartSVG(id){return `<svg id="${id}" viewBox="0 0 ${CPL+CW+16} ${CPT+CH
 
 document.getElementById('metric-rows').innerHTML=`
   <div class="maprow">
-    <div class="pitchbox"><h3>Strzały — wynik</h3>${pitchSVG('mp1')}<div class="legend" id="lg1"></div></div>
+    <div class="pitchbox"><h3>Strzały — wynik</h3>${pitchSVG('mp1')}<div class="nodata" id="np1"></div><div class="legend" id="lg1"></div></div>
     <div class="pitchbox"><h3>Strzały w czasie (y = xG)</h3>${chartSVG('mc1')}</div>
   </div>
   <div class="maprow">
@@ -557,7 +613,7 @@ document.getElementById('metric-rows').innerHTML=`
         <button class="chip ckon on" data-mctx="KONTRATAK">Kontratak</button>
         <button class="chip csfg on" data-mctx="SFG">SFG</button>
       </div>
-      ${pitchSVG('mp2')}<div class="legend" id="lg2"></div></div>
+      ${pitchSVG('mp2')}<div class="nodata" id="np2"></div><div class="legend" id="lg2"></div></div>
     <div class="pitchbox"><h3>Skumulowane xG we fragmencie</h3>${chartSVG('mc2')}</div>
   </div>
   <div class="maprow">
@@ -569,7 +625,7 @@ document.getElementById('metric-rows').innerHTML=`
         <button class="chip csfg on" data-zctx="SFG">SFG</button>
         <button class="chip on" data-zctx="INNE">Inne</button>
       </div>
-      ${pitchSVG('mp3')}<div class="legend" id="lg3"></div></div>
+      ${pitchSVG('mp3')}<div class="nodata" id="np3"></div><div class="legend" id="lg3"></div></div>
     <div class="pitchbox"><h3>Skumulowane wejścia w SBZ</h3>${chartSVG('mc3')}</div>
   </div>
   <div class="maprow">
@@ -628,17 +684,39 @@ function renderOverview(){
   const k=(l,a,b,f=x=>x)=>`<div class="kpi"><div class="l">${l}</div><div class="v"><span class="h">${f(a)}</span><span class="sep">:</span><span class="p">${f(b)}</span></div></div>`;
   document.getElementById('ov-kpi').innerHTML=`<h3>Kluczowe liczby<span class="hint">${mcLabel()} · __TEAM_HOME_SHORT__ : __TEAM_AWAY_SHORT__</span></h3><div class="kpis">${k('Gole',h.gole,p.gole)}${k('xG',h.xg,p.xg,x=>fmt(x,2))}${k('Strzały',h.strzaly,p.strzaly)}${k('Celne',h.celne,p.celne)}${k('Zdobycie SBZ',h.sbz,p.sbz)}${k('Odbiory',them.odb,u.odb)}${k('1x1 wygrane',them.won,u.won)}${k('III strefa (udane)',h.p3ok,p.p3ok)}</div>`;
   const f=[],push=(c,b,t)=>f.push({c,b,t}),[pok,pno]=u.pr,pn=pok+pno,me=A[USK],ry=A[USK===HUT?POG:HUT],short='__TEAM_AWAY_SHORT__';
-  if(pn)push(pok/pn>=.7?'ok':'bad',pc(pok,pn),`pressingów skutecznych (${pok} z ${pn})`);
-  if(me.sbz)push(me.sbz_shot/me.sbz>=.6?'ok':'bad',`${me.sbz_shot}/${me.sbz}`,`wejść w SBZ zakończonych strzałem (${pc(me.sbz_shot,me.sbz)}); rywal ${ry.sbz_shot}/${ry.sbz}`);
-  if(u.str)push(u.str_re/u.str>=.4?'ok':'bad',pc(u.str_re,u.str),`strat z reakcją (${u.str_re} z ${u.str})`);
+  if(pn)push(pok/pn>=PROGI.pressing/100?'ok':'bad',pc(pok,pn),`pressingów skutecznych (${pok} z ${pn})`);
+  if(me.sbz)push(me.sbz_shot/me.sbz>=PROGI.sbz_strzal/100?'ok':'bad',`${me.sbz_shot}/${me.sbz}`,`wejść w SBZ zakończonych strzałem (${pc(me.sbz_shot,me.sbz)}); rywal ${ry.sbz_shot}/${ry.sbz}`);
+  if(u.str)push(u.str_re/u.str>=PROGI.reakcja/100?'ok':'bad',pc(u.str_re,u.str),`strat z reakcją (${u.str_re} z ${u.str})`);
   push(me.xg-me.gole>0.5?'bad':'neu',`${fmt(me.xg,2)} → ${me.gole}`,`xG → gole ${short}; rywal ${fmt(ry.xg,2)} → ${ry.gole}`);
-  if(u.def[1])push(u.def[0]/u.def[1]>=.5?'ok':'bad',pc(u.def[0],u.def[1]),`1x1 w defensywie wygranych (${u.def[0]}/${u.def[1]})`);
-  if(me.p3)push(me.p3ok/me.p3>=.4?'ok':'bad',`${me.p3ok}/${me.p3}`,`udanych wejść w III strefę (${pc(me.p3ok,me.p3)})`);
+  if(u.def[1])push(u.def[0]/u.def[1]>=PROGI.duel_def/100?'ok':'bad',pc(u.def[0],u.def[1]),`1x1 w defensywie wygranych (${u.def[0]}/${u.def[1]})`);
+  if(me.p3)push(me.p3ok/me.p3>=PROGI.p3/100?'ok':'bad',`${me.p3ok}/${me.p3}`,`udanych wejść w III strefę (${pc(me.p3ok,me.p3)})`);
   document.getElementById('ov-facts').innerHTML=`<h3>Fakty z fragmentu<span class="hint">perspektywa ${short} · ${mcLabel()}</span></h3><div class="facts">${f.slice(0,6).map(x=>`<div class="fact ${x.c}"><div class="big">${x.b}</div><div class="t">${x.t}</div></div>`).join('')}</div>`;
+}
+/* v22: mapa bez wspolrzednych pokazuje POWOD, nie puste boisko.
+   Eksport referencyjny ma 35 tagow III STREFA bez pos_* — bilans je liczy (20:15),
+   a mapa wychodzila pusta i wygladala jak zero zdarzen (STAN_PIVOTU 7.8).
+   Zwraca true, gdy komunikat zastapil boisko. */
+function mapaBezPozycji(svgId, noteId, zdarzenia, czego){
+  const sv=document.getElementById(svgId), nt=document.getElementById(noteId);
+  if(!sv||!nt) return false;
+  const zPoz=zdarzenia.filter(e=>e.x!=null).length;
+  const pusto=zdarzenia.length>0&&zPoz===0;
+  sv.style.display=pusto?'none':'';
+  nt.style.display=pusto?'block':'none';
+  if(pusto) nt.innerHTML=`<b>Brak pozycji w eksporcie.</b> ${zdarzenia.length} ${czego} policzono w tym fragmencie, ale kolumny <code>pos_x_meters</code> i <code>pos_y_meters</code> są dla nich puste — mapy nie da się narysować. Liczby w bilansie i na osiach czasu są kompletne.`;
+  return pusto;
 }
 function renderMetricMaps(){
   const [t0,t1]=envQ(MC.qs);
   const S1=mcShots(), Z=mcSBZ();
+  /* zdarzenia fragmentu BEZ filtra pozycji — do odroznienia „nic nie bylo"
+     od „bylo, ale bez wspolrzednych" */
+  const S1all=shots.filter(e=>inSet(MC.qs,e)&&MC.teams.has(e.team)&&MC.outs.has(outcomeOf(e)));
+  const S2all=shots.filter(e=>inSet(MC.qs,e)&&MC.teams.has(e.team)&&ctxOf(e)&&MC.ctx.has(ctxOf(e)));
+  const Zall=E.filter(e=>e.tag==='ZDOBYCIE SBZ'&&inSet(MC.qs,e)&&MC.teams.has(e.team)&&MC.zctx.has(zctxOf(e)));
+  mapaBezPozycji('mp1','np1',S1all,'strzałów');
+  mapaBezPozycji('mp2','np2',S2all,'strzałów');
+  mapaBezPozycji('mp3','np3',Zall,'wejść w SBZ');
   /* mapa 1: wynik — stały rozmiar */
   let s=pitchBase();
   S1.forEach(e=>{ s+=glyph(kindOf(outcomeOf(e)), e.x*S, e.y*S, rXG(e.xg), col(e.team), shotTip(e)); });
@@ -885,38 +963,38 @@ function renderMetricMaps(){
 document.querySelectorAll('[data-mf]').forEach(b=>b.addEventListener('click',()=>{
   MC.qs=fragToggle(MC.qs, b.dataset.mf);
   syncFragBtns('[data-mf]', MC.qs);
-  renderMetricMaps();renderOverview();
+  odswiezWidgety();
 }));
 syncFragBtns('[data-mf]', MC.qs);
 document.querySelectorAll('[data-mteam]').forEach(b=>b.addEventListener('click',()=>{
   const t=b.dataset.mteam;
   if(MC.teams.has(t)&&MC.teams.size>1){MC.teams.delete(t);b.classList.remove('on');}
   else{MC.teams.add(t);b.classList.add('on');}
-  renderMetricMaps();renderOverview();
+  odswiezWidgety();
 }));
 document.querySelectorAll('[data-mout]').forEach(b=>b.addEventListener('click',()=>{
   const o=b.dataset.mout;
   if(MC.outs.has(o)&&MC.outs.size>1){MC.outs.delete(o);b.classList.remove('on');}
   else{MC.outs.add(o);b.classList.add('on');}
-  renderMetricMaps();renderOverview();
+  odswiezWidgety();
 }));
 document.querySelectorAll('[data-ictx]').forEach(b=>b.addEventListener('click',()=>{
   const o=b.dataset.ictx;
   if(MC.ist.has(o)&&MC.ist.size>1){MC.ist.delete(o);b.classList.remove('on');}
   else{MC.ist.add(o);b.classList.add('on');}
-  renderMetricMaps();renderOverview();
+  odswiezWidgety();
 }));
 document.querySelectorAll('[data-zctx]').forEach(b=>b.addEventListener('click',()=>{
   const o=b.dataset.zctx;
   if(MC.zctx.has(o)&&MC.zctx.size>1){MC.zctx.delete(o);b.classList.remove('on');}
   else{MC.zctx.add(o);b.classList.add('on');}
-  renderMetricMaps();renderOverview();
+  odswiezWidgety();
 }));
 document.querySelectorAll('[data-mctx]').forEach(b=>b.addEventListener('click',()=>{
   const o=b.dataset.mctx;
   if(MC.ctx.has(o)&&MC.ctx.size>1){MC.ctx.delete(o);b.classList.remove('on');}
   else{MC.ctx.add(o);b.classList.add('on');}
-  renderMetricMaps();renderOverview();
+  odswiezWidgety();
 }));
 renderHeader2();renderMetricMaps();renderOverview();
 
@@ -1101,6 +1179,238 @@ document.getElementById('cards').innerHTML=cards.map(c=>{
 }).join('');
 </script>
 <script>
+/* ═══════════════════════════════════════════════════════════════════════════
+   v22 (sesja 4b): REJESTR WIDGETÓW.
+
+   Do tej sesji każdy kafelek był wywołaniem funkcji wpisanym w kilku miejscach
+   naraz: raz przy starcie, raz w każdym uchwycie fragmentatora, raz w slideDefs.
+   Dołożenie kafelka znaczyło znalezienie wszystkich trzech — a pominięcie
+   któregokolwiek dawało kafelek, który przestaje się odświeżać albo nie wychodzi
+   na slajd, i jedno i drugie widać dopiero po kliknięciu.
+
+   Rejestr trzyma to w JEDNYM miejscu:
+     id      — ten sam identyfikator, co `coverage.ALL_SECTIONS` w silniku,
+     label   — nazwa dla kreatora sekcji (sesja 5) i dla podpisu slajdu,
+     render  — (el, ctx) -> void; `el` to element sekcji, `ctx` dane fragmentu,
+     live    — czy przerysować przy zmianie fragmentatora,
+     slide   — czy kafelek wchodzi do eksportu slajdów PNG.
+
+   SEKCJA WYCIĘTA PRZEZ SILNIK NIE ISTNIEJE W DOM-ie i rejestr jej nie dotyka:
+   iterujemy po `[data-widget]` faktycznie obecnych, a nie po kluczach rejestru.
+
+   LIVE ODWZOROWUJE STAN SPRZED TEJ SESJI, a nie to, co byłoby ładniejsze.
+   Osie czasu i pojedynki nie przerysowywały się przy zmianie fragmentatora
+   (mimo że ich podpis to obiecuje) i tak zostaje — zmiana tego zachowania jest
+   decyzją o wyglądzie raportu, nie refaktorem, i należy do osobnej sesji.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Zdarzenia wybranego fragmentu — wspólne wejście wszystkich nowych kafli. */
+function widgetCtx(){
+  const Ev=E.filter(e=>inSet(MC.qs,e));
+  return {E, Ev, MC, HUT, POG, USK, PROGI, fragment:mcLabel()};
+}
+
+const pctTxt=(n,tot)=>tot?Math.round(100*n/tot)+'%':'–';
+const kom=(tekst)=>`<div class="nodata" style="display:block">${tekst}</div>`;
+
+/* ---------------------------------------------------------------- makro */
+/* Wiersze po ZMIENNYCH ze słownika VARS, kolumny po drużynach i połowach.
+   Tag spoza słownika nie ma tu wiersza — od tego jest „Siatka ilości", która
+   pokazuje plik takim, jaki jest. */
+function renderMakro(el, ctx){
+  const box=el.querySelector('#makro-box'); if(!box) return;
+  const klucze=Object.keys(VARS).filter(k=>ctx.E.some(e=>e.tag===k));
+  if(!klucze.length){ box.innerHTML=kom('<b>Brak zmiennych ze słownika w tym eksporcie.</b> Żaden tag pliku nie ma odpowiednika w VARS.'); return; }
+  const g=k=>ctx.Ev.filter(e=>e.tag===k);
+  const n=(arr,t,h)=>arr.filter(e=>(t===null?!e.team:e.team===t)&&(h?e.half===h:true)).length;
+  const wiersze=klucze.map(k=>{
+    const a=g(k);
+    return [k,a,[n(a,HUT,1),n(a,HUT,2),n(a,HUT,0)],[n(a,POG,1),n(a,POG,2),n(a,POG,0)],n(a,null,0)];
+  }).filter(w=>w[1].length);
+  if(!wiersze.length){ box.innerHTML=kom(`<b>Brak zdarzeń w tym fragmencie.</b> Wybrany zakres (${ctx.fragment}) nie zawiera żadnej ze zmiennych słownika.`); return; }
+  const num=(v,cls='')=>`<td class="num ${cls}">${v||'–'}</td>`;
+  box.innerHTML=`<table class="tbl">
+    <thead>
+      <tr><th rowspan="2">Zmienna</th><th class="grp" colspan="3">__TEAM_HOME_SHORT__</th><th class="grp" colspan="3">__TEAM_AWAY_SHORT__</th><th class="mut" rowspan="2">bez<br>drużyny</th></tr>
+      <tr><th>I poł.</th><th>II poł.</th><th>razem</th><th>I poł.</th><th>II poł.</th><th>razem</th></tr>
+    </thead>
+    <tbody>${wiersze.map(([k,,h,a,bez])=>
+      `<tr><td>${disp(k)}</td>${num(h[0])}${num(h[1])}${num(h[2],'sum')}${num(a[0])}${num(a[1])}${num(a[2],'sum')}${num(bez,'mut')}</tr>`
+    ).join('')}</tbody></table>`;
+}
+
+/* ---------------------------------------------------------------- donuty */
+function donutSVG(czesci, total, size){
+  const R=size/2, r=R-11, C=2*Math.PI*r; let off=0;
+  const segs=czesci.filter(c=>c[1]>0).map(c=>{
+    const frac=c[1]/total;
+    const seg=`<circle cx="${R}" cy="${R}" r="${r}" fill="none" stroke="${c[2]}" stroke-width="15" stroke-dasharray="${(C*frac).toFixed(2)} ${C.toFixed(2)}" stroke-dashoffset="${(-C*off).toFixed(2)}" transform="rotate(-90 ${R} ${R})"/>`;
+    off+=frac; return seg;
+  }).join('');
+  return `<svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" role="img">`+
+    `<circle cx="${R}" cy="${R}" r="${r}" fill="none" stroke="var(--panel2)" stroke-width="15"/>${segs}`+
+    `<text x="${R}" y="${R+6}" text-anchor="middle" font-size="19" font-weight="700" fill="currentColor" font-family="'IBM Plex Mono',monospace">${total}</text></svg>`;
+}
+function donutKarta(tytul, podpis, czesci){
+  const total=czesci.reduce((a,c)=>a+c[1],0);
+  const tresc = total
+    ? `<div class="donut">${donutSVG(czesci,total,104)}<div class="lg">${czesci.map(c=>`<div><i style="background:${c[2]}"></i>${c[0]} <b>${c[1]}</b> · ${pctTxt(c[1],total)}</div>`).join('')}</div></div>`
+    : `<div class="n">brak zdarzeń w tym fragmencie</div>`;
+  return `<div class="card"><h3>${tytul}</h3><div class="n">${podpis}</div>${tresc}</div>`;
+}
+function renderDonuty(el, ctx){
+  const box=el.querySelector('#donuty-box'); if(!box) return;
+  const karty=[];
+  [[HUT,'__TEAM_HOME_LABEL__'],[POG,'__TEAM_AWAY_LABEL__']].filter(([t])=>MC.teams.has(t)).forEach(([t,nazwa])=>{
+    const ss=ctx.Ev.filter(e=>e.tag==='STRZAŁ'&&e.team===t);
+    karty.push(donutKarta(`Strzały — ${nazwa}`, `${ctx.fragment} · wynik strzału`, [
+      ['Celne', ss.filter(e=>has(e,'CELNY')).length, 'var(--ok)'],
+      ['Niecelne', ss.filter(e=>outcomeOf(e)==='NIECELNY').length, 'var(--bad)'],
+      ['Zablokowane', ss.filter(e=>has(e,'ZABLOKOWANY')).length, 'var(--neut)'],
+    ]));
+    const zz=ctx.Ev.filter(e=>e.tag==='ZDOBYCIE SBZ'&&e.team===t);
+    karty.push(donutKarta(`Wejścia w SBZ — ${nazwa}`, `${ctx.fragment} · zakończenie wejścia`, [
+      ['Ze strzałem', zz.filter(e=>has(e,'STRZAŁ')).length, 'var(--ok)'],
+      ['Bez strzału', zz.filter(e=>!has(e,'STRZAŁ')).length, 'var(--neut)'],
+    ]));
+  });
+  box.innerHTML=karty.join('')||kom('<b>Obie drużyny wyłączone filtrem.</b> Włącz którąś na pasku filtrów w sekcji Mapy.');
+}
+
+/* ---------------------------------------------------------------- okazje */
+/* STRZAŁ BEZ xG NIE WCHODZI NA LISTĘ i nie dostaje zera: xG wpisuje analityk
+   w komentarzu taga (pułapka 1), a „nie oszacowano" to nie to samo, co „zero". */
+function renderOkazje(el, ctx){
+  const box=el.querySelector('#okazje-box'); if(!box) return;
+  const zXg=ctx.Ev.filter(e=>e.tag==='STRZAŁ'&&e.xg!=null).sort((a,b)=>b.xg-a.xg).slice(0,5);
+  const wszystkie=ctx.Ev.filter(e=>e.tag==='STRZAŁ').length;
+  if(!zXg.length){
+    box.innerHTML=kom(wszystkie
+      ? `<b>Żaden z ${wszystkie} strzałów tego fragmentu nie ma wpisanego xG.</b> Wartość pochodzi z komentarza analityka; brak wpisu nie jest zerem.`
+      : `<b>Brak strzałów w tym fragmencie (${ctx.fragment}).</b>`);
+    return;
+  }
+  const maPole=ctx.E.some(e=>'player' in e), maNazwiska=ctx.E.some(e=>e.player);
+  const kolZawodnik=maPole&&maNazwiska;
+  box.innerHTML=`<table class="tbl">
+    <thead><tr><th>#</th><th>Minuta</th><th>Drużyna</th>${kolZawodnik?'<th>Zawodnik</th>':''}<th>Wynik</th><th>Typ akcji</th><th>xG</th></tr></thead>
+    <tbody>${zXg.map((e,i)=>`<tr>
+      <td class="num mut">${i+1}</td>
+      <td class="num">${mmss(e.b)}</td>
+      <td style="color:${col(e.team)}">${tName(e.team)}</td>
+      ${kolZawodnik?`<td>${e.player||'–'}</td>`:''}
+      <td>${outcomeOf(e).toLowerCase()}${goalOf(e)?' <b>· GOL</b>':''}</td>
+      <td class="mut">${ctxOf(e)?ctxOf(e).toLowerCase():'–'}</td>
+      <td class="num sum">${fmt(e.xg,2)}</td></tr>`).join('')}</tbody></table>`;
+}
+
+/* ---------------------------------------------------------------- zawodnicy */
+/* Pułapka 4: kolumna zawodnika bywa pusta i wtedy warstwy indywidualnej NIE MA.
+   Kafelek mówi to wprost, zamiast pokazywać pustą tabelę. */
+function renderZawodnicy(el, ctx){
+  const box=el.querySelector('#zawodnicy-box'); if(!box) return;
+  const zNazw=ctx.Ev.filter(e=>e.player);
+  if(!zNazw.length){
+    box.innerHTML=kom('<b>Eksport nie przypisuje zdarzeń do zawodników.</b> Kolumna zawodnika jest pusta (pułapka 4) — warstwa indywidualna będzie dostępna, gdy analityk zacznie ją wypełniać w LiveTag. Pusta tabela wyglądałaby jak brak zdarzeń, a zdarzenia są.');
+    return;
+  }
+  const po={};
+  zNazw.forEach(e=>{
+    const k=e.player;                     /* RÓWNOŚĆ na pełnej nazwie, nigdy fragment */
+    const w=po[k]||(po[k]={n:0,strzaly:0,xg:0,gole:0,sbz:0,druzyny:new Set()});
+    w.n++; if(e.team) w.druzyny.add(e.team);
+    if(e.tag==='STRZAŁ'){ w.strzaly++; w.xg+=e.xg||0; if(goalOf(e)) w.gole++; }
+    if(e.tag==='ZDOBYCIE SBZ') w.sbz++;
+  });
+  const wiersze=Object.entries(po).sort((a,b)=>b[1].n-a[1].n||a[0].localeCompare(b[0],'pl'));
+  box.innerHTML=`<table class="tbl">
+    <thead><tr><th>Zawodnik</th><th>Drużyna</th><th>Zdarzeń</th><th>Strzały</th><th>Gole</th><th>xG</th><th>Wejścia w SBZ</th></tr></thead>
+    <tbody>${wiersze.map(([nazwa,w])=>{
+      const t=[...w.druzyny];
+      return `<tr><td>${nazwa}</td>
+        <td class="mut">${t.length===1?tName(t[0]):(t.length?'—':'–')}</td>
+        <td class="num sum">${w.n}</td><td class="num">${w.strzaly||'–'}</td>
+        <td class="num">${w.gole||'–'}</td><td class="num">${w.xg?fmt(w.xg,2):'–'}</td>
+        <td class="num">${w.sbz||'–'}</td></tr>`;
+    }).join('')}</tbody></table>`;
+}
+
+/* ---------------------------------------------------------------- siatka ilości */
+/* PO SUROWYCH TAGACH, nie po zmiennych: kafelek ma pokazywać plik takim, jaki
+   jest, razem z tagami, których nikt jeszcze nie zmapował. */
+function renderSiatka(el, ctx){
+  const box=el.querySelector('#siatka-box'); if(!box) return;
+  const tagi=[...new Set(ctx.Ev.map(e=>e.tag).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pl'));
+  if(!tagi.length){ box.innerHTML=kom(`<b>Brak zdarzeń w tym fragmencie (${ctx.fragment}).</b>`); return; }
+  const n=(tag,t,h)=>ctx.Ev.filter(e=>e.tag===tag&&(t===null?!e.team:e.team===t)&&(h?e.half===h:true)).length;
+  const num=(v,cls='')=>`<td class="num ${cls}">${v||'–'}</td>`;
+  box.innerHTML=`<table class="tbl">
+    <thead>
+      <tr><th rowspan="2">Tag w eksporcie</th><th class="grp" colspan="2">__TEAM_HOME_SHORT__</th><th class="grp" colspan="2">__TEAM_AWAY_SHORT__</th><th class="grp mut" colspan="2">bez drużyny</th><th rowspan="2">razem</th></tr>
+      <tr><th>I</th><th>II</th><th>I</th><th>II</th><th class="mut">I</th><th class="mut">II</th></tr>
+    </thead>
+    <tbody>${tagi.map(tag=>{
+      const suma=ctx.Ev.filter(e=>e.tag===tag).length;
+      const wSlowniku=!!VARS[tag];
+      return `<tr><td>${tag}${wSlowniku?'':' <span class="mut">(bez zmiennej)</span>'}</td>`+
+        num(n(tag,HUT,1))+num(n(tag,HUT,2))+num(n(tag,POG,1))+num(n(tag,POG,2))+
+        num(n(tag,null,1),'mut')+num(n(tag,null,2),'mut')+num(suma,'sum')+`</tr>`;
+    }).join('')}</tbody></table>`;
+}
+
+/* ---------------------------------------------------------------- rejestr */
+const WIDGETS={
+  przeglad:  {label:'Przegląd',                   nav:'Przegląd',  live:true,  slide:true,  render:()=>renderOverview()},
+  makro:     {label:'Tabela makro',               nav:'Makro',     live:true,  slide:true,  render:renderMakro},
+  bilans:    {label:'Bilans drużyn',              nav:'Bilans',    live:false, slide:true,  render:()=>{}},
+  mapy:      {label:'Mapy współczynników',        nav:'Mapy',      live:true,  slide:true,  render:()=>renderMetricMaps()},
+  donuty:    {label:'Skuteczność w udziałach',    nav:'Udziały',   live:true,  slide:true,  render:renderDonuty},
+  okazje:    {label:'Najlepsze okazje',           nav:'Okazje',    live:true,  slide:true,  render:renderOkazje},
+  tl_sbz:    {label:'Oś czasu — SBZ',             nav:'Oś SBZ',    live:false, slide:true,  render:()=>{}},
+  tl_iii:    {label:'Oś czasu — III strefa',      nav:'Oś III',    live:false, slide:true,  render:()=>{}},
+  tl_bilans: {label:'Oś czasu — bilans',          nav:'Oś bilansu',live:false, slide:true,  render:()=>{}},
+  duels:     {label:'Pojedynki, straty, odbiory', nav:'Pojedynki', live:false, slide:true,  render:()=>{}},
+  zawodnicy: {label:'Zawodnicy',                  nav:'Zawodnicy', live:true,  slide:true,  render:renderZawodnicy},
+  siatka:    {label:'Siatka ilości',              nav:'Siatka',    live:true,  slide:false, render:renderSiatka},
+  noteam:    {label:'Bez przypisania drużyny',    nav:'Bez druż.', live:false, slide:true,  render:()=>{}},
+};
+
+/* PASEK NAWIGACJI SKŁADANY Z SEKCJI, KTÓRE FAKTYCZNIE SĄ W DOKUMENCIE.
+   Dotąd był listą wpisaną na sztywno — sekcja wycięta przez silnik zostawiała
+   w nim odsyłacz prowadzący donikąd, a sekcja dołożona nie miała go wcale.
+   Kotwica prowadząca w pustkę jest gorsza niż jej brak: czytelnik klika,
+   nic się nie dzieje i przestaje ufać całemu paskowi. */
+(function(){
+  const nav=document.getElementById('topbar'); if(!nav) return;
+  const pierwszyPrzycisk=nav.querySelector('button');
+  nav.querySelectorAll('a').forEach(a=>a.remove());
+  document.querySelectorAll('[data-widget]').forEach(el=>{
+    const w=WIDGETS[el.dataset.widget];
+    if(!w||!w.nav||!el.id) return;
+    const a=document.createElement('a');
+    a.href='#'+el.id; a.textContent=w.nav;
+    nav.insertBefore(a, pierwszyPrzycisk);
+  });
+})();
+
+/* Kafle, które NIE MAJĄ własnego wywołania poza rejestrem — te, które doszły
+   w tej sesji. Reszta renderuje się tam, gdzie renderowała się dotąd, żeby
+   start raportu wyglądał dokładnie tak samo. */
+const WIDGETY_NOWE=['makro','donuty','okazje','zawodnicy','siatka'];
+
+function odswiezWidgety(tylko){
+  const ctx=widgetCtx();
+  document.querySelectorAll('[data-widget]').forEach(el=>{
+    const id=el.dataset.widget, w=WIDGETS[id];
+    if(!w) return;
+    if(tylko ? !tylko.includes(id) : !w.live) return;
+    try{ w.render(el, ctx); }
+    catch(err){ console.warn('widget', id, err); }
+  });
+}
+odswiezWidgety(WIDGETY_NOWE);
+</script>
+<script>
 /* v19: eksport kafelka do PNG (SVG -> canvas, style z CSS wpisane inline) */
 function exportPNG(box){
   const svg=box.querySelector('svg'); if(!svg) return;
@@ -1154,6 +1464,18 @@ function slideDefs(){
   defs.push({name:'08_os_bilansu', title:title('#sec-tlm'), nodes:[q('#sec-tlm .tlbox')]});
   defs.push({name:'09_pojedynki', title:title('#sec-duels'), nodes:[q('#duels-grid')], flexify:true});
   defs.push({name:'10_bez_druzyny', title:title('#sec-noteam'), nodes:[q('#cards')], flexify:true});
+  /* v22: kafle z sesji 4b. Ten sam mechanizm (1920x1080), kolejnosc jak w raporcie.
+     `slide:false` w rejestrze wycina kafelek ze slajdow — siatka ilosci jest
+     kafelkiem kontrolnym dla analityka, a nie materialem na odprawe. */
+  const naSlajd=id=>WIDGETS[id]&&WIDGETS[id].slide&&q(`[data-widget="${id}"]`);
+  [['11_makro','makro','#makro-box'],
+   ['12_donuty','donuty','#donuty-box'],
+   ['13_okazje','okazje','#okazje-box'],
+   ['14_zawodnicy','zawodnicy','#zawodnicy-box'],
+   ['15_siatka','siatka','#siatka-box']].forEach(([name,id,sel])=>{
+     if(!naSlajd(id)) return;
+     defs.push({name, title:title(`[data-widget="${id}"]`), nodes:[q(sel)], flexify:true});
+   });
   return defs.filter(d=>d.nodes.every(Boolean));
 }
 const STYLE_PROPS=['display','position','top','left','right','bottom','width','height','min-width','min-height','max-width','max-height','margin','padding','border','border-radius','box-sizing','background','background-color','color','font','font-family','font-size','font-weight','font-style','line-height','letter-spacing','text-transform','text-align','text-decoration','white-space','vertical-align','overflow','opacity','flex','flex-direction','flex-wrap','justify-content','align-items','align-content','align-self','gap','grid-template-columns','grid-template-rows','grid-column','grid-row','grid-auto-flow','transform','transform-origin','box-shadow','list-style','border-collapse','border-spacing','table-layout','fill','stroke','stroke-width','stroke-opacity','fill-opacity','stroke-dasharray','stroke-linecap','text-anchor','dominant-baseline','visibility','z-index','float','clear','object-fit','cursor','filter'];

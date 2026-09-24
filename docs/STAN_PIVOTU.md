@@ -432,15 +432,19 @@ przekazaniu parametru z `EngineRunner`. **Do zrobienia w sesji, która włącza 
 > nagłówka robi się więc warunek wstępny obsadzenia stron. Jedna zmiana
 > w `run_job.php`, dwie rzeczy zależne.
 
-### 7.4 Sekcja „Przegląd" nie jest w rejestrze sekcji
+### 7.4 ~~Sekcja „Przegląd" nie jest w rejestrze sekcji~~ — ZAMKNIĘTE w sesji 4b
 
-v21 ma `id="sec-przeglad"`, a `coverage.ALL_SECTIONS` i `render.SECTION_DOM_ID`
-o niej nie wiedzą. Skutek: **sekcji Przegląd nie da się wyłączyć z templatu klubu**
-ani pominąć przy braku danych.
+Przegląd jest w `coverage.ALL_SECTIONS` i w `render.SECTION_DOM_ID`, więc da się
+go wyłączyć z templatu i pominąć przy braku danych. Razem z nim weszły kafle
+z magazynu v2 (`makro`, `donuty`, `okazje`, `zawodnicy`, `siatka`).
 
-Dodanie jej do rejestru jest zmianą kontraktu (`sections_enabled`) i dotyka
-`build_sections`, więc nie weszło tutaj. Dopóki Przegląd ma być zawsze widoczny,
-nie boli — ale to jest założenie, nie projekt.
+Przy okazji rejestr rozpadł się na **dwie listy**, bo to dwa różne pytania:
+`ALL_SECTIONS` mówi, co silnik ZNA, a `DOMYSLNE_SEKCJE` — co widać BEZ TEMPLATU.
+Kafle z magazynu są dostępne, ale nie domyślne; dokłada je kreator sekcji.
+
+Zostaje jako zapis decyzji: **templat, który sekcji nie znał, jej nie wyłącza**.
+Sekcja dołożona po zapisie templatu wraca do stanu domyślnego, bo brak na liście
+zapisanej rok wcześniej nie jest niczyją decyzją.
 
 ### 7.5 Nazwy klubów nie przechodzą przez ucieczkę
 
@@ -574,7 +578,11 @@ pipeline zachowuje się dokładnie tak, jak ma (pułapka 3: III STREFA bywa bez
 współrzędnych; sekcja warunkowa, brak danych = wyszarzenie z wyjaśnieniem).
 Brakuje wyłącznie tego wyjaśnienia **w kafelku mapy**.
 
-**Sesja 4:** kafelek mapy bez współrzędnych pokazuje komunikat
-„brak pozycji w eksporcie" wraz z licznikiem zdarzeń, zamiast pustego boiska.
-Puste boisko jest gorsze niż brak kafelka — wygląda jak zero zdarzeń, a zdarzeń
-było trzydzieści pięć.
+**ZROBIONE w sesji 4b.** Kafelek mapy bez współrzędnych pokazuje komunikat
+„Brak pozycji w eksporcie" wraz z licznikiem zdarzeń fragmentu, zamiast pustego
+boiska. Puste boisko jest gorsze niż brak kafelka — wygląda jak zero zdarzeń,
+a zdarzeń było trzydzieści pięć.
+
+Dotyczy trzech map sekcji Mapy (strzały wg wyniku, strzały wg typu akcji,
+wejścia w SBZ). Sekcja `tl_iii` nadal ZNIKA w całości z powodem w raporcie
+pokrycia — i tak jest poprawnie: tam nie ma pustego kafelka, tylko brak sekcji.

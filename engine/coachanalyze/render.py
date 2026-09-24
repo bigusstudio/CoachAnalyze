@@ -175,6 +175,8 @@ SLOT_GROUPS = {
     # stron z §7.7 a byłoby to po prostu nieprawdą: lewy slot należy teraz do
     # tenanta, a tenant na mapach atakuje w prawo. Podpis idzie więc z danych.
     "kierunek": ("__KIERUNEK_HOME__", "__KIERUNEK_AWAY__", "__KIERUNEK_OPIS__"),
+    # Progi faktów sekcji Przegląd (v21, sesja 4b). Jeden znacznik, cały obiekt.
+    "progi": ("__PROGI__",),
 }
 
 # Odwrotność mapy powyżej: znacznik -> nazwa grupy.
@@ -323,6 +325,59 @@ def hex_to_light(color, target=LIGHT_TARGET_LUM):
         return "#{:02X}{:02X}{:02X}".format(r, g, b)
     wsp = target / lum
     return "#{:02X}{:02X}{:02X}".format(*(min(255, round(k * wsp)) for k in (r, g, b)))
+
+
+# ------------------------------------------------------------------ progi faktów
+PROGI_PLIK = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config", "progi.json")
+
+# Zakres dopuszczalny progu. Wartość spoza niego jest błędem wpisu, nie opinią:
+# „próg 140% pressingu" nie da się spełnić, a „-10%" jest spełnione zawsze.
+PROG_MIN, PROG_MAX = 0, 100
+
+
+def progi_globalne():
+    """Progi z `config/progi.json`. Klucze opisowe (`_*`) pomijamy.
+
+    Plik jest DANYMI PAKIETU, jak szablon: ścieżka liczona względem katalogu
+    pakietu, bo po instalacji silnik startuje spoza repozytorium.
+    """
+    try:
+        with open(PROGI_PLIK, encoding="utf-8") as fh:
+            dane = json.load(fh)
+    except (OSError, ValueError) as exc:
+        raise EngineError("Nie udało się wczytać progów faktów: {}".format(PROGI_PLIK)) from exc
+    return {k: v for k, v in dane.items() if not k.startswith("_")}
+
+
+def progi(template=None):
+    """Progi globalne nadpisane przez `template.thresholds`.
+
+    ODRZUCAMY WARTOŚCI NIELICZBOWE I SPOZA ZAKRESU, bez wyjątku i bez cichego
+    podstawienia czegokolwiek: te liczby wchodzą wprost do literału JS w raporcie
+    pod publicznym adresem, a `thresholds` pochodzi z bazy, czyli od użytkownika.
+    Napis w tym miejscu nie jest „złym progiem", tylko treścią do wykonania.
+
+    Klucz spoza zestawu globalnego też odpada — szablon i tak by go nie użył,
+    a wpuszczony przenosiłby dowolną nazwę do wyjścia.
+    """
+    wynik = progi_globalne()
+    for klucz, wartosc in ((template or {}).get("thresholds") or {}).items():
+        if klucz not in wynik or isinstance(wartosc, bool):
+            continue
+        try:
+            liczba = float(wartosc)
+        except (TypeError, ValueError):
+            continue
+        if liczba != liczba or not (PROG_MIN <= liczba <= PROG_MAX):  # NaN odpada na pierwszym
+            continue
+        wynik[klucz] = int(liczba) if float(liczba).is_integer() else round(liczba, 2)
+    return wynik
+
+
+def progi_slot(template=None):
+    """`{'__PROGI__': '{"pressing":70,…}'}` — gotowy literał obiektu JS."""
+    return {"__PROGI__": json.dumps(progi(template), ensure_ascii=False, sort_keys=True,
+                                    separators=(",", ":"))}
 
 
 def crest_data_uri(path):
@@ -582,7 +637,7 @@ def match_slots(config):
     return slots
 
 
-def view_data(frame, canon_result=None, teams=None):
+def view_data(frame, canon_result=None, teams=None, players=False):
     """Wycinek ramki, który trafia do przeglądarki.
 
     Wyłącznie `events` i `half_split`. Pozostałe klucze `prep_frame` (nagłówki
@@ -603,6 +658,22 @@ def view_data(frame, canon_result=None, teams=None):
     drużyny" i zmieniło liczby; ostrzeżenie `UNKNOWN_TEAM` już o tym mówi.
     """
     events = frame.get("events") or []
+    if players:
+        # NAZWISKA IDĄ DO PRZEGLĄDARKI TYLKO WTEDY, GDY RAPORT MA JE POKAZAĆ.
+        #
+        # Raport wisi pod publicznym adresem `/r/{club_key}/{token}` (CLAUDE.md §5),
+        # a warstwa indywidualna jest osobną decyzją klubu. Dosypywanie nazwisk do
+        # `DATA` „na zapas" znaczyłoby, że każdy raport niesie skład, także ten
+        # bez kafelka zawodników — i nikt by o tym nie wiedział.
+        #
+        # Włącza to `render` po ZNALEZIENIU KAFELKA w szablonie, nie flaga
+        # w konfiguracji: jedno miejsce decyzji zamiast dwóch, które da się
+        # ustawić sprzecznie.
+        nazwiska = frame.get("players") or []
+        events = [
+            dict(e, player=(nazwiska[i] if i < len(nazwiska) else None) or None)
+            for i, e in enumerate(events)
+        ]
     dane = {"events": events, "half_split": frame.get("half_split")}
 
     if not teams or canon_result is None:
@@ -824,6 +895,14 @@ def index_block(index_base, links):
 # Dwie listy nazw tej samej rzeczy to zawsze ryzyko rozjazdu, wiec mapowanie
 # stoi w JEDNYM miejscu, a test pilnuje, ze pokrywa cale `ALL_SECTIONS`.
 SECTION_DOM_ID = {
+    # Sekcje WYLACZNIE generacji v21. W v17 tych identyfikatorow nie ma i to nie
+    # jest brak: `drop_sections` pomija sekcje, ktorej w HTML-u nie znalazl.
+    "przeglad": "sec-przeglad",
+    "makro": "sec-makro",
+    "donuty": "sec-donuty",
+    "okazje": "sec-okazje",
+    "zawodnicy": "sec-zawodnicy",
+    "siatka": "sec-siatka",
     "bilans": "sec-bilans",
     "mapy": "sec-mapy",
     "tl_sbz": "sec-tlsbz",
@@ -891,8 +970,13 @@ def stamp_block(template_version, generated_at):
     )
 
 
+# Znacznik kafelka zawodnikow w szablonie. Po nim render poznaje, czy ma w ogole
+# wysylac nazwiska do przegladarki — patrz `view_data`.
+WIDGET_ZAWODNICY = 'data-widget="zawodnicy"'
+
+
 def render(frame, palette=None, metrics=None, canon_result=None, config=None,
-           template_path=None, direction=None, mirrored=False):
+           template_path=None, direction=None, mirrored=False, report_template=None):
     """(html, raport). Raport idzie do logu wykonawcy, nigdy do przeglądarki.
 
     `metrics` nie jest wstrzykiwane do szablonu: szablon liczy wszystko sam,
@@ -917,8 +1001,20 @@ def render(frame, palette=None, metrics=None, canon_result=None, config=None,
         direction, mirrored=mirrored, tenant=tenant,
         labels={slot: slots["__TEAM_{}_LABEL__".format(slot)] for _side, slot in sloty},
     ))
+    slots.update(progi_slot(report_template))
     braki_znacznikow = missing_slots(template, slots)
-    data = view_data(frame, canon_result=canon_result, teams=teams)
+    # NAZWISKA JADĄ DO PRZEGLĄDARKI TYLKO WTEDY, GDY RAPORT JE POKAŻE: szablon
+    # musi nieść kafelek zawodników, a sekcja musi przetrwać wybór z templatu.
+    # Raport wisi pod publicznym adresem (CLAUDE.md §5), więc „na zapas" znaczy
+    # tu „skład wysłany bez powodu". Kolumna zawodnika w `Najlepszych okazjach`
+    # idzie za tą samą decyzją — bez kafelka zawodników nie ma skąd wziąć nazwisk.
+    pokaz_zawodnikow = (
+        WIDGET_ZAWODNICY in template
+        and "zawodnicy" not in ((config or {}).get("drop_sections") or ())
+    )
+    data = view_data(
+        frame, canon_result=canon_result, teams=teams, players=pokaz_zawodnikow,
+    )
     html = inject(template, data, palette if palette is not None else EMPTY_PALETTE, slots)
 
     # Odsyłacze do indeksu współczynników — WYŁĄCZNIE gdy konfiguracja niesie

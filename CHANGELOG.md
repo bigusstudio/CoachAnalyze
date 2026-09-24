@@ -3,6 +3,62 @@
 Format: [wersja silnika] — data — opis.
 Każda zmiana, która modyfikuje wyjście silnika, MUSI mieć tu wpis wraz z powodem.
 
+## [0.14.1] — 2026-09-24 · sesja 4b pivotu „viewer"
+### Widgety v21: rejestr, kafle z magazynu v2, progi faktów z pliku
+
+**ZMIANA WYJŚCIA — WYŁĄCZNIE W GENERACJI v21.** v17 nie ma żadnego z nowych
+znaczników ani sekcji, a `drop_sections` pomija identyfikator, którego w HTML-u
+nie znalazł. Test złoty nietknięty.
+
+- **Rejestr widgetów `WIDGETS` w szablonie v21.** Do tej sesji każdy kafelek był
+  wywołaniem wpisanym w trzech miejscach (start, każdy uchwyt fragmentatora,
+  `slideDefs`); pominięcie któregokolwiek dawało kafelek, który przestaje się
+  odświeżać albo nie wychodzi na slajd — i widać to dopiero po kliknięciu.
+  Rejestr trzyma `label`, `nav`, `render(el, ctx)`, `live` i `slide` w jednym
+  miejscu. Istniejące kafle zarejestrowane **bez zmiany wyglądu**, z zachowaniem
+  dotychczasowej „żywotności": osie czasu i pojedynki nie przerysowywały się przy
+  zmianie fragmentatora i dalej tego nie robią (zmiana tego to decyzja o raporcie,
+  nie refaktor).
+- **Pasek nawigacji składany z sekcji obecnych w dokumencie.** Był listą wpisaną
+  na sztywno: sekcja wycięta przez silnik zostawiała odsyłacz prowadzący donikąd.
+- **Nowe kafle:** tabela makro (zmienne × drużyny × połowy, z kolumną „bez
+  drużyny" — bez niej tabela nie sumowałaby się do liczby zdarzeń meczu), donuty
+  udziałów (wynik strzału; wejście w SBZ ze strzałem i bez), najlepsze okazje
+  (5 strzałów o najwyższym xG; **strzał bez xG nie wchodzi i nie dostaje zera**),
+  tabela zawodników (dopasowanie po PEŁNEJ nazwie, przez równość) i siatka ilości
+  (wszystkie tagi eksportu, także bez zmiennej w słowniku).
+- **Dwie listy sekcji zamiast jednej:** `ALL_SECTIONS` — co silnik zna;
+  `DOMYSLNE_SEKCJE` — co widać bez templatu klubu. Kafle z magazynu v2 są
+  **dostępne, ale nie domyślne**: dokłada je kreator sekcji, a nie sam fakt, że
+  szablon je niesie. Domyślny zestaw to dotychczasowy v21 **plus tabela makro**.
+- **`Przegląd` w rejestrze sekcji** (`coverage.ALL_SECTIONS`, `SECTION_DOM_ID`) —
+  da się go wyłączyć z templatu. Zamyka §7.4 z `docs/STAN_PIVOTU.md`.
+- **Templat, który sekcji nie znał, jej nie wyłącza.** Sekcja dołożona po zapisie
+  templatu (`schema_version: 1`) wraca do stanu domyślnego, a nie do „wyłączona" —
+  inaczej klub z istniejącym templatem straciłby Przegląd, którego dziś używa,
+  a jedynym śladem byłby brak sekcji w raporcie.
+- **Mapa bez współrzędnych pokazuje POWÓD i licznik**, nie puste boisko
+  (`docs/STAN_PIVOTU.md` §7.8). Puste boisko wygląda jak zero zdarzeń, a zdarzeń
+  było trzydzieści pięć.
+- **Progi faktów Przeglądu w `engine/coachanalyze/config/progi.json`**,
+  wstrzykiwane jako `__PROGI__`, nadpisywane przez `template.thresholds`.
+  Dotąd siedziały w szablonie jako literały (`>=.7`), więc zmiana progu wymagała
+  edycji HTML-a — tej samej czynności co zmiana układu raportu, a to dwie różne
+  decyzje. **Wartość nieliczbowa albo spoza 0-100 odpada**: `thresholds` pochodzi
+  z bazy, a liczby idą wprost do literału JS w raporcie pod publicznym adresem.
+- **Nazwiska jadą do przeglądarki tylko wtedy, gdy raport je pokaże** — szablon
+  musi nieść kafelek zawodników, a sekcja musi przetrwać wybór z templatu.
+  `DATA` domyślnej generacji zostaje bez zmian.
+- `slideDefs()` rozszerzone o nowe kafle (ten sam mechanizm 1920×1080); siatka
+  ilości ma `slide: false`, bo jest kafelkiem kontrolnym dla analityka, a nie
+  materiałem na odprawę.
+- **Poprawka do 0.14.0:** zwrot wejścia w III strefę to `x - tx`, nie `tx - x`.
+  Pozycja taga jest miejscem OTRZYMUJĄCEGO, a `pos_target_*` pozycją PODAJĄCEGO
+  (stąd alias „III STREFA PODAJĄCY/OTRZYMUJĄCY"). Przy odwrotnym znaku eksport
+  referencyjny dostawał `KIERUNEK_NIEPEWNY` przy każdym renderze. Miara zeszła
+  przy okazji do roli **wyłącznie kontrolnej**: czyta zwrot wektora, którego
+  konwencja zależy od tagowania, a pomyłka w konwencji odwraca odpowiedź.
+
 ## [0.14.0] — 2026-09-24 · sesja 4a pivotu „viewer"
 ### Lewy slot należy do klubu-tenanta, kierunek ataku wychodzi z danych
 

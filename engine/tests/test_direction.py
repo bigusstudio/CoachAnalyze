@@ -101,6 +101,43 @@ def test_sprzecznosc_strzalow_i_sbz_rozstrzygaja_strzaly():
     assert wynik["conflicts"] == ["us:entry_sbz"]
 
 
+def test_zwrot_iii_strefy_nie_rozstrzyga_sam():
+    """Wektor III strefy potwierdza, ale nigdy nie odpowiada jako jedyny.
+
+    Konwencja zwrotu zależy od tego, czy tag stoi na podającym, czy na
+    otrzymującym — pomyłka w niej odwraca odpowiedź bez żadnego śladu.
+    """
+    trzecia = [
+        {"tag": "III STREFA", "team": "NASI", "b": 100.0 + i, "e": None, "labels": [],
+         "xg": None, "x": 30.0, "y": 34.0, "tx": 70.0, "ty": 34.0, "half": 1}
+        for i in range(4)
+    ]
+    wynik = direction.wykryj(ramka(trzecia), tag_rules=TAGI, lookup=LOOKUP)
+
+    assert wynik["us"] is None
+    assert wynik["confidence"] == "none"
+    assert wynik["evidence"]["us"]["third_dx"]["median_dx"] == -40.0
+
+
+def test_zwrot_iii_strefy_liczony_od_otrzymujacego():
+    """`x - tx`, nie odwrotnie — liczby jak w eksporcie referencyjnym.
+
+    Drużyna strzelająca po lewej ma wejścia 33,9 -> 64,4; wektor `tx - x`
+    wskazywałby jej stronę przeciwną do tej, w którą strzela.
+    """
+    trzecia = [
+        {"tag": "III STREFA", "team": "NASI", "b": 100.0 + i, "e": None, "labels": [],
+         "xg": None, "x": 33.9, "y": 34.0, "tx": 64.4, "ty": 34.0, "half": 1}
+        for i in range(4)
+    ]
+    frame = ramka(strzaly("NASI", [13.1, 12.5, 14.0]) + trzecia)
+    wynik = direction.wykryj(frame, tag_rules=TAGI, lookup=LOOKUP)
+
+    assert wynik["us"] == "left"
+    assert wynik["conflicts"] == [], "wektor III strefy ma POTWIERDZAĆ strzały"
+    assert wynik["confidence"] == "high"
+
+
 def test_bez_strzalow_decyduje_kontrola_ale_z_zastrzezeniem():
     sbz = [
         {"tag": "ZDOBYCIE SBZ", "team": "NASI", "b": 100.0 + i, "e": None, "labels": [],

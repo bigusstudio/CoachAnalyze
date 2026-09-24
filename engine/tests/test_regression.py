@@ -496,9 +496,15 @@ def test_bramka_s5_render_z_templatem_ma_te_same_sekcje(case):
     for powod in niedostepne.values():
         assert powod.strip(), "kazda usunieta sekcja niesie powod"
 
+    # OCZEKIWANIE LICZONE Z SZABLONU, nie z samego rejestru sekcji: sekcje
+    # dolozone w v21 (Przeglad, makro, donuty, okazje, zawodnicy, siatka) nie
+    # istnieja w v17, a render nie ma prawa ich tam wyczarowac. Test ma pilnowac
+    # zgodnosci HTML-a z raportem pokrycia, a nie kompletu generacji.
+    szablon = render.load_template(render.default_template_path())
     for sid in templat["sections_enabled"]:
-        obecna = 'id="{}"'.format(render.SECTION_DOM_ID[sid]) in html
-        assert obecna == (sid not in niedostepne), (
+        znacznik = 'id="{}"'.format(render.SECTION_DOM_ID[sid])
+        w_szablonie = znacznik in szablon
+        assert (znacznik in html) == (w_szablonie and sid not in niedostepne), (
             "sekcja {} jest w HTML-u niezgodnie z raportem pokrycia".format(sid)
         )
 

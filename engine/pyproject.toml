@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "coachanalyze"
-version = "0.14.0"  # trzymać zgodnie z coachanalyze/__init__.py::__version__
+version = "0.14.1"  # trzymać zgodnie z coachanalyze/__init__.py::__version__
 description = "Silnik analityki meczowej CoachAnalyze"
 requires-python = ">=3.11"
 dependencies = []  # ZERO zależności zewnętrznych — hosting z noexec, patrz docs/OGRANICZENIA_HOSTINGU.md
@@ -36,7 +36,10 @@ packages = [
 # Wzorzec NIEREKURENCYJNY: `templates/ARCHIWUM/` zostaje w repozytorium jako materiał
 # historyczny, ale nie ma po co jechać w każdej instalacji.
 [tool.setuptools.package-data]
-coachanalyze = ["templates/*.html"]
+# `config/*.json` — progi faktów Przeglądu (sesja 4b). Tak samo jak szablon:
+# `render.py` czyta plik względem katalogu pakietu, więc musi jechać z kodem.
+# Katalog NIE jest pakietem (brak `__init__.py`), więc nie ma go w `packages`.
+coachanalyze = ["templates/*.html", "config/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

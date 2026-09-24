@@ -1,0 +1,12 @@
+{
+  "_opis": "Progi faktów sekcji Przegląd. Wartości w PROCENTACH (0-100).",
+  "_dlaczego_plik": "Do sesji 4b progi siedziały w szablonie jako literały (>=.7, >=.6). Zmiana progu wymagała edycji pliku HTML, czyli tej samej czynności co zmiana układu raportu — a to dwie różne decyzje: jedna należy do trenera, druga do wykonawcy.",
+  "_nadpisanie": "Klub nadpisuje je polem `thresholds` w templacie raportu (docs/KONTRAKT_CLI.md). Wartości nieliczbowe i spoza zakresu 0-100 są odrzucane: idą prosto do literału JS.",
+  "_zrodlo_wartosci": "Wartości robocze z raportu v21, uzgodnione z klientem przy odbiorze sesji 3,5. Nie są normą ligową i nie udają jej.",
+
+  "pressing": 70,
+  "sbz_strzal": 60,
+  "reakcja": 40,
+  "duel_def": 50,
+  "p3": 40
+}

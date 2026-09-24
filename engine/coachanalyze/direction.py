@@ -118,8 +118,16 @@ def _dowody_strony(events, tagi, lookup, side):
 
     strzaly = [e.get("x") for e in nasze if e.get("tag") in tagi[POJECIE_STRZAL]]
     sbz = [e.get("tx") for e in nasze if e.get("tag") in tagi[POJECIE_SBZ]]
+    # ZWROT WEJŚCIA W III STREFĘ TO `x - tx`, NIE `tx - x`. Sprawdzone na eksporcie
+    # referencyjnym: pozycja taga jest miejscem OTRZYMUJĄCEGO — w zdobytej strefie —
+    # a `pos_target_*` pozycją PODAJĄCEGO, czyli dalej od bramki rywala. Stąd alias
+    # „III STREFA PODAJĄCY/OTRZYMUJĄCY" w słowniku szablonu.
+    #
+    # Liczby z mecz2.csv: drużyna strzelająca po lewej (mediana x strzałów 13,3)
+    # ma wejścia 33,9 -> 64,4, a druga 70,1 -> 34,3. Wektor `tx - x` wskazywałby
+    # więc obu drużynom stronę PRZECIWNĄ do tej, w którą strzelają.
     trzecia = [
-        e["tx"] - e["x"]
+        e["x"] - e["tx"]
         for e in nasze
         if e.get("tag") in tagi[POJECIE_III]
         and e.get("tx") is not None and e.get("x") is not None
@@ -144,17 +152,26 @@ def _z_dowodow(dowody):
     Bez strzałów schodzimy na kontrolne — w kolejności, w jakiej im ufamy —
     i mówimy o tym wprost przez `źródło`, żeby `confidence` nie udawało pewności.
     """
-    kolejnosc = (
+    rozstrzygajace = (
         ("shots", _strona_z_pozycji(dowody["shots"]["median_x"])),
         ("entry_sbz", _strona_z_pozycji(dowody["entry_sbz"]["median_tx"])),
-        ("third_dx", _strona_ze_zwrotu(dowody["third_dx"]["median_dx"])),
     )
-    odpowiedzi = [(zrodlo, kier) for zrodlo, kier in kolejnosc if kier is not None]
+    odpowiedzi = [(zrodlo, kier) for zrodlo, kier in rozstrzygajace if kier is not None]
     if not odpowiedzi:
         return None, None, []
 
     zrodlo, kierunek = odpowiedzi[0]
     sprzeczne = [z for z, k in odpowiedzi[1:] if k != kierunek]
+
+    # ZWROT PODAŃ W III STREFĘ TYLKO POTWIERDZA — nigdy nie rozstrzyga, nawet gdy
+    # jest jedyną miarą, jaką mamy. Dwie pozostałe czytają POZYCJĘ (gdzie padł
+    # strzał, gdzie skończyło się wejście), a ta czyta ZWROT WEKTORA, którego
+    # konwencja zależy od tego, czy analityk stawia tag na podającym, czy na
+    # otrzymującym. Pomyłka w pozycji przesuwa medianę; pomyłka w konwencji
+    # wektora odwraca odpowiedź — i to bez żadnego śladu.
+    z_wektora = _strona_ze_zwrotu(dowody["third_dx"]["median_dx"])
+    if z_wektora is not None and z_wektora != kierunek:
+        sprzeczne.append("third_dx")
     return kierunek, zrodlo, sprzeczne
 
 

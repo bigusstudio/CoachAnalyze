@@ -147,8 +147,14 @@ def test_drop_sections_usuwa_wskazane_i_zostawia_reszte(write_csv, row):
     frame = parse.prep_frame(write_csv([row("STRZAŁ", team="A", x="80", y="30")]))
     html, _ = render.render(frame)
 
-    for sid, dom in render.SECTION_DOM_ID.items():
-        assert 'id="{}"'.format(dom) in html, "szablon ma miec sekcje {}".format(sid)
+    # v17 nie ma sekcji dolozonych w v21 (Przeglad, makro, donuty, okazje,
+    # zawodnicy, siatka) i to nie jest brak — to inna generacja szablonu.
+    # Sprawdzamy wiec sekcje, ktore ta generacja FAKTYCZNIE niesie, zamiast
+    # wymagac od v17 czegos, czego nigdy nie mial.
+    obecne = [sid for sid, dom in render.SECTION_DOM_ID.items() if 'id="{}"'.format(dom) in html]
+    assert set(obecne) >= {"bilans", "mapy", "tl_sbz", "tl_iii", "tl_bilans", "duels", "noteam"}, (
+        "v17 zgubil ktoras z sekcji, ktore mial od zawsze"
+    )
 
     okrojony, usuniete = render.drop_sections(html, ["mapy", "duels"])
 

@@ -252,7 +252,9 @@ def cmd_build(args) -> int:
     # samym, ktoremu podajemy inna liste zyczen.
     sekcje = report_template.sections_enabled(templat)
     if sekcje is not None:
-        config = dict(config, sections=sekcje)
+        # Sekcje dolozone w 4a/4b wracaja do stanu domyslnego, a nie do
+        # „wylaczona" — templat sprzed ich istnienia nie mial jak ich wymienic.
+        config = dict(config, sections=coverage.sekcje_z_templatu(sekcje, templat))
 
     canon_result = canon.build(
         frame,
@@ -288,23 +290,31 @@ def cmd_build(args) -> int:
         # z dwóch przeciwnych stron boiska (docs/STAN_PIVOTU.md §7.7 c).
         write_events(args.out_events, frame_widok, config)
 
-    # COVERAGE TEMPLAT x EKSPORT. Sekcja wlaczona w templacie, ale bez danych
-    # w TYM eksporcie, znika z HTML-a i zostaje z powodem w raporcie pokrycia.
-    # Decyzje podejmuje `build_sections` (jedno miejsce), render tylko wykonuje.
+    # CO ZNIKA Z RAPORTU — dwie rozne rzeczy, jedna lista.
     #
-    # Robimy to WYLACZNIE przy templacie: bez niego wyjscie ma byc bajt w bajt
-    # takie jak dotad, na czym stoi test zloty.
-    if templat is not None:
-        config = dict(
-            config,
-            drop_sections=[s["id"] for s in meta["sections_unavailable"]],
-        )
+    # 1. SEKCJA BEZ DANYCH w tym eksporcie. Decyzje podejmuje `build_sections`
+    #    (jedno miejsce), render tylko wykonuje; powod wraca w raporcie pokrycia.
+    # 2. SEKCJA NIEWYBRANA — obecna w szablonie v21, ale spoza zestawu tego
+    #    raportu. Kafle z sesji 4b (donuty, okazje, zawodnicy, siatka) sa
+    #    dostepne, a nie domyslne: doklada je kreator sekcji, nie sam fakt,
+    #    ze szablon je niesie.
+    #
+    # BEZ WPLYWU NA v17: `drop_sections` wycina sekcje po identyfikatorze `<section>`
+    # i pomija ten, ktorego w HTML-u nie ma. v17 nie ma zadnej z sekcji v21, wiec
+    # wyjscie zostaje bajt w bajt takie jak dotad — na czym stoi test zloty.
+    wybrane = config.get("sections") or list(coverage.DOMYSLNE_SEKCJE)
+    config = dict(config, drop_sections=(
+        [s["id"] for s in meta["sections_unavailable"]]
+        + [s for s in coverage.ALL_SECTIONS if s not in wybrane]
+    ))
 
     html, report = render.render(
         frame_widok, palette=palette, metrics=metrics_pack,
         canon_result=canon_result, config=config,
         template_path=getattr(args, "html_template", None),
         direction=kierunek, mirrored=odbito,
+        # Progi faktow Przegladu: globalne z pliku, nadpisane przez templat klubu.
+        report_template=templat,
     )
     render.write(args.out_html, html)
     log_render(report)

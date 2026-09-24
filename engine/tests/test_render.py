@@ -101,7 +101,11 @@ def test_render_nie_zmienia_niczego_poza_placeholderami(generacja):
         direction=kierunek,
     )
 
-    dane = json.dumps(render.view_data(RAMKA), ensure_ascii=False, separators=(",", ":"))
+    # v21 niesie kafelek zawodnikow, wiec `DATA` dostaje pole `player` — a v17 nie.
+    # Test odwraca render, wiec musi serializowac dokladnie to, co render wstrzyknal.
+    z_zawodnikami = render.WIDGET_ZAWODNICY in szablon
+    dane = json.dumps(render.view_data(RAMKA, players=z_zawodnikami),
+                      ensure_ascii=False, separators=(",", ":"))
     paleta = json.dumps({"tags": {}, "labels": {}}, ensure_ascii=False)
     odwrocone = html.replace(dane + ";", "/*__DATA__*/;").replace(paleta + ";", "/*__PAL__*/;")
 
@@ -111,6 +115,7 @@ def test_render_nie_zmienia_niczego_poza_placeholderami(generacja):
         kierunek,
         labels={slot: slots["__TEAM_{}_LABEL__".format(slot)] for _s, slot in render.TEAM_SLOTS},
     ))
+    slots.update(render.progi_slot())
     # Malejąco po długości wstawionej wartości — krótsza nie może zjeść fragmentu dłuższej.
     for placeholder in sorted(slots, key=lambda p: len(slots[p]), reverse=True):
         odwrocone = odwrocone.replace(slots[placeholder], placeholder)

@@ -94,6 +94,7 @@ Znaczniki **tylko w generacji v21**, opcjonalne całą grupą (v17 nie ma żadne
 | `__TEAM_*_COLOR_L__` · `__TEAM_*_DIM_L__` | `motyw_jasny` | Barwa klubu dla `data-theme="light"` — `color_light` albo przyciemnienie `color` |
 | `__SEZON__` · `__KOLEJKA__` · `__DATA_MECZU__` | `meta_meczu` | Meta meczu z `config.match`; brak wartości = pusty napis |
 | `__KIERUNEK_HOME__` · `__KIERUNEK_AWAY__` · `__KIERUNEK_OPIS__` | `kierunek` | Podpis kierunku ataku z `meta.direction` **po ewentualnym odbiciu**; kierunek nieznany = pusty napis |
+| `__PROGI__` | `progi` | Progi faktów Przeglądu jako literał obiektu JS — patrz niżej |
 
 > **`__DATA_MECZU__`, nie `__DATA__`.** To drugie jest podnapisem `/*__DATA__*/`, czyli
 > miejsca na zdarzenia meczu. Wspólna nazwa wymagałaby liczenia wystąpień z korektą
@@ -165,6 +166,48 @@ z dwóch przeciwnych stron boiska.
 `low` — sprzeczność miar albo kierunek z miary kontrolnej, dodatkowo ostrzeżenie
 **`KIERUNEK_NIEPEWNY`**; `none` — danych nie ma i **nie zgadujemy**. Brak
 kierunku ostrzeżeniem NIE jest: eksport bez pozycji to stan normalny (pułapka 3).
+
+#### Sekcje raportu: dwie listy
+
+| Lista | Znaczenie |
+|---|---|
+| `coverage.ALL_SECTIONS` | co silnik **zna**. Sekcja spoza niej dostaje „Sekcja nieznana silnikowi" |
+| `coverage.DOMYSLNE_SEKCJE` | co widać w raporcie **bez templatu klubu** |
+
+Do sesji 4b były tym samym. Kafle przeniesione z magazynu v2 (**donuty, okazje,
+zawodnicy, siatka**) są **dostępne, ale nie domyślne**: dokłada je kreator sekcji,
+a nie sam fakt, że szablon je niesie. Domyślny zestaw to dotychczasowy v21 plus
+**tabela makro**.
+
+**Templat, który sekcji nie znał, jej nie wyłącza.** Sekcja dołożona do rejestru
+po zapisie templatu (`schema_version: 1`) wraca do stanu DOMYŚLNEGO, a nie do
+„wyłączona" — inaczej klub z istniejącym templatem straciłby Przegląd, którego
+dziś używa, a jedynym śladem byłby brak sekcji w raporcie. Templat
+`schema_version: 2` wymienia wszystko, co zna, więc reguła go nie dotyczy.
+
+Sekcje **wyłącznie generacji v21**: `przeglad`, `makro`, `donuty`, `okazje`,
+`zawodnicy`, `siatka`. W v17 tych identyfikatorów nie ma i to nie jest brak —
+`drop_sections` pomija sekcję, której w HTML-u nie znalazł.
+
+#### Progi faktów Przeglądu (`__PROGI__`)
+
+Wartości w **procentach (0-100)**, z `engine/coachanalyze/config/progi.json`:
+`pressing` 70, `sbz_strzal` 60, `reakcja` 40, `duel_def` 50, `p3` 40. Klub
+nadpisuje je polem **`thresholds`** w templacie raportu.
+
+**Wartość nieliczbowa albo spoza zakresu 0-100 jest odrzucana bez zastępowania
+czegokolwiek**, tak samo klucz spoza zestawu globalnego. Powód nie jest
+kosmetyczny: `thresholds` pochodzi z bazy, czyli od użytkownika, a te liczby idą
+wprost do literału JS w raporcie pod publicznym adresem `/r/{club_key}/{token}`.
+Napis w tym miejscu nie jest „złym progiem", tylko treścią do wykonania.
+
+#### Nazwiska zawodników w `DATA`
+
+Pole `player` pojawia się w zdarzeniu **tylko wtedy, gdy raport je pokaże**:
+szablon musi nieść kafelek zawodników (`data-widget="zawodnicy"`), a sekcja musi
+przetrwać wybór z templatu. Raport wisi pod publicznym adresem, a warstwa
+indywidualna jest osobną decyzją klubu — dosypywanie nazwisk „na zapas" znaczyłoby,
+że każdy raport niesie skład i nikt o tym nie wie.
 
 Obecność znaczników jest sprawdzana **przed podmianą**, a po niej sprawdzamy, że żaden nie został.
 `/*__DATA__*/` i `/*__PAL__*/` muszą wystąpić dokładnie raz — drugie wystąpienie znaczy uszkodzony

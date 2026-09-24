@@ -10,7 +10,54 @@ from . import __version__
 from . import report_template as tpl
 
 # Sekcje raportu. Kolejność jest kolejnością prezentacji.
-ALL_SECTIONS = ("bilans", "mapy", "tl_sbz", "tl_iii", "tl_bilans", "duels", "noteam")
+#
+# ═══════════════════════════════════════════════════════════════════════════
+# DWIE LISTY, BO TO DWA RÓŻNE PYTANIA (sesja 4b).
+#
+# `ALL_SECTIONS`      — co silnik W OGÓLE zna. Sekcja spoza tej listy dostaje
+#                       „Sekcja nieznana silnikowi" i nie da się jej włączyć.
+# `DOMYSLNE_SEKCJE`   — co widać W RAPORCIE BEZ TEMPLATU KLUBU.
+#
+# Do sesji 4b były tym samym i to działało, dopóki każda znana sekcja miała być
+# domyślnie widoczna. Kafle przeniesione z magazynu v2 (donuty, okazje, tabela
+# zawodników, siatka ilości) mają być DOSTĘPNE, ale nie mają wskakiwać do raportu
+# każdego klubu bez niczyjej decyzji — dokładają płótna do i tak długiego raportu.
+# Kreator sekcji (sesja 5) włącza je świadomie.
+#
+# Sekcje v21 (`przeglad`, `makro`, …) nie istnieją w szablonie v17 i to NIE JEST
+# brak: `drop_sections` pomija identyfikator, którego w HTML-u nie znalazł.
+# ═══════════════════════════════════════════════════════════════════════════
+ALL_SECTIONS = (
+    "przeglad", "makro", "bilans", "mapy", "donuty", "okazje",
+    "tl_sbz", "tl_iii", "tl_bilans", "duels", "zawodnicy", "siatka", "noteam",
+)
+
+DOMYSLNE_SEKCJE = (
+    "przeglad", "makro", "bilans", "mapy",
+    "tl_sbz", "tl_iii", "tl_bilans", "duels", "noteam",
+)
+
+# Sekcje dołożone do rejestru W SESJI 4a/4b, czyli PO tym, jak powstały
+# istniejące templaty klubów (`schema_version: 1`).
+#
+# PO CO TA LISTA: templat zapisuje „sekcje włączone". Sekcji, której w chwili
+# zapisu nie było, nie ma na tej liście — i bez tego rozróżnienia wyglądałaby
+# jak WYŁĄCZONA świadomie. Klub z templatem straciłby Przegląd, którego dziś
+# używa, a jedynym śladem byłby brak sekcji w raporcie.
+#
+# Reguła: sekcja z tej listy, której templat schematu 1 nie wymienia, wraca do
+# stanu DOMYŚLNEGO, a nie do „wyłączona". Templat schematu 2 (kreator sekcji,
+# sesja 5) wymienia wszystko, co zna, więc reguła go nie dotyczy.
+SEKCJE_PO_4B = ("przeglad", "makro", "donuty", "okazje", "zawodnicy", "siatka")
+
+
+def sekcje_z_templatu(wybrane, template=None):
+    """Sekcje templatu uzupełnione o te, których templat nie mógł znać."""
+    schemat = int((template or {}).get("schema_version") or 1)
+    if schemat >= 2:
+        return list(wybrane)
+    braki = [s for s in DOMYSLNE_SEKCJE if s in SEKCJE_PO_4B and s not in wybrane]
+    return list(wybrane) + braki
 
 # Pułapka 9: literówka bywa też w palecie z pliku projektu, nie tylko w zdarzeniach.
 TYPO_PALETTE_KEYS = ("MASZA POŁOWA",)
@@ -164,6 +211,10 @@ def build_sections(coverage, requested=None, template=None, frame=None):
     if not coverage["events"]:
         reasons["bilans"] = "Eksport nie zawiera żadnych zdarzeń"
         reasons["tl_bilans"] = reasons["bilans"]
+        # Kafle liczące z tych samych zdarzeń milkną z tego samego powodu.
+        # Powtórzony powód jest lepszy niż sekcja, która wyszła pusta bez słowa.
+        for sekcja in ("przeglad", "makro", "donuty", "okazje", "siatka"):
+            reasons[sekcja] = reasons["bilans"]
 
     if z_templatu:
         reasons.update(_powody_z_templatu(template, tag_stats(frame)))
@@ -195,7 +246,7 @@ def build_sections(coverage, requested=None, template=None, frame=None):
             "Wszystkie zdarzenia mają przypisaną drużynę — sekcja bez przypisania byłaby pusta"
         )
 
-    sections = list(requested) if requested else list(ALL_SECTIONS)
+    sections = list(requested) if requested else list(DOMYSLNE_SEKCJE)
 
     available, unavailable = [], []
     for section in sections:

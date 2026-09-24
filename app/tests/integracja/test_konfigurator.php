@@ -82,8 +82,32 @@ if (preg_match('/ALL_SECTIONS\s*=\s*\(([^)]*)\)/', (string) file_get_contents($p
 }
 
 check('udało się odczytać ALL_SECTIONS z silnika', $zSilnika !== []);
-check('lista sekcji PHP === lista silnika', Configurator::SEKCJE === $zSilnika,
+
+/*
+ * OD SESJI 4b TE DWIE LISTY ZNACZĄ CO INNEGO i porównanie ich przez równość
+ * przestało być asercją o zgodności — stało się asercją o tym, że nikt nie
+ * dołożył kafelka do szablonu.
+ *
+ *   silnik  (ALL_SECTIONS)        — sekcje raportu, jakie w ogóle istnieją,
+ *   PHP     (Configurator::SEKCJE) — sekcje, do KTÓRYCH DA SIĘ PRZYPISAĆ ZMIENNĄ
+ *                                    w konfiguratorze słownika.
+ *
+ * Przegląd, donuty, najlepsze okazje, tabela zawodników i siatka ilości liczą
+ * z całego eksportu, a nie ze zmiennych przypisanych ręcznie — pole „pokaż tę
+ * zmienną w donutach" nie miałoby czego włączyć. Tabela makro bierze WSZYSTKIE
+ * zmienne słownika, więc też nie jest wyborem per zmienna.
+ *
+ * Asercja pilnuje więc tego, co dalej ma znaczenie: identyfikator używany przez
+ * PHP musi być silnikowi ZNANY. Literówka („tl-sbz") nadal zapala test, a nowy
+ * kafelek w szablonie już nie. Wybór sekcji RAPORTU (inna rzecz niż wybór sekcji
+ * dla zmiennej) dostaje własny ekran w sesji 5.
+ */
+check('każda sekcja PHP jest znana silnikowi',
+    array_diff(Configurator::SEKCJE, $zSilnika) === [],
     'PHP: ' . implode(',', Configurator::SEKCJE) . ' | silnik: ' . implode(',', $zSilnika));
+check('sekcje spoza konfiguratora to wyłącznie kafle v21 liczone z całego eksportu',
+    array_values(array_diff($zSilnika, Configurator::SEKCJE))
+        === ['przeglad', 'makro', 'donuty', 'okazje', 'zawodnicy', 'siatka']);
 check('żadna sekcja nie ma myślnika',
     !preg_match('/-/', implode('', Configurator::SEKCJE)),
     'silnik zna wyłącznie podkreślenia');

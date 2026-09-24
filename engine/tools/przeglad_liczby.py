@@ -35,7 +35,10 @@ for g in [e for e in ev if e["tag"] == "Gol"]:
     if shots:
         g["team"] = min(shots, key=lambda s: abs(s["b"] - g["b"]))["team"]
 
-print(f"{'':22} {'HOME (w lewo)':>16} {'AWAY (w prawo)':>16}")
+# Od sesji 4a HOME to KLUB-TENANT, a nie „drużyna atakująca w lewo"
+# (docs/STAN_PIVOTU.md §7.7 a). Kierunek ataku wyprowadza silnik z danych
+# i zapisuje w `meta.direction` — nagłówek nie ma prawa go zgadywać.
+print(f"{'':22} {'HOME (tenant)':>16} {'AWAY (rywal)':>16}")
 print(f"{'drużyna':22} {HOME[:16]:>16} {AWAY[:16]:>16}")
 for etykieta, fn in [
     ("gole",          lambda t: sum(1 for e in ev if e["tag"] == "Gol" and e["team"] == t)),
