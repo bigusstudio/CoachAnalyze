@@ -110,6 +110,40 @@ zdziwienie, że tag „jest w templacie, a nie ma go w raporcie".
 **Kopia poza serwerem: u Tomasa.** To jest istotne i nie jest formalnością —
 archiwum leżące wyłącznie na serwerze, który ma być odtwarzany, nie jest archiwum.
 
+#### Jak zbudowane jest `app_public_html_*.tgz`
+
+Pakowane **z katalogu NAD katalogiem domeny**, czyli razem z jego nazwą:
+
+```bash
+tar -czf app_public_html_$(date +%F).tgz -C ~/public_html app.coachanalyze.pl
+```
+
+Ścieżki w środku mają więc prefiks katalogu domeny:
+
+```
+app.coachanalyze.pl/app/src/bootstrap.php
+app.coachanalyze.pl/storage/uploads/2026/09/ab12cd.csv
+```
+
+To ma znaczenie przy rozpakowywaniu: **sam `tar -xzf … -C <cel>` odtworzy katalog
+`app.coachanalyze.pl/` wewnątrz celu**, a nie zawartość katalogu domeny. Żeby dostać
+samo `storage/uploads/…`, trzeba zdjąć prefiks (`--strip-components=1`).
+
+`przywroc_pro.sh` **nie ma tej liczby wpisanej na sztywno** — czyta pierwszą ścieżkę
+pasującą do `*/storage/uploads/`, liczy składniki prefiksu i tyle zdejmuje. Zmiana
+nazwy katalogu domeny albo spakowanie z `.` zamiast z nazwy katalogu nie wymaga
+poprawki w skrypcie. Po rozpakowaniu skrypt **sprawdza układ**, nie samą liczbę
+plików: w katalogu docelowym ma powstać `storage/uploads/…`, inaczej przerywa.
+
+> Liczba składników prefiksu jest liczona **z wiodącym `./`, jeśli archiwum je ma** —
+> `tar` traktuje `./` jak pełnoprawny składnik ścieżki. Odcięcie go „bo to nie katalog"
+> powodowało, że `--strip-components` zabierało o jeden za mało i pliki lądowały
+> w `<cel>/app.coachanalyze.pl/storage/uploads/…`. Kontrola liczby plików tego
+> nie widziała — pliki były, tylko nie tam, gdzie ścieżki z bazy ich szukają.
+
+**Mapowanie ścieżek z bazy na kopię jest mechaniczne:** wiersz `imports.csv_path`
+postaci `<katalog domeny>/storage/uploads/X` odpowiada plikowi `<cel>/storage/uploads/X`.
+
 **Stan produkcji w chwili archiwizacji:** 10 klubów, 23 mecze, 24 raporty.
 Skrypt powrotu sprawdza te liczby po odtworzeniu — rozjazd znaczy, że zrzut
 pochodzi z innego dnia niż ten dokument.
@@ -201,16 +235,16 @@ gunzip -c ~/CoachAnalyze/archiwum/pro-1.0/prod_2026-09-24.sql.gz \
 # 4. Uploady — tylko razem z krokiem 3. Zrzut bazy wskazuje na pliki
 #    z tamtego dnia; bez nich raporty odwołują się w próżnię.
 #
-#    Rozpakowujemy do katalogu tymczasowego i dopiero stamtąd kopiujemy.
-#    Poziom, z którego spakowano tarball, nie jest z góry znany, a pomyłka
-#    w `--strip-components` rozsypałaby pliki po katalogu domeny zamiast
-#    zatrzymać polecenie. `przywroc_pro.sh` robi dokładnie to samo.
-TMP=$(mktemp -d)
-tar -xzf ~/CoachAnalyze/archiwum/pro-1.0/app_public_html_2026-09-24.tgz -C "$TMP"
-ZRODLO=$(find "$TMP" -type d -path '*/storage/uploads' | head -1)
-echo "$ZRODLO"          # sprawdź wzrokiem, ZANIM skopiujesz
-cp -a "$ZRODLO"/. ~/public_html/app.coachanalyze.pl/storage/uploads/
-rm -rf "$TMP"
+#    Archiwum niesie prefiks katalogu domeny (patrz punkt 3.2), więc zdejmujemy
+#    go `--strip-components=1`. NAJPIERW SPRAWDŹ PREFIKS WZROKIEM — jeśli ścieżka
+#    zaczyna się od `./`, składników jest o jeden więcej.
+ARCH=~/CoachAnalyze/archiwum/pro-1.0/app_public_html_2026-09-24.tgz
+tar -tzf "$ARCH" | grep storage/uploads | head -1     # oczekiwane: app.coachanalyze.pl/storage/uploads/
+
+tar -xzf "$ARCH" -C ~/public_html/app.coachanalyze.pl \
+  --strip-components=1 'app.coachanalyze.pl/storage/uploads'
+
+ls ~/public_html/app.coachanalyze.pl/storage/uploads/ | head   # kontrola układu
 
 # 5. Kontrola: jeden raport wygenerowany z palca musi odpowiadać
 #    istniejącemu plikowi HTML. Procedura w docs/RUNBOOK.md.

@@ -269,19 +269,70 @@ if [ -n "$(ls -A "$CEL_REAL" 2>/dev/null || true)" ]; then
   uwaga "katalog docelowy nie jest pusty — rozpakowanie NADPISZE pliki o tych samych nazwach"
 fi
 
-# Czy uploady w ogóle są w tym archiwum. Samo ISTNIENIE, bez ustalania prefiksu —
-# ścieżkę wewnątrz tarballa znajdziemy po rozpakowaniu (punkt 6), a nie przed.
+# ─────────────────────────────────────────── gdzie w archiwum leżą uploady
 #
-# POWÓD: tarball spakowano z nieznanego nam poziomu, a `--strip-components`
-# wyliczone z listy plików zależy od tego, czy `tar` liczy wiodące `./` jako
-# składnik ścieżki — a to różni się między wersjami. Pomyłka o jeden rozsypałaby
-# pliki po katalogu docelowym zamiast zatrzymać skrypt. Tego nie da się sprawdzić
-# inaczej niż na prawdziwym archiwum, więc nie zgadujemy.
+# Archiwum jest pakowane z katalogu NAD katalogiem domeny:
+#   tar -czf … -C ~/public_html app.coachanalyze.pl
+# więc ścieżki w środku mają prefiks `app.coachanalyze.pl/`. Prefiksu NIE WPISUJEMY
+# NA SZTYWNO — wykrywamy go z pierwszej ścieżki pasującej do `*/storage/uploads/`,
+# żeby zmiana nazwy katalogu domeny nie wymagała zmiany w tym skrypcie.
+#
+# ╔═ DLACZEGO LISTING IDZIE DO ZMIENNEJ, A NIE PROSTO DO `grep -q` ═════════════╗
+# ║ Poprzednia wersja sprawdzała to potokiem `tar -tzf … | grep -q …` i na      ║
+# ║ PRAWDZIWYM archiwum przerwała powrót komunikatem „nie widzę ścieżki         ║
+# ║ storage/uploads/", choć ścieżka tam jest. Na syntetycznym tarze — także     ║
+# ║ na 4000 plików z tym samym prefiksem — przechodziła.                        ║
+# ║                                                                             ║
+# ║ PRZYCZYNY NIE UDAŁO SIĘ ODTWORZYĆ poza serwerem i nie udajemy, że wiemy.    ║
+# ║ Najbardziej prawdopodobna: `grep -q` kończy się na PIERWSZYM trafieniu,     ║
+# ║ `tar` dostaje SIGPIPE, a `set -o pipefail` robi z tego błąd całego potoku.  ║
+# ║ Zachowanie zależy wtedy od implementacji `grep` i od tego, czy `tar` zdążył ║
+# ║ dopisać resztę — czyli od systemu i od rozmiaru archiwum.                   ║
+# ║                                                                             ║
+# ║ Dlatego zamiast naprawiać domniemaną przyczynę, usuwamy CAŁĄ KLASĘ: listing ║
+# ║ czytamy RAZ, bez potoku wrażliwego na wczesne wyjście, a jeśli mimo to      ║
+# ║ niczego nie znajdziemy — wypisujemy, ile pozycji odczytano i jak wyglądają. ║
+# ║ Kolejna awaria ma powiedzieć, co się stało, a nie powtórzyć ten sam komunikat.║
+# ║ Przy okazji nie dekompresujemy archiwum drugi raz w punkcie 6.              ║
+# ╚═════════════════════════════════════════════════════════════════════════════╝
+PREFIKS=""
+SKLADNIK_UPLOADOW=""
+STRIP=0
+
 if [ -n "$TAR_APP" ]; then
-  if tar -tzf "$TAR_APP" 2>/dev/null | grep -qE '(^|/)storage/uploads/'; then
-    ok "archiwum zawiera storage/uploads/"
+  LISTA_ARCHIWUM=$(tar -tzf "$TAR_APP" 2>/dev/null || true)
+  POZYCJI=$(printf '%s\n' "$LISTA_ARCHIWUM" | grep -c . || true)
+
+  if [ "${POZYCJI:-0}" -eq 0 ]; then
+    zle "nie udało się odczytać listy plików z $(basename "$TAR_APP")"
   else
-    zle "w $(basename "$TAR_APP") nie widzę ścieżki storage/uploads/"
+    # `sed -n 1p` zamiast `head -1`: czyta wejście do końca, więc nie wywoła
+    # SIGPIPE u poprzednika — dokładnie ta pułapka, która wysypała asercję.
+    SKLADNIK_UPLOADOW=$(printf '%s\n' "$LISTA_ARCHIWUM" \
+      | grep -E '(^|/)storage/uploads/' | sed -n '1p' || true)
+
+    if [ -z "$SKLADNIK_UPLOADOW" ]; then
+      zle "w $(basename "$TAR_APP") nie widzę ścieżki storage/uploads/"
+      # PRÓBKA, NIE SAM KOMUNIKAT. Bez niej jedyną drogą dalej jest zgadywanie,
+      # czy archiwum ma inny układ, czy listing w ogóle się nie odczytał.
+      echo "        odczytano pozycji: $POZYCJI"
+      echo "        pierwsze pozycje archiwum:"
+      printf '%s\n' "$LISTA_ARCHIWUM" | sed -n '1,5p' | sed 's/^/          /'
+      echo "        Sprawdź ręcznie:  tar -tzf $TAR_APP | grep storage/uploads | head"
+    else
+      # Wszystko przed `storage/uploads/` to prefiks katalogu domeny, liczony
+      # DOKŁADNIE TAK, JAK ZAPISAŁ GO `tar` — z wiodącym `./`, jeśli tam jest.
+      #
+      # Kuszące było odcięcie `./` „bo to nie jest katalog". Sprawdzone na obu
+      # wariantach archiwum: `tar` LICZY `./` jako składnik ścieżki, więc po
+      # odcięciu `--strip-components` zabierało o jeden za mało i pliki lądowały
+      # w `CEL/app.coachanalyze.pl/storage/uploads/…` zamiast `CEL/storage/uploads/…`.
+      # Kontrola liczby plików tego nie łapała: pliki BYŁY, tylko nie tam.
+      # Stąd kontrola UKŁADU po rozpakowaniu (punkt 6), a nie samej liczby.
+      PREFIKS="${SKLADNIK_UPLOADOW%%storage/uploads/*}"
+      STRIP=$(printf '%s' "$PREFIKS" | tr -cd '/' | wc -c | tr -d ' ')
+      ok "uploady w archiwum: ${PREFIKS}storage/uploads/ (strip-components=$STRIP)"
+    fi
   fi
 fi
 
@@ -364,31 +415,47 @@ echo "    wczytano $(basename "$ZRZUT")"
 
 krok "6. Uploady do $CEL_REAL"
 
-# ROZPAKOWUJEMY CAŁOŚĆ DO KATALOGU TYMCZASOWEGO, potem przenosimy sam `storage/uploads`.
+# ROZPAKOWUJEMY WYŁĄCZNIE `storage/uploads`, z prefiksem wykrytym w punkcie 3.
 #
-# Wygląda okrężnie i takie jest — ale nie zależy od tego, jak `tar` traktuje wiodące
-# `./` przy `--strip-components` ani od dopasowywania nazw składników wzorcem.
-# Kosztuje miejsce na dysku (archiwum to aplikacja plus uploady) i jedno przepisanie
-# plików; kupuje pewność, że pliki wylądują tam, gdzie mają, albo nigdzie.
+# `--strip-components=$STRIP` zdejmuje sam katalog domeny, więc w katalogu docelowym
+# ląduje `storage/uploads/2026/09/…` — ta sama struktura, co w archiwum. To nie jest
+# kosmetyka: ścieżki w bazie mają postać `<katalog domeny>/storage/uploads/X`, więc
+# mapowanie na kopię jest mechaniczne (`$CEL_REAL/storage/uploads/X`), bez zgadywania.
+echo "    z archiwum: ${PREFIKS}storage/uploads/ (strip-components=$STRIP)"
+
+if [ "$STRIP" -gt 0 ]; then
+  tar -xzf "$TAR_APP" -C "$CEL_REAL" --strip-components="$STRIP" "${PREFIKS}storage/uploads"
+else
+  tar -xzf "$TAR_APP" -C "$CEL_REAL" "storage/uploads"
+fi
+
+LICZBA_PLIKOW=$(find "$CEL_REAL" -type f 2>/dev/null | wc -l | tr -d ' ')
+
+# KONTROLA UKŁADU, NIE SAMEJ LICZBY PLIKÓW.
 #
-# Katalog tymczasowy sprzątamy zawsze, także przy przerwaniu.
-TMP=$(mktemp -d "${TMPDIR:-/tmp}/ca-pro-XXXXXX")
-trap 'rm -rf "$TMP"' EXIT INT TERM
-
-tar -xzf "$TAR_APP" -C "$TMP"
-
-ZRODLO_UPLOADOW=$(find "$TMP" -type d -path '*/storage/uploads' | head -1 || true)
-if [ -z "$ZRODLO_UPLOADOW" ]; then
-  echo "    !!! BŁĄD: po rozpakowaniu nie widzę katalogu storage/uploads" >&2
-  echo "        Baza została już zaimportowana — uploady trzeba wgrać ręcznie z $TAR_APP" >&2
+# `tar` potrafi zakończyć się zerem i nie wyjąć nic (nazwa składnika nie trafi),
+# ALBO wyjąć wszystko w złe miejsce (`--strip-components` o jeden za mało — patrz
+# komentarz przy liczeniu prefiksu w punkcie 3). Drugi przypadek przechodzi przez
+# każdą kontrolę opartą na liczbie plików, a kopia jest bezużyteczna: ścieżki
+# z bazy nie mapują się na nic.
+#
+# Sprawdzamy więc to, co faktycznie ma być prawdą: w katalogu docelowym leży
+# `storage/uploads` i coś w nim jest.
+if [ ! -d "$CEL_REAL/storage/uploads" ] || [ "$LICZBA_PLIKOW" -eq 0 ]; then
+  echo "    !!! BŁĄD: uploady nie wylądowały w $CEL_REAL/storage/uploads" >&2
+  echo "        składnik: ${PREFIKS}storage/uploads · strip-components=$STRIP" >&2
+  echo "        plików w katalogu docelowym: $LICZBA_PLIKOW" >&2
+  if [ "$LICZBA_PLIKOW" -gt 0 ]; then
+    echo "        a wylądowały tutaj:" >&2
+    find "$CEL_REAL" -type f 2>/dev/null | sed -n '1,3p' | sed 's/^/          /' >&2
+  fi
+  echo "        Baza została już zaimportowana — uploady trzeba wyjąć ręcznie" >&2
+  echo "        tak, żeby powstało $CEL_REAL/storage/uploads/…" >&2
   exit 1
 fi
 
-echo "    źródło: ${ZRODLO_UPLOADOW#"$TMP"/}"
-cp -a "$ZRODLO_UPLOADOW"/. "$CEL_REAL"/
-
-LICZBA_PLIKOW=$(find "$CEL_REAL" -type f 2>/dev/null | wc -l | tr -d ' ')
-echo "    skopiowano plików: $LICZBA_PLIKOW"
+echo "    rozpakowano plików: $LICZBA_PLIKOW"
+echo "    ścieżka w kopii:    $CEL_REAL/storage/uploads/…"
 
 # ══════════════════════════════════════════════════════ 7. KONTROLA PO ODTWORZENIU
 #
