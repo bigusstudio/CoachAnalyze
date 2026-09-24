@@ -214,6 +214,28 @@ z `shared/.env`.
 Czego skrypt świadomie **nie** robi: nie przestawia repozytorium, nie wdraża kodu
 i nie generuje raportu. To są kroki na produkcji i należą do człowieka.
 
+#### Odbiór sesji 0 — WYKONANY 2026-09-24
+
+Procedura nie jest już tylko opisana. **Została przeprowadzona na serwerze** i to
+jest jedyny powód, dla którego wolno ją nazywać planem awaryjnym.
+
+| Krok | Wynik |
+|---|---|
+| `przywroc_pro.sh` na `serwer400227_caproba` | 20 tabel usuniętych, zrzut wczytany, uploady w `~/tmp/pro-1.0-uploads` |
+| **Test a** — raport `pro` z linii poleceń | mecz 1, Pogoń vs Hutnik; blok `DATA` z builda **0.12.0 na v17** ma **identyczny md5** z dwoma raportami produkcyjnymi |
+| **Test b** — ten sam mecz na v21 | renderuje się; `przeglad_liczby.py`: xG **1,49 : 2,91**, strzały **12 : 17**, SBZ **15 : 19**, III strefa **20 : 15**; **brak** ostrzeżenia `BRAKUJACY_ZNACZNIK` |
+| Stan końcowy serwera | wrócił na `main` |
+
+**Test a jest tym, na czym stoi cała sesja.** Silnik 0.12.0 z przełącznikiem szablonu,
+uruchomiony na v17, produkuje bajt w bajt te same dane, co raporty, które klient ma
+dzisiaj na ekranie — i to na prawdziwym eksporcie, nie na wzorcu z repozytorium.
+Test złoty mówi to samo, ale o pliku; tutaj zgadza się z produkcją.
+
+> Liczby z testu b są podane w kolejności **HOME : AWAY** tak, jak wypisał je
+> `przeglad_liczby.py` — przy tej konfiguracji lewym slotem była Pogoń.
+> Po zmianie z punktu 7.7 lewy slot będzie należał do klubu-tenanta i ta sama
+> para liczb zamieni się miejscami. To nie będzie zmiana wyniku, tylko stron.
+
 ### 5.2 Powrót właściwy, na produkcji
 
 ```bash
@@ -302,6 +324,10 @@ CLAUDE.md §2.
 
 ### Konwencja stron
 
+> **ZASTĄPIONA DECYZJĄ Z 2026-09-24 — patrz punkt 7.7.** Poniższe opisuje stan
+> dzisiejszy, czyli to, co realnie robi v21. Od sesji 4 lewy slot należy do
+> klubu-tenanta, niezależnie od kierunku ataku.
+
 **`HOME` = drużyna atakująca w LEWO**, `AWAY` w prawo. Tak podpisuje je nagłówek v21
 i tak wypełnia je render (`us` → `HOME`, `them` → `AWAY`).
 
@@ -348,6 +374,11 @@ mety, nagłówek v21 będzie pusty także tam, gdzie dane w bazie są** (`played
 Ta sesja świadomie nie ruszała `run_job.php` — zakres zamknięty na silniku i jednym
 przekazaniu parametru z `EngineRunner`. **Do zrobienia w sesji, która włącza v21.**
 
+> **Ten punkt urósł.** Decyzja 7.7 wymaga, żeby `config.match` niósł także **id
+> klubu-tenanta** — bez niego render nie wie, kto zajmuje lewy slot. Z kosmetyki
+> nagłówka robi się więc warunek wstępny obsadzenia stron. Jedna zmiana
+> w `run_job.php`, dwie rzeczy zależne.
+
 ### 7.4 Sekcja „Przegląd" nie jest w rejestrze sekcji
 
 v21 ma `id="sec-przeglad"`, a `coverage.ALL_SECTIONS` i `render.SECTION_DOM_ID`
@@ -385,3 +416,92 @@ i ona działa — ale reszta modułu pakowania sprawdza się wyłącznie w CI i 
 
 To nie jest nowe i nie blokuje niczego w tej sesji. Odnotowane, bo „1 skipped"
 w podsumowaniu już raz przepuściło rozjazd wersji aż do wdrożenia.
+
+### 7.7 Strony raportu i kierunek ataku — DECYZJA WŁAŚCICIELA, 2026-09-24
+
+> To nie jest pytanie otwarte, tylko **rozstrzygnięcie zapisane wśród nich**, bo
+> zmienia konwencję opisaną w punkcie 6 i ma zależność, której dziś nie ma.
+> Wykonanie: **sesja 4**.
+
+#### a) Lewa strona należy do klubu-tenanta, zawsze
+
+**Klub-tenant (`clubs.is_own_team = 1`) jest ZAWSZE po lewej stronie raportu,
+rywal po prawej — niezależnie od tego, gdzie rozegrano mecz.**
+
+Zastępuje to konwencję v21 „`HOME` = drużyna atakująca w lewo" (punkt 6,
+„Konwencja stron"). Po zmianie: **lewy slot = tenant, prawy = rywal**, a to,
+w którą stronę ktokolwiek atakował, przestaje o stronach decydować.
+
+Powód jest po stronie odbiorcy, nie danych: sztab ogląda serię raportów przez
+sezon i ma widzieć swoją drużynę zawsze w tym samym miejscu. Strona zależna od
+meczu każe przy każdym raporcie najpierw sprawdzić, gdzie się jest.
+
+#### b) Kierunku ataku NIE konfiguruje się — wyprowadza go silnik z danych
+
+Żadnego pola w konfiguracji, żadnego pytania do operatora. Reguła:
+
+| Krok | Miara | Próg |
+|---|---|---|
+| podstawowa | mediana `pos_x_meters` strzałów drużyny | `> 52,5` → atak w prawo |
+| kontrolna | mediana `pos_target_x_meters` wejść w SBZ | ta sama strona |
+| kontrolna | znak `delta x` podań w III strefę | ten sam zwrot |
+
+**Zweryfikowane na eksporcie JDRZ** (2026-09-24): Pogoń **92,5 / 90,6**,
+JDRZ **27,7 / 12,5** — w obu połowach. Rozdzielenie jest jednoznaczne, nie graniczne.
+
+Dwie obserwacje z tego samego sprawdzenia, obie istotne:
+
+- **Drużyny nie zmieniają stron po przerwie** — w danych druga połowa wygląda
+  jak pierwsza. Współrzędne w eksporcie są już znormalizowane kierunkowo
+  (pułapka 2 z CLAUDE.md), więc **nie wolno ich lustrzyć „bo połowa druga"**.
+- Skoro tak, kierunek liczy się **raz na mecz i na drużynę**, a nie per połowa.
+
+Konfigurowanie kierunku byłoby pytaniem o coś, co w danych już stoi — czyli
+kolejnym polem do pomylenia. Wyprowadzenie ma też tę własność, że przy eksporcie
+bez pozycji po prostu nie da odpowiedzi, zamiast dać błędną.
+
+#### c) Gdy tenant atakuje w lewo, render odbija współrzędne
+
+**Na mapach tenant atakuje zawsze w prawo.** Gdy dane mówią inaczej, render
+odbija współrzędne **obu drużyn**:
+
+```
+x' = 105 - x        (także pos_target_x_meters)
+```
+
+i zapisuje w `meta` flagę **`mirrored = true`**. Flaga nie jest ozdobnikiem:
+bez niej pytanie „czy ta mapa jest odbita" nie ma odpowiedzi inaczej niż przez
+ponowne policzenie median.
+
+Odbijamy **obie drużyny razem** — lustrzenie jednej rozjechałoby mecz na dwa
+układy współrzędnych. `y` zostaje nietknięte: zamieniamy strony boiska, nie skrzydła.
+
+To jedyne miejsce, w którym wolno tknąć współrzędne. Pułapka 2 zakazuje lustrzenia
+„z góry"; tutaj odbicie jest **wyprowadzone z danych i odnotowane w `meta`**, więc
+da się je cofnąć i sprawdzić.
+
+#### d) Zależność: `config.match` musi nieść id klubu-tenanta
+
+Render nie chodzi do bazy (CLAUDE.md §4), więc **nie wie, który klub jest tenantem**
+— a bez tego nie ma jak obsadzić lewego slotu.
+
+`config.match` z punktu 7.3 musi więc nieść także **id klubu-tenanta**. To ta sama
+zmiana w `run_job.php`, co meta meczu, i ma iść razem z nią. Dopóki jej nie ma,
+punktu (a) nie da się zaimplementować — punkt 7.3 przestaje być kosmetyką nagłówka
+i staje się warunkiem wstępnym.
+
+### 7.8 Mapa bez pozycji pokazuje puste boisko zamiast powodu
+
+Eksport Hutnika ma **35 tagów `III STREFA` bez `pos_*`**. Bilans je liczy
+(**20 : 15**), bo do policzenia zdarzenia pozycja nie jest potrzebna — ale mapa
+wychodzi pusta.
+
+**To nie jest błąd silnika.** `meta.sections_unavailable` niesie `tl_iii` z powodem,
+pipeline zachowuje się dokładnie tak, jak ma (pułapka 3: III STREFA bywa bez
+współrzędnych; sekcja warunkowa, brak danych = wyszarzenie z wyjaśnieniem).
+Brakuje wyłącznie tego wyjaśnienia **w kafelku mapy**.
+
+**Sesja 4:** kafelek mapy bez współrzędnych pokazuje komunikat
+„brak pozycji w eksporcie" wraz z licznikiem zdarzeń, zamiast pustego boiska.
+Puste boisko jest gorsze niż brak kafelka — wygląda jak zero zdarzeń, a zdarzeń
+było trzydzieści pięć.
