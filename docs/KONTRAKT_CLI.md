@@ -81,7 +81,7 @@ Silnik wstrzykuje dane w szablon `engine/coachanalyze/templates/dashboard_templa
 |---|---|
 | `/*__DATA__*/` | Zdarzenia i `half_split`, serializacja kompaktowa. Dokładnie jedno wystąpienie |
 | `/*__PAL__*/` | Paleta z pliku projektu LiveTag. Dokładnie jedno wystąpienie |
-| `__TEAM_HOME__` · `__TEAM_AWAY__` | Klucz dopasowania — ta sama wartość co w `DATA[].team` |
+| `__TEAM_HOME__` · `__TEAM_AWAY__` | Klucz dopasowania — ta sama wartość co w `DATA[].team`. **`HOME` = klub-tenant, `AWAY` = rywal** |
 | `__TEAM_*_LABEL__` | Nazwa wyświetlana (`name`) |
 | `__TEAM_*_SHORT__` | Etykieta toru osi czasu (`short`) |
 | `__TEAM_*_COLOR__` · `__TEAM_*_DIM__` | Barwa klubu i jej przygaszona wersja |
@@ -93,11 +93,78 @@ Znaczniki **tylko w generacji v21**, opcjonalne całą grupą (v17 nie ma żadne
 |---|---|---|
 | `__TEAM_*_COLOR_L__` · `__TEAM_*_DIM_L__` | `motyw_jasny` | Barwa klubu dla `data-theme="light"` — `color_light` albo przyciemnienie `color` |
 | `__SEZON__` · `__KOLEJKA__` · `__DATA_MECZU__` | `meta_meczu` | Meta meczu z `config.match`; brak wartości = pusty napis |
+| `__KIERUNEK_HOME__` · `__KIERUNEK_AWAY__` · `__KIERUNEK_OPIS__` | `kierunek` | Podpis kierunku ataku z `meta.direction` **po ewentualnym odbiciu**; kierunek nieznany = pusty napis |
 
 > **`__DATA_MECZU__`, nie `__DATA__`.** To drugie jest podnapisem `/*__DATA__*/`, czyli
 > miejsca na zdarzenia meczu. Wspólna nazwa wymagałaby liczenia wystąpień z korektą
 > i podmiany w ustalonej kolejności, a tag zdarzenia o treści `__DATA__` mógłby zostać
 > zamieniony na datę. Znacznik został przemianowany w szablonie i problem zniknął.
+
+#### Strony raportu: `HOME` to klub-tenant
+
+**Lewy slot należy do klubu-tenanta, prawy do rywala — zawsze**, niezależnie od
+kierunku ataku i od tego, gdzie rozegrano mecz (decyzja właściciela, 2026-09-24,
+`docs/STAN_PIVOTU.md` §7.7 a). Powód jest po stronie odbiorcy: sztab ogląda serię
+raportów przez sezon i ma widzieć swoją drużynę zawsze w tym samym miejscu.
+
+Nazwy slotów są historyczne i **nie znaczą „gospodarz/gość"** — eksport LiveTag
+nie niesie informacji o gospodarzu i nie wolno jej zgadywać (pułapka 2). Zostały,
+bo ich zmiana dotknęłaby obu szablonów i wzorca złotego.
+
+Render rozstrzyga to, porównując `match.tenant_club_id` z `teams.*.club_id`.
+**Bez tych pól obowiązuje `us` → `HOME`** i nic się nie przestawia po cichu:
+`teams.us` z definicji jest „naszą drużyną" w modelu meczu, a rozjazd zdarza się
+wyłącznie przy scoutingu — analizie cudzego meczu, gdzie `matches.club_id`
+rozchodzi się z `matches.club_home_id`. Przy takim rozjeździe render mówi o tym
+na stderr.
+
+#### Kierunek ataku i odbicie współrzędnych
+
+Silnik **wyprowadza kierunek ataku z danych** i nie przyjmuje go w konfiguracji.
+Rozstrzyga mediana `pos_x_meters` strzałów drużyny (`> 52,5` → atak w prawo);
+mediana `pos_target_x_meters` wejść w SBZ i znak Δx podań w III strefę są
+**kontrolne** — potwierdzają albo zgłaszają sprzeczność, ale nie przegłosowują
+strzałów. Próbka mniejsza niż **trzy zdarzenia** nie rozstrzyga niczego.
+
+Kierunek liczy się **raz na mecz**, nie per połowa: współrzędne w eksporcie są
+już znormalizowane kierunkowo, więc drużyny nie zmieniają w nich stron po
+przerwie (zweryfikowane na eksporcie JDRZ, 2026-09-24).
+
+Gdy **tenant atakuje w lewo**, render odbija współrzędne obu drużyn:
+`x' = 105 - x`, tak samo `pos_target_x_meters`; **`y` zostaje nietknięte** —
+zamieniamy strony boiska, nie skrzydła. Na mapach tenant atakuje więc zawsze
+w prawo.
+
+| Artefakt | Układ współrzędnych |
+|---|---|
+| raport HTML (`--out-html`) | **po odbiciu** — tenant atakuje w prawo |
+| tabela zdarzeń (`--out-events`) | **po odbiciu** — jeden układ dla całego sezonu |
+| archiwum kanoniczne (`--out-canon`), `--out-metrics` | **oryginalny**, jak w eksporcie |
+
+Rozjazd między tabelą a archiwum jest **świadomy**: archiwum ma zapisywać to, co
+było w pliku, a tabela zasila porównania sezonowe, które nie mogą sumować map
+z dwóch przeciwnych stron boiska.
+
+`meta.direction` niesie kierunek **sprzed odbicia** wraz z dowodami, a
+`meta.mirrored` mówi, czy odbicie zaszło:
+
+```json
+"direction": {
+  "us": "left", "them": "right", "confidence": "high", "conflicts": [],
+  "evidence": {
+    "us": { "shots": {"n": 4, "median_x": 12.5},
+            "entry_sbz": {"n": 3, "median_tx": 6.0},
+            "third_dx": {"n": 5, "median_dx": -8.2} },
+    "them": { "…": "…" }
+  }
+},
+"mirrored": true
+```
+
+`confidence`: `high` — kierunek ze strzałów, kontrole milczą albo potwierdzają;
+`low` — sprzeczność miar albo kierunek z miary kontrolnej, dodatkowo ostrzeżenie
+**`KIERUNEK_NIEPEWNY`**; `none` — danych nie ma i **nie zgadujemy**. Brak
+kierunku ostrzeżeniem NIE jest: eksport bez pozycji to stan normalny (pułapka 3).
 
 Obecność znaczników jest sprawdzana **przed podmianą**, a po niej sprawdzamy, że żaden nie został.
 `/*__DATA__*/` i `/*__PAL__*/` muszą wystąpić dokładnie raz — drugie wystąpienie znaczy uszkodzony
@@ -324,6 +391,7 @@ zwraca w `meta.coverage.teams`, żeby PHP mógł zaproponować dopasowanie przy 
 | `crest` | Ścieżka do herbu. Formaty: svg, png, jpg, webp, gif | Herb zastępczy: biały krążek z pierwszą literą nazwy + ostrzeżenie na stderr |
 | `color_light` | Barwa drużyny w MOTYWIE JASNYM raportu (generacja v21) | Liczona z `color` przez przyciemnienie do ustalonej jasności (`render.hex_to_light`) |
 | `source_names` | Nazwy tak, jak zapisał je LiveTag — dokładają się do dopasowania obok `name` i `short` | Dopasowanie tylko po `name` i `short` |
+| `club_id` | Identyfikator klubu w bazie. **Wyłącznie klucz porównania z `match.tenant_club_id`** — żadna metryka od niego nie zależy | Lewy slot dostaje `us` |
 
 ### Meta meczu (`match`) — nagłówek raportu w generacji v21
 
@@ -335,7 +403,7 @@ Blok czysto opisowy: sezon, kolejka i data rozegrania w nagłówku transmisyjnym
 | `match.season` | `__SEZON__` | zapasowo `season_label` z korzenia konfiguracji, dalej puste |
 | `match.round` | `__KOLEJKA__` | puste |
 | `match.date` | `__DATA_MECZU__` | puste |
-| `match.tenant_club_id` | — (jeszcze nieużywane) | `null` |
+| `match.tenant_club_id` | — (nie znacznik: rozstrzyga, która drużyna dostaje slot `HOME`) | Lewy slot dostaje `us` |
 
 **Puste znaczy puste, nie „dziś" ani „—"** (CLAUDE.md §8). Szablon v21 składa nagłówek
 z NIEPUSTYCH części, więc brak kolejki zabiera CAŁY CZŁON razem z separatorem, zamiast

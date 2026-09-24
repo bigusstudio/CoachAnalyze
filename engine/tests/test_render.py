@@ -90,10 +90,15 @@ def test_render_nie_zmienia_niczego_poza_placeholderami(generacja):
         },
         "match": {"season": "ZzSezon", "round": "ZzKolejka", "date": "ZzData"},
     }
+    # KIERUNEK PODANY JAWNIE, a nie wykryty z `RAMKA`: znaczniki grupy `kierunek`
+    # przy nieznanym kierunku są PUSTYMI napisami, a pustego napisu nie da się
+    # odwrócić z powrotem w znacznik — test przestałby cokolwiek sprawdzać.
+    kierunek = {"us": "right", "them": "left", "confidence": "high"}
     sciezka = render.template_path_for(generacja)
     szablon = render.load_template(sciezka)
     html, _ = render.render(
-        RAMKA, palette={"tags": {}, "labels": {}}, config=config, template_path=sciezka
+        RAMKA, palette={"tags": {}, "labels": {}}, config=config, template_path=sciezka,
+        direction=kierunek,
     )
 
     dane = json.dumps(render.view_data(RAMKA), ensure_ascii=False, separators=(",", ":"))
@@ -102,6 +107,10 @@ def test_render_nie_zmienia_niczego_poza_placeholderami(generacja):
 
     slots, _ = render.team_slots(RAMKA, config["teams"])
     slots.update(render.match_slots(config))
+    slots.update(render.direction_slots(
+        kierunek,
+        labels={slot: slots["__TEAM_{}_LABEL__".format(slot)] for _s, slot in render.TEAM_SLOTS},
+    ))
     # Malejąco po długości wstawionej wartości — krótsza nie może zjeść fragmentu dłuższej.
     for placeholder in sorted(slots, key=lambda p: len(slots[p]), reverse=True):
         odwrocone = odwrocone.replace(slots[placeholder], placeholder)

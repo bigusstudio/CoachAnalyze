@@ -369,18 +369,24 @@ CLAUDE.md §2.
 - atrybucję gola po najbliższym strzale **w szablonie** (`team_uuid` gola
   w eksporcie bywa błędny) — render jej też nie dubluje.
 
-### Konwencja stron
+### Konwencja stron — OD SESJI 4a (2026-09-24)
 
-> **ZASTĄPIONA DECYZJĄ Z 2026-09-24 — patrz punkt 7.7.** Poniższe opisuje stan
-> dzisiejszy, czyli to, co realnie robi v21. Od sesji 4 lewy slot należy do
-> klubu-tenanta, niezależnie od kierunku ataku.
+**`HOME` = klub-tenant, `AWAY` = rywal.** Zawsze, niezależnie od kierunku ataku
+i od tego, gdzie rozegrano mecz. Decyzja właściciela z punktu 7.7 a, wykonana
+w sesji 4a (silnik 0.14.0).
 
-**`HOME` = drużyna atakująca w LEWO**, `AWAY` w prawo. Tak podpisuje je nagłówek v21
-i tak wypełnia je render (`us` → `HOME`, `them` → `AWAY`).
+Poprzednia konwencja — „`HOME` = drużyna atakująca w LEWO" — **już nie obowiązuje**
+i nagłówek v21 nie ma jej już wpisanej na sztywno: kierunek podpisuje
+`meta.direction`, a gdy go nie ma, podpis jest pusty.
 
-To jest konwencja PREZENTACJI, nie fakt z danych: eksport LiveTag nie niesie
+Nazwy slotów zostają i **nie znaczą „gospodarz/gość"**: eksport LiveTag nie niesie
 informacji o gospodarzu (pułapka 2 — współrzędne są już znormalizowane kierunkowo),
-a `matches.is_home` bywa `NULL` i to jest poprawna wartość.
+a `matches.is_home` bywa `NULL` i to jest poprawna wartość. Zmiana samych nazw
+dotknęłaby obu szablonów i wzorca złotego, więc kosztowałaby więcej, niż daje.
+
+Rozstrzyga `match.tenant_club_id` porównane z `teams.*.club_id`. Bez tych pól
+obowiązuje `us` → `HOME` — czyli dokładnie to, co dotąd. Rozjazd zdarza się
+wyłącznie przy scoutingu (`matches.club_id` ≠ `matches.club_home_id`).
 
 ---
 
@@ -468,7 +474,12 @@ w podsumowaniu już raz przepuściło rozjazd wersji aż do wdrożenia.
 
 > To nie jest pytanie otwarte, tylko **rozstrzygnięcie zapisane wśród nich**, bo
 > zmienia konwencję opisaną w punkcie 6 i ma zależność, której dziś nie ma.
-> Wykonanie: **sesja 4**.
+>
+> **WYKONANE W SESJI 4a (silnik 0.14.0).** Punkty (a), (b), (c) i (d) są
+> zaimplementowane; moduł `engine/coachanalyze/direction.py`, testy
+> `engine/tests/test_direction.py`, kontrakt w `docs/KONTRAKT_CLI.md`.
+> Odstępstwo od zapisu poniżej jest jedno i dotyczy PODPISU w nagłówku —
+> opisane w (c).
 
 #### a) Lewa strona należy do klubu-tenanta, zawsze
 
@@ -523,6 +534,17 @@ ponowne policzenie median.
 Odbijamy **obie drużyny razem** — lustrzenie jednej rozjechałoby mecz na dwa
 układy współrzędnych. `y` zostaje nietknięte: zamieniamy strony boiska, nie skrzydła.
 
+**Podpis w nagłówku idzie za MAPĄ, nie za surowym eksportem.** `meta.direction`
+zapisuje kierunek sprzed odbicia (bo po nim da się odbicie sprawdzić i cofnąć),
+ale znaczniki `__KIERUNEK_*__` niosą kierunek **po** odbiciu — czytelnik patrzy
+na mapę, a nie na plik. Praktyczny skutek: przy znanym kierunku podpis mówi
+zawsze „tenant atakuje w prawo", a różnicę widać wtedy, gdy kierunku NIE DA SIĘ
+ustalić — wtedy podpis milczy, zamiast twierdzić cokolwiek.
+
+**Tabela `events` też dostaje współrzędne po odbiciu**, a archiwum kanoniczne
+i pakiet metryk — oryginalne. Porównanie sezonowe nie może sumować map z dwóch
+przeciwnych stron boiska, a archiwum ma zapisywać to, co było w pliku.
+
 To jedyne miejsce, w którym wolno tknąć współrzędne. Pułapka 2 zakazuje lustrzenia
 „z góry"; tutaj odbicie jest **wyprowadzone z danych i odnotowane w `meta`**, więc
 da się je cofnąć i sprawdzić.
@@ -536,6 +558,10 @@ Render nie chodzi do bazy (CLAUDE.md §4), więc **nie wie, który klub jest ten
 zmiana w `run_job.php`, co meta meczu, i ma iść razem z nią. Dopóki jej nie ma,
 punktu (a) nie da się zaimplementować — punkt 7.3 przestaje być kosmetyką nagłówka
 i staje się warunkiem wstępnym.
+
+**ZAMKNIĘTE w sesji 4a.** `run_job.php` przekazywał `tenant_club_id` już od sesji 3,
+brakowało drugiej połowy porównania: `Clubs::engineConfig()` dokłada teraz
+`club_id` do każdej drużyny. Bez obu pól render zostaje przy `us` → `HOME`.
 
 ### 7.8 Mapa bez pozycji pokazuje puste boisko zamiast powodu
 

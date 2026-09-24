@@ -212,10 +212,41 @@ def build_sections(coverage, requested=None, template=None, frame=None):
     return available, unavailable
 
 
-def build_warnings(frame, canon_result, has_json=False, palette=None):
+def ostrzezenie_kierunku(direction):
+    """`KIERUNEK_NIEPEWNY` albo `None`.
+
+    Trzy powody, jeden kod: miary pokazały różne strony, obie drużyny wyszły po
+    tej samej stronie, albo kierunek wziął się z miary kontrolnej, bo strzałów
+    nie starczyło. We wszystkich trzech raport powstaje normalnie — ostrzeżenie
+    mówi tylko, że mapy mogą być odbite.
+
+    BRAK KIERUNKU (`confidence: none`) NIE JEST OSTRZEŻENIEM. Eksport bez pozycji
+    to stan normalny (pułapka 3), mapy i tak nie powstaną, a ostrzeżenie o stanie
+    normalnym uczy ignorować ostrzeżenia.
+    """
+    if not direction or direction.get("confidence") != "low":
+        return None
+    sprzecznosci = direction.get("conflicts") or []
+    powod = ("miary wskazały różne strony ({})".format(", ".join(sprzecznosci))
+             if sprzecznosci else "kierunek wyprowadzony z miary kontrolnej, nie ze strzałów")
+    return {
+        "code": "KIERUNEK_NIEPEWNY",
+        "msg": (
+            "Kierunek ataku ustalony z zastrzeżeniem — {}. Mapy mogą być odbite; "
+            "kierunek i dowody są w `meta.direction`".format(powod)
+        ),
+        "count": 1,
+    }
+
+
+def build_warnings(frame, canon_result, has_json=False, palette=None, direction=None):
     """Ostrzeżenia z licznikiem wystąpień. Kolejność stała — wyjście ma być powtarzalne."""
     report = canon_result["report"]
     warnings = []
+
+    kierunek = ostrzezenie_kierunku(direction)
+    if kierunek is not None:
+        warnings.append(kierunek)
 
     typo_hits = report["typo_hits"]
     typo_in_palette = sum(
@@ -402,7 +433,7 @@ def build_dictionary(frame, probka=3):
 
 
 def build_meta(frame, canon_result, config=None, has_json=False, palette=None, ok=True,
-               report_template=None):
+               report_template=None, direction=None, mirrored=False):
     """Pełny `meta.json` zgodny z docs/KONTRAKT_CLI.md.
 
     `report_template` jest OPCJONALNY i bez niego nic się nie zmienia. Z nim
@@ -430,7 +461,14 @@ def build_meta(frame, canon_result, config=None, has_json=False, palette=None, o
         "coverage": coverage,
         "sections_available": available,
         "sections_unavailable": unavailable,
-        "warnings": build_warnings(frame, canon_result, has_json=has_json, palette=palette),
+        "warnings": build_warnings(
+            frame, canon_result, has_json=has_json, palette=palette, direction=direction
+        ),
+        # KIERUNEK ATAKU ODCZYTANY Z DANYCH — sprzed ewentualnego odbicia.
+        # Razem z `mirrored` odpowiada na pytanie „czy ta mapa jest odbita"
+        # inaczej niż przez ponowne policzenie median (docs/STAN_PIVOTU.md §7.7 c).
+        "direction": direction,
+        "mirrored": bool(mirrored),
         # Kształt WZBOGACONY: liczba wystąpień i etykiety towarzyszące.
         # Bez nich operator kreatora decyduje w ciemno — „tag wystąpił 2 razy"
         # i „tag wystąpił 140 razy" to zupełnie inne decyzje. Warstwa PHP czyta

@@ -18,6 +18,10 @@ KLUCZE_META = {
     "dictionary",
     # `palette` — barwy tablicy kodowej dla konfiguratora (Sesja 5).
     "palette",
+    # `direction` i `mirrored` — kierunek ataku odczytany z danych i informacja,
+    # czy render odbił współrzędne (sesja 4a). Razem odpowiadają na pytanie
+    # „czy ta mapa jest odbita" bez liczenia median od nowa.
+    "direction", "mirrored",
 }
 
 KLUCZE_COVERAGE = {

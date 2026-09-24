@@ -257,7 +257,7 @@ svg text{font-family:'IBM Plex Mono',monospace}
 
 <section id="sec-mapy">
   <h2>Mapy współczynników</h2>
-  <div class="sub">Trzy współczynniki: strzały (wynik), strzały (xG) i zdobycie SBZ — mapa po lewej, przebieg w czasie po prawej. Fragmentatory u góry sterują wszystkimi wierszami; przedziały 15-minutowe działają jak przełączniki — możesz włączyć wszystkie, jeden albo dowolną kombinację (CAŁY MECZ / POŁOWA to skróty). Szerokość wykresów stała, oś czasu obejmuje wybrany zakres. Filtr wyniku (celne/niecelne/zablokowane) dotyczy wiersza 1; wiersz 2 ma własny fragmentator typu akcji. __TEAM_HOME_LABEL__ atakuje bramkę po lewej, __TEAM_AWAY_LABEL__ po prawej.</div>
+  <div class="sub">Trzy współczynniki: strzały (wynik), strzały (xG) i zdobycie SBZ — mapa po lewej, przebieg w czasie po prawej. Fragmentatory u góry sterują wszystkimi wierszami; przedziały 15-minutowe działają jak przełączniki — możesz włączyć wszystkie, jeden albo dowolną kombinację (CAŁY MECZ / POŁOWA to skróty). Szerokość wykresów stała, oś czasu obejmuje wybrany zakres. Filtr wyniku (celne/niecelne/zablokowane) dotyczy wiersza 1; wiersz 2 ma własny fragmentator typu akcji. __KIERUNEK_OPIS__</div>
   <div class="pitchbox" style="margin-bottom:14px">
     <div class="frag" role="group" aria-label="Fragment meczu — mapy">
       <div class="fr1"><button class="fbtn on" data-mf="full">CAŁY MECZ</button></div>
@@ -614,11 +614,11 @@ function renderHeader2(){
   sbz.forEach(e=>{const y=e.team===HUT?30:52;st+=`<rect ${hdrTip(e)} x="${X(e.b)-1.5}" y="${y-5}" width="3" height="10" fill="${col(e.team)}" fill-opacity=".45"/>`;});
   shots.forEach(e=>{const y=e.team===HUT?30:52,r=3+Math.sqrt(e.xg||0.01)*12;if(goalOf(e))st+=`<circle cx="${X(e.b)}" cy="${y}" r="${r+6}" fill="none" stroke="${col(e.team)}" stroke-width="2.5" stroke-dasharray="3 3"/>`;st+=glyph(kindOf(outcomeOf(e)),X(e.b),y,r,col(e.team),shotTip(e));});
   document.getElementById('hdr2').innerHTML=`
-   <div class="club"><span class="crest hutc"><img src="__LOGO_HOME__" alt=""></span><div><div class="kicker">◀ atakuje w lewo · __TEAM_HOME_SHORT__</div><h1 class="h">__TEAM_HOME_LABEL__</h1><div class="sub">${h.strzaly} strzałów · ${h.sbz} wejść w SBZ</div></div></div>
+   <div class="club"><span class="crest hutc"><img src="__LOGO_HOME__" alt=""></span><div><div class="kicker">__KIERUNEK_HOME__<span>__TEAM_HOME_SHORT__</span></div><h1 class="h">__TEAM_HOME_LABEL__</h1><div class="sub">${h.strzaly} strzałów · ${h.sbz} wejść w SBZ</div></div></div>
    <div class="score"><div class="kicker">${metaLinia('Raport pomeczowy',metaCzesc('sezon','__SEZON__'),metaCzesc('kolejka','__KOLEJKA__'),metaCzesc('','__DATA_MECZU__'))}</div><div class="n"><span class="h">${h.gole}</span><small>:</small><span class="p">${p.gole}</span></div>
      <div class="xg">xG <b class="h">${fmt(h.xg,2)}</b> · <b class="p">${fmt(p.xg,2)}</b></div>
      <div class="race"><span class="h">${fmt(h.xg,2)}</span><div class="t"><i class="a" style="width:${h.xg/tot*100}%"></i><i class="b" style="width:${p.xg/tot*100}%"></i></div><span class="p" style="text-align:right">${fmt(p.xg,2)}</span></div></div>
-   <div class="club r"><div><div class="kicker">__TEAM_AWAY_SHORT__ · atakuje w prawo ▶</div><h1 class="p">__TEAM_AWAY_LABEL__</h1><div class="sub">${p.strzaly} strzałów · ${p.sbz} wejść w SBZ</div></div><span class="crest pogc"><img src="__LOGO_AWAY__" alt=""></span></div>
+   <div class="club r"><div><div class="kicker"><span>__TEAM_AWAY_SHORT__</span>__KIERUNEK_AWAY__</div><h1 class="p">__TEAM_AWAY_LABEL__</h1><div class="sub">${p.strzaly} strzałów · ${p.sbz} wejść w SBZ</div></div><span class="crest pogc"><img src="__LOGO_AWAY__" alt=""></span></div>
    <div class="strip">${st}</svg></div>`;
 }
 function mcLabel(){const q=MC.qs,all=ALLQ.every(x=>q.has(x));if(all)return 'CAŁY MECZ';if(['q1','q2','q3'].every(x=>q.has(x))&&!['q4','q5','q6'].some(x=>q.has(x)))return 'I POŁOWA';if(['q4','q5','q6'].every(x=>q.has(x))&&!['q1','q2','q3'].some(x=>q.has(x)))return 'II POŁOWA';return ALLQ.filter(x=>q.has(x)).map(x=>QLBL[x]).join(' · ');}

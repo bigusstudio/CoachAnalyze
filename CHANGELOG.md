@@ -3,6 +3,51 @@
 Format: [wersja silnika] — data — opis.
 Każda zmiana, która modyfikuje wyjście silnika, MUSI mieć tu wpis wraz z powodem.
 
+## [0.14.0] — 2026-09-24 · sesja 4a pivotu „viewer"
+### Lewy slot należy do klubu-tenanta, kierunek ataku wychodzi z danych
+
+**ZMIANA WYJŚCIA — WYŁĄCZNIE W GENERACJI v21.** Szablon v17 nie ma ani jednego
+nowego znacznika, a domyślna ścieżka (bez templatu, bez `match.tenant_club_id`)
+produkuje plik co do bajtu taki jak dotąd. Test złoty nietknięty.
+
+- **`HOME` = klub-tenant, `AWAY` = rywal — zawsze** (decyzja właściciela,
+  docs/STAN_PIVOTU.md §7.7 a). Zastępuje konwencję „HOME = drużyna atakująca
+  w lewo". Powód jest po stronie odbiorcy: sztab ogląda serię raportów przez
+  sezon i ma widzieć swoją drużynę zawsze w tym samym miejscu. Nazwy slotów
+  zostają, bo ich zmiana dotknęłaby obu szablonów i wzorca złotego.
+  Przy scoutingu (tenant po stronie `them`) sloty odwraca `render.tenant_side`,
+  czytając `match.tenant_club_id` i nowe `teams.*.club_id`.
+- **Nowy moduł `direction.py`** — kierunek ataku każdej drużyny wyprowadzony
+  z danych, nigdy z konfiguracji. Rozstrzyga mediana `pos_x_meters` strzałów
+  (`> 52,5` → atak w prawo); wejścia w SBZ i zwrot podań w III strefę są
+  kontrolne i nie przegłosowują strzałów. Liczone RAZ NA MECZ: współrzędne
+  w eksporcie są już znormalizowane kierunkowo (pułapka 2), więc drużyny nie
+  zmieniają w nich stron po przerwie — zweryfikowane na eksporcie JDRZ.
+  Próbka mniejsza niż trzy zdarzenia nie rozstrzyga niczego.
+- **Odbicie współrzędnych, gdy tenant atakuje w lewo:** `x' = 105 - x`
+  (także `tx`), `y` nietknięte — zamieniamy strony boiska, nie skrzydła.
+  Odbijamy OBIE drużyny razem; lustrzenie jednej rozjechałoby mecz na dwa
+  układy współrzędnych. To jedyne miejsce w silniku, w którym wolno tknąć
+  współrzędne, i jako jedyne jest wyprowadzone z danych oraz odnotowane.
+- **Model kanoniczny, metryki i `--out-canon` dostają ramkę ORYGINALNĄ.**
+  Archiwum zapisuje to, co było w eksporcie. Odbicie jest decyzją prezentacji.
+  **`--out-events` zapisuje współrzędne PO odbiciu** — tabela ma jeden układ
+  (tenant atakuje w prawo), żeby porównanie sezonowe nie sumowało map z dwóch
+  przeciwnych stron boiska. Rozjazd tabeli z archiwum jest świadomy i opisany
+  w docs/KONTRAKT_CLI.md.
+- **`meta.direction` i `meta.mirrored`** — kierunek sprzed odbicia wraz
+  z dowodami (mediany i liczebności trzech miar) plus flaga odbicia. Razem
+  odpowiadają na pytanie „czy ta mapa jest odbita" bez liczenia median od nowa.
+- **Ostrzeżenie `KIERUNEK_NIEPEWNY`** przy sprzeczności miar albo kierunku
+  z miary kontrolnej. **Brak kierunku ostrzeżeniem NIE JEST:** eksport bez
+  pozycji to stan normalny (pułapka 3), a ostrzeżenie o stanie normalnym uczy
+  ignorować ostrzeżenia.
+- **Nagłówek v21 podpisuje kierunek z danych**, a nie stałą konwencją.
+  Nowe znaczniki `__KIERUNEK_HOME__`, `__KIERUNEK_AWAY__`, `__KIERUNEK_OPIS__`
+  (grupa opcjonalna `kierunek`). Podpis mówi, CO WIDAĆ NA MAPIE — czyli kierunek
+  po odbiciu — bo czytelnik patrzy na mapę, a nie na surowy eksport.
+  Kierunek nieznany daje PUSTY napis, nie „nieznany" ani konwencję zastępczą.
+
 ## [0.13.2] — 2026-09-24
 ### Minuta meczu zaczyna się od 1
 Poprawka z odbioru sesji 2. `ceil(0/60)` dawało zero, a zdarzeń w sekundzie 0

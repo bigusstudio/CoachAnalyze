@@ -81,8 +81,25 @@ TEMPLATE_ENV = "CA_HTML_TEMPLATE"
 DATA_PLACEHOLDER = "/*__DATA__*/"
 PAL_PLACEHOLDER = "/*__PAL__*/"
 
-# Znaczniki drużyn. `us` to gospodarz raportu (klub, dla którego powstaje), `them` to rywal.
+# Znaczniki drużyn. `us` to klub, dla którego powstaje raport, `them` to rywal.
+#
+# SLOT `HOME` NALEŻY DO KLUBU-TENANTA, `AWAY` DO RYWALA — zawsze, niezależnie od
+# kierunku ataku i od tego, gdzie rozegrano mecz (docs/STAN_PIVOTU.md §7.7 a).
+# Ta krotka jest KOLEJNOŚCIĄ DOMYŚLNĄ; przy meczu scoutingowym, w którym tenant
+# stoi po stronie `them`, kolejność odwraca `tenant_side` (patrz `team_slots`).
+#
+# Nazwy slotów są historyczne i NIE ZNACZĄ „gospodarz/gość": eksport LiveTag nie
+# niesie informacji o gospodarzu i nie wolno jej zgadywać. Zmiana nazw dotknęłaby
+# obu szablonów i wzorca złotego, więc zostają — z tym wyjaśnieniem.
 TEAM_SLOTS = (("us", "HOME"), ("them", "AWAY"))
+
+# Strona przeciwna. Jedna mapa dla całego renderu — `direction` ma swoją własną
+# i obie muszą mówić to samo.
+PRZECIWNA_STRONA = {"right": "left", "left": "right"}
+
+# Podpis kierunku ataku w nagłówku v21. Strzałka po STRONIE ZEWNĘTRZNEJ kolumny:
+# lewa kolumna zaczyna od strzałki, prawa nią kończy.
+KIERUNEK_TEKST = {"left": "◀ atakuje w lewo", "right": "atakuje w prawo ▶"}
 
 # Barwy zapasowe, gdy konfiguracja ich nie niesie. Prezentacja, nie dane — raport bez
 # jakiejkolwiek barwy jest nieczytelny, a wykres bez danych zostaje pusty tak czy tak.
@@ -152,6 +169,12 @@ SLOT_GROUPS = {
     # z korektą i podmianę w ustalonej kolejności — znacznik został przemianowany
     # w szablonie i cały ten mechanizm zniknął.
     "meta_meczu": ("__SEZON__", "__KOLEJKA__", "__DATA_MECZU__"),
+    # Kierunek ataku w nagłówku i w podpisie map (v21, sesja 4a).
+    #
+    # DO 4a SZABLON MIAŁ TO WPISANE NA SZTYWNO („◀ atakuje w lewo") i po zmianie
+    # stron z §7.7 a byłoby to po prostu nieprawdą: lewy slot należy teraz do
+    # tenanta, a tenant na mapach atakuje w prawo. Podpis idzie więc z danych.
+    "kierunek": ("__KIERUNEK_HOME__", "__KIERUNEK_AWAY__", "__KIERUNEK_OPIS__"),
 }
 
 # Odwrotność mapy powyżej: znacznik -> nazwa grupy.
@@ -337,7 +360,92 @@ def placeholder_crest(label, color):
     return "data:image/svg+xml;base64," + base64.b64encode(svg.encode("utf-8")).decode("ascii")
 
 
-def team_slots(frame, teams=None):
+def tenant_side(config):
+    """`us` / `them` — po której stronie konfiguracji stoi KLUB-TENANT.
+
+    Lewy slot raportu należy do tenanta zawsze (docs/STAN_PIVOTU.md §7.7 a), więc
+    render musi wiedzieć, który to. Silnik nie chodzi do bazy (CLAUDE.md §4) —
+    dostaje `match.tenant_club_id` w konfiguracji i porównuje go z `club_id`
+    drużyn.
+
+    ODPOWIEDŹ DOMYŚLNA TO `us` i to nie jest zgadywanie: `teams.us` z definicji
+    jest „naszą drużyną" w modelu meczu (`matches.club_home_id`, migracja 001),
+    a rozjazd z tenantem zdarza się WYŁĄCZNIE przy scoutingu — analizie cudzego
+    meczu. Bez `club_id` w konfiguracji nie ma jak tego rozjazdu zobaczyć, więc
+    zostaje przy domyślnej i niczego nie przestawia po cichu.
+    """
+    cfg = config or {}
+    tenant = (cfg.get("match") or {}).get("tenant_club_id")
+    if tenant is None:
+        return "us"
+    teams = cfg.get("teams") or {}
+    for side, _slot in TEAM_SLOTS:
+        club_id = (teams.get(side) or {}).get("club_id")
+        if club_id is not None and str(club_id) == str(tenant):
+            return side
+    return "us"
+
+
+def kolejnosc_slotow(tenant="us"):
+    """[(strona, slot)] — tenant do `HOME`, rywal do `AWAY`."""
+    if tenant not in dict(TEAM_SLOTS):
+        tenant = "us"
+    druga = "them" if tenant == "us" else "us"
+    return ((tenant, "HOME"), (druga, "AWAY"))
+
+
+def kierunek_wyswietlany(direction, mirrored=False):
+    """{'us': …, 'them': …} — kierunek ataku TAKI, JAKI WIDAĆ NA MAPACH.
+
+    `direction` niesie kierunek ODCZYTANY Z DANYCH, czyli sprzed odbicia.
+    Gdy ramka została odbita, na mapach obie drużyny atakują w drugą stronę —
+    i to ten kierunek ma podpisywać nagłówek, bo czytelnik patrzy na mapę,
+    a nie na surowy eksport.
+
+    Rozdzielenie jest celowe: `meta.direction` zostaje zapisem tego, CO BYŁO
+    W DANYCH (da się po nim sprawdzić odbicie), a podpis mówi, CO WIDAĆ.
+    """
+    surowy = {side: (direction or {}).get(side) for side, _slot in TEAM_SLOTS}
+    if not mirrored:
+        return surowy
+    return {side: PRZECIWNA_STRONA.get(k) for side, k in surowy.items()}
+
+
+def direction_slots(direction, mirrored=False, tenant="us", labels=None):
+    """Znaczniki grupy `kierunek` dla szablonu v21.
+
+    Kierunek NIEZNANY daje PUSTE NAPISY, nie „nieznany" ani konwencję zastępczą
+    (CLAUDE.md §8). Separator jedzie w wartości, więc pusty znacznik nie zostawia
+    w nagłówku wiszącej kropki.
+    """
+    kier = kierunek_wyswietlany(direction, mirrored)
+    kolejnosc = kolejnosc_slotow(tenant)
+    slots = {}
+
+    for side, slot in kolejnosc:
+        tekst = KIERUNEK_TEKST.get(kier.get(side))
+        if not tekst:
+            slots["__KIERUNEK_{}__".format(slot)] = ""
+        elif slot == "HOME":
+            slots["__KIERUNEK_HOME__"] = tekst + " · "
+        else:
+            slots["__KIERUNEK_AWAY__"] = " · " + tekst
+
+    # Zdanie pod mapami — po której stronie stoi czyja bramka. Składane z nazw
+    # już zabezpieczonych (`labels`), żeby nie było drugiej ścieżki ucieczki.
+    opis = ""
+    strona_home = kier.get(kolejnosc[0][0])
+    if strona_home in PRZECIWNA_STRONA and labels:
+        bramka = {"right": ("po prawej", "po lewej"), "left": ("po lewej", "po prawej")}
+        h, a = bramka[strona_home]
+        opis = "{} atakuje bramkę {}, {} {}.".format(
+            labels.get("HOME", ""), h, labels.get("AWAY", ""), a
+        )
+    slots["__KIERUNEK_OPIS__"] = opis
+    return slots
+
+
+def team_slots(frame, teams=None, tenant="us"):
     """{'__TEAM_HOME__': …, …} — wartości do wstawienia w miejsce znaczników drużyn.
 
     Trzy formy nazwy, bo szablon używa ich w trzech różnych rolach:
@@ -363,8 +471,15 @@ def team_slots(frame, teams=None):
     slots = {}
     podstawione = []
 
-    for indeks, (side, slot) in enumerate(TEAM_SLOTS):
+    # NAZWA WYKRYTA IDZIE ZA STRONĄ, NIE ZA SLOTEM. Pierwsza drużyna z pliku to
+    # `us`, druga `them` — i tak zostaje także wtedy, gdy tenant siedzi po
+    # stronie `them` i sloty są odwrócone. Indeks liczony po slocie przypisałby
+    # wtedy nazwy odwrotnie, a render nie zgłosiłby niczego.
+    indeks_strony = {side: i for i, (side, _slot) in enumerate(TEAM_SLOTS)}
+
+    for side, slot in kolejnosc_slotow(tenant):
         cfg = (teams or {}).get(side) or {}
+        indeks = indeks_strony[side]
         label = cfg.get("name") or (wykryte[indeks] if indeks < len(wykryte) else "")
         if not label:
             label = FALLBACK_LABELS[side]
@@ -776,7 +891,8 @@ def stamp_block(template_version, generated_at):
     )
 
 
-def render(frame, palette=None, metrics=None, canon_result=None, config=None, template_path=None):
+def render(frame, palette=None, metrics=None, canon_result=None, config=None,
+           template_path=None, direction=None, mirrored=False):
     """(html, raport). Raport idzie do logu wykonawcy, nigdy do przeglądarki.
 
     `metrics` nie jest wstrzykiwane do szablonu: szablon liczy wszystko sam,
@@ -788,11 +904,19 @@ def render(frame, palette=None, metrics=None, canon_result=None, config=None, te
     czyli szablon, którego wyjścia pilnuje test złoty.
     """
     teams = (config or {}).get("teams")
+    tenant = tenant_side(config)
+    sloty = kolejnosc_slotow(tenant)
 
     sciezka = resolve_template(template_path)
     template = load_template(sciezka)
-    slots, teams_defaulted = team_slots(frame, teams)
+    slots, teams_defaulted = team_slots(frame, teams, tenant=tenant)
     slots.update(match_slots(config))
+    # Podpis kierunku dostaje nazwy JUŻ PO UCIECZCE — jedna ścieżka zabezpieczania
+    # nazwy klubu, nie druga obok niej.
+    slots.update(direction_slots(
+        direction, mirrored=mirrored, tenant=tenant,
+        labels={slot: slots["__TEAM_{}_LABEL__".format(slot)] for _side, slot in sloty},
+    ))
     braki_znacznikow = missing_slots(template, slots)
     data = view_data(frame, canon_result=canon_result, teams=teams)
     html = inject(template, data, palette if palette is not None else EMPTY_PALETTE, slots)
@@ -837,8 +961,12 @@ def render(frame, palette=None, metrics=None, canon_result=None, config=None, te
         "bytes": len(html.encode("utf-8")),
         "has_palette": palette is not None,
         "teams": {
-            side: slots["__TEAM_{}_LABEL__".format(slot)] for side, slot in TEAM_SLOTS
+            side: slots["__TEAM_{}_LABEL__".format(slot)] for side, slot in sloty
         },
+        # Która strona konfiguracji dostała lewy slot. Przy scoutingu bywa `them`
+        # i wtedy raport wygląda inaczej, niż wskazywałaby sama nazwa slotu.
+        "tenant_side": tenant,
+        "mirrored": bool(mirrored),
         # Nazwa podstawiona zapasowo i herb wygenerowany zamiast wczytanego z pliku.
         # Jedno i drugie widać w raporcie, ale operator ma się dowiedzieć wcześniej.
         "teams_defaulted": teams_defaulted,

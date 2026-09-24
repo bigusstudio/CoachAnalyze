@@ -108,6 +108,9 @@ $id2 = Clubs::create(1, ['name' => 'Klub B', 'short_name' => 'POG',
 $cfg = Clubs::engineConfig($id, $id2);
 check('strona us i them', array_keys($cfg) === ['us', 'them']);
 check('nazwa i barwa w konfiguracji', $cfg['us']['name'] === 'Klub A S.A.' && $cfg['us']['color'] === '#C25A16');
+// Sesja 4a: render porownuje to z `match.tenant_club_id`, zeby posadzic
+// klub-tenanta po lewej stronie raportu takze przy meczu scoutingowym.
+check('identyfikator klubu w konfiguracji', $cfg['us']['club_id'] === $id && $cfg['them']['club_id'] === $id2);
 check('brak klubu = brak wpisu (nie zmyślamy)', Clubs::engineConfig(null, null) === []);
 
 // ---------------------------------------------------------------- usuwanie

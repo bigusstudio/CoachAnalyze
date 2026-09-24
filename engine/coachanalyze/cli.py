@@ -7,7 +7,8 @@ import argparse
 import json
 import sys
 
-from . import __version__, canon, coverage, events as events_mod, metrics, render, report_template
+from . import (__version__, canon, coverage, direction as direction_mod,
+               events as events_mod, metrics, render, report_template)
 from .errors import EngineError, MissingColumns
 from .sources.livetag import parse
 
@@ -99,6 +100,39 @@ def write_canon(path, canon_result, config, expected_count):
     return payload
 
 
+def ustal_kierunek(frame, config, templat):
+    """(kierunek, ramka do renderu, czy odbito).
+
+    Kierunek liczy się RAZ, na oryginalnej ramce, i ta sama odpowiedź obsługuje
+    render i tabelę `events`. Policzony osobno w dwóch miejscach mógłby się
+    rozjechać przy zmianie progu albo profilu — a rozjazd wyszedłby jako mapa
+    odbita względem tabeli, czyli najtrudniejszy możliwy objaw.
+
+    ODBIJAMY, GDY TENANT ATAKUJE W LEWO. Na mapach tenant atakuje zawsze w prawo
+    (docs/STAN_PIVOTU.md §7.7 c); dane bez pozycji nie dają kierunku i wtedy nie
+    odbijamy niczego — brak odpowiedzi jest lepszy niż odpowiedź zmyślona.
+
+    MODEL KANONICZNY I METRYKI DOSTAJĄ RAMKĘ ORYGINALNĄ. Archiwum ma zapisywać
+    to, co było w eksporcie; odbicie jest decyzją prezentacji i wraca w `meta`.
+    """
+    # ROZWIĄZANIE PROFILU I DOPASOWANIA DRUŻYN JAK W `canon.build` — ten sam
+    # porządek pierwszeństwa (templat wygrywa z profilem kreatora) i ta sama
+    # funkcja dopasowania nazw. Druga, „prawie taka sama" ścieżka dałaby kierunek
+    # liczony na innym podziale drużyn niż reszta raportu.
+    z_templatu = report_template.mapping_profile(templat)
+    profil = canon.resolve_profile(
+        z_templatu if z_templatu is not None else config.get("mapping_profile")
+    )
+    lookup = canon.build_team_lookup(
+        config.get("teams"), report_template.team_markers(templat)
+    )
+
+    kierunek = direction_mod.wykryj(frame, tag_rules=profil["tags"], lookup=lookup)
+    strona_tenanta = render.tenant_side(config)
+    odbic = kierunek.get(strona_tenanta) == "left"
+    return kierunek, (direction_mod.odbij_ramke(frame) if odbic else frame), odbic
+
+
 def write_events(path, frame, config):
     """Wiersze tabeli `events` — artefakt dla warstwy PHP.
 
@@ -160,6 +194,17 @@ def log_render(report):
         ),
         file=sys.stderr,
     )
+    if report.get("mirrored"):
+        print(
+            "kierunek: tenant atakował w lewo — współrzędne odbite (x' = 105 - x)",
+            file=sys.stderr,
+        )
+    if report.get("tenant_side") == "them":
+        print(
+            "UWAGA: klub-tenant stoi po stronie 'them' konfiguracji — lewy slot "
+            "raportu dostał drużynę 'them' (mecz scoutingowy)",
+            file=sys.stderr,
+        )
     if report["unresolved_placeholders"]:
         print(
             "UWAGA: szablon zawiera nierozwiązane znaczniki: "
@@ -218,11 +263,16 @@ def cmd_build(args) -> int:
         # istnienia modelu nie może zmienić liczby w żadnym raporcie.
         xg_model=bool((config.get("options") or {}).get("xg_model")),
     )
+    # KIERUNEK ATAKU Z DANYCH (sesja 4a). Liczony PRZED zapisem artefaktów,
+    # bo tabela `events` i render mają dostać tę samą, odbitą ramkę.
+    kierunek, frame_widok, odbito = ustal_kierunek(frame, config, templat)
+
     meta = coverage.build_meta(
         frame, canon_result, config=config,
         has_json=bool(args.json_path), palette=palette,
         # Dostepnosc sekcji z SUROWYCH TAGOW templatu, nie z pojec (sesja 1b).
         report_template=templat,
+        direction=kierunek, mirrored=odbito,
     )
     metrics_pack = metrics.build(canon_result, meta=meta)
 
@@ -233,7 +283,10 @@ def cmd_build(args) -> int:
     if args.out_metrics:
         write_json(args.out_metrics, metrics_pack)
     if getattr(args, "out_events", None):
-        write_events(args.out_events, frame, config)
+        # RAMKA PO ODBICIU. Tabela `events` ma JEDEN układ współrzędnych —
+        # tenant atakuje w prawo — żeby porównanie sezonowe nie sumowało map
+        # z dwóch przeciwnych stron boiska (docs/STAN_PIVOTU.md §7.7 c).
+        write_events(args.out_events, frame_widok, config)
 
     # COVERAGE TEMPLAT x EKSPORT. Sekcja wlaczona w templacie, ale bez danych
     # w TYM eksporcie, znika z HTML-a i zostaje z powodem w raporcie pokrycia.
@@ -248,9 +301,10 @@ def cmd_build(args) -> int:
         )
 
     html, report = render.render(
-        frame, palette=palette, metrics=metrics_pack,
+        frame_widok, palette=palette, metrics=metrics_pack,
         canon_result=canon_result, config=config,
         template_path=getattr(args, "html_template", None),
+        direction=kierunek, mirrored=odbito,
     )
     render.write(args.out_html, html)
     log_render(report)

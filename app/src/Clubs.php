@@ -317,6 +317,16 @@ final class Clubs
      * Konfiguracja drużyn dla silnika (docs/KONTRAKT_CLI.md). Zwracamy nazwy,
      * skróty, barwy i ścieżkę herbu — silnik nie odgaduje ich z danych.
      *
+     * `club_id` jedzie tu od sesji 4a i służy DOKŁADNIE JEDNEJ rzeczy: render
+     * porównuje go z `match.tenant_club_id`, żeby posadzić klub-tenanta po lewej
+     * stronie raportu. Silnik nie chodzi do bazy (CLAUDE.md §4), więc bez tego
+     * pola nie ma jak odróżnić meczu własnego od scoutingowego — a w scoutingu
+     * `matches.club_id` rozjeżdża się z `club_home_id` (migracja 012).
+     *
+     * Żadna metryka od tego pola nie zależy i zależeć nie może: identyfikator
+     * z bazy w warstwie, która ma dać się uruchomić z palca na dowolnej maszynie,
+     * jest wyłącznie kluczem porównania, nigdy wejściem do liczenia.
+     *
      * @return array<string,array<string,mixed>>
      */
     public static function engineConfig(?int $usId, ?int $themId): array
@@ -331,6 +341,7 @@ final class Clubs
                 continue;
             }
             $out[$side] = [
+                'club_id' => $id,
                 'name'  => (string) $club['name'],
                 'short' => $club['short_name'] !== null ? (string) $club['short_name'] : null,
                 'color' => (string) $club['color_primary'],
