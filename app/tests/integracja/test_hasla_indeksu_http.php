@@ -346,10 +346,39 @@ check('oznaczone jako systemowe', str_contains($pubSys['body'], 'systemowe'));
 // ============================================================ F. raport
 echo "\n== F. nowe hasło trafia do raportu bez zmian w silniku ==\n";
 
-$wersjaSilnika = trim((string) file_get_contents($root . '/engine/coachanalyze/__init__.py'));
-check('wersja silnika NIE została podbita',
-    str_contains($wersjaSilnika, '__version__ = "0.11.0"'),
-    'silnik nie ma słownika haseł — dostaje gotowe index_links z PHP');
+/*
+ * POPRAWIONE 2026-09-24 (sesja 0 pivotu „viewer").
+ *
+ * Ta asercja porównywała `__version__` z WPISANYM NA SZTYWNO „0.11.0". Intencja
+ * była słuszna — „dodanie hasła nie wymaga zmiany w silniku" — ale sprawdzenie
+ * mierzyło coś innego: numer wersji, który podbija KAŻDA zmiana silnika, także
+ * niemająca z indeksem nic wspólnego. Test zapalił się na czerwono przy podbiciu
+ * do 0.12.0 za przełącznik szablonu HTML, czyli przy zmianie, o której nic nie
+ * twierdzi. Pinowanie numeru wersji w teście funkcjonalnym to bramka, która
+ * z czasem łapie wyłącznie fałszywe alarmy — i uczy podnosić literał bez czytania.
+ *
+ * Sprawdzamy więc to, co naprawdę ma być prawdą: SILNIK NIE ZNA HASEŁ. Żaden jego
+ * plik nie wymienia hasła założonego przed chwilą ani nie sięga po tabelę haseł —
+ * dostaje gotową listę `index_links` z PHP (docs/KONTRAKT_CLI.md).
+ */
+$plikiSilnika = new \RecursiveIteratorIterator(
+    new \RecursiveDirectoryIterator($root . '/engine/coachanalyze')
+);
+$sladyWSilniku = [];
+foreach ($plikiSilnika as $plik) {
+    if (!$plik->isFile() || $plik->getExtension() !== 'py') {
+        continue;
+    }
+    $tresc = (string) file_get_contents($plik->getPathname());
+    foreach (['indeks-transformacji', 'Indeks transformacji', 'index_terms', 'IndexTerms'] as $slad) {
+        if (str_contains($tresc, $slad)) {
+            $sladyWSilniku[] = $plik->getFilename() . ': ' . $slad;
+        }
+    }
+}
+check('silnik nie zna haseł indeksu — dostaje gotowe index_links z PHP',
+    $sladyWSilniku === [],
+    implode(' · ', $sladyWSilniku));
 
 $linki = IndexTerms::linksFor(1);
 $slugiLinkow = array_column($linki, 'slug');

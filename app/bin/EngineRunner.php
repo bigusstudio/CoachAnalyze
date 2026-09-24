@@ -72,11 +72,38 @@ final class EngineRunner
     }
 
     /**
+     * Generacja szablonu HTML raportu przekazywana silnikowi.
+     *
+     * DZIŚ JEDNA WARTOŚĆ DLA CAŁEJ INSTALACJI, z `.env`. Docelowo ma to być
+     * ustawienie KLUBU — stąd parametr `$zKlubu`, którym sesja 4 pivotu poda
+     * wartość z ustawień, nie ruszając tego miejsca.
+     *
+     * TODO(sesja-4): pole generacji w ustawieniach klubu. Kolumny pod to NIE
+     * dokładamy teraz: migracja pod ustawienie, którego nikt jeszcze nie zmienia
+     * per klub, byłaby kolumną wprowadzoną „na zapas" — a migracje w tym projekcie
+     * idą wyłącznie w przód i nigdy nie są edytowane po wdrożeniu (CLAUDE.md §7).
+     *
+     * Wartości NIE WALIDUJEMY tutaj. Zna je silnik i to on ma powiedzieć, czego
+     * nie rozumie, wymieniając dozwolone nazwy (kod wyjścia 4). Druga lista
+     * dozwolonych wartości po stronie PHP rozjechałaby się przy pierwszej nowej
+     * generacji szablonu — dokładnie tak, jak rozjechałyby się nazwy tagów.
+     */
+    public static function htmlTemplate(?string $zKlubu = null): string
+    {
+        if ($zKlubu !== null && $zKlubu !== '') {
+            return $zKlubu;
+        }
+        $zPliku = Config::get('HTML_TEMPLATE');
+        return ($zPliku !== null && $zPliku !== '') ? $zPliku : 'v17';
+    }
+
+    /**
      * `build` — pełne przetworzenie. Wywoływane WYŁĄCZNIE z procesu CLI
      * (app/bin/run_job.php), nigdy wprost z żądania HTTP: render trwa
      * kilkadziesiąt sekund i zdążyłby paść na limicie czasu FPM.
      *
-     * @param array<string,string|null> $paths csv, json, config, out_html, out_meta, out_canon, out_metrics
+     * @param array<string,string|null> $paths csv, json, config, template, html_template,
+     *        out_html, out_meta, out_canon, out_metrics
      * @return array{exit:int, stdout:string, stderr:string, timed_out:bool}
      */
     public static function build(array $paths): array
@@ -89,6 +116,11 @@ final class EngineRunner
             // Templat raportu klubu (Sesja 5). Pusty = klub przed
             // konfiguratorem; silnik zachowuje sie wtedy jak przed ta sesja.
             '--template'    => $paths['template'] ?? null,
+            // GENERACJA SZABLONU HTML — INNA RZECZ NIZ `--template` POWYZEJ.
+            // `--template` mowi, CO raport liczy i pokazuje; `--html-template`
+            // mowi, JAK wyglada. Nazwy sa blisko siebie i to jest jedyny powod,
+            // dla ktorego ten komentarz tu stoi.
+            '--html-template' => self::htmlTemplate($paths['html_template'] ?? null),
             '--out-html'    => $paths['out_html'] ?? null,
             '--out-meta'    => $paths['out_meta'] ?? null,
             '--out-canon'   => $paths['out_canon'] ?? null,

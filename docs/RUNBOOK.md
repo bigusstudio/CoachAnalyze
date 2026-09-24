@@ -21,6 +21,50 @@ Odtworzenie z palca (najszybsza diagnoza):
 venv/bin/python -m coachanalyze inspect --csv /storage/uploads/<plik>.csv
 ```
 
+### Pełny raport z linii poleceń
+
+`inspect` mówi, co jest w pliku. Żeby zobaczyć SAM RAPORT — na przykład po to, by
+porównać go z tym, co dostał klient — trzeba `build`, a ten wymaga `config.json`.
+Silnik nie chodzi do bazy (CLAUDE.md §4), więc konfigurację pisze się ręcznie:
+
+```bash
+cd ~/CoachAnalyze
+cat > /tmp/config.json <<'JSON'
+{
+  "match_id": 0,
+  "match": { "season": "2026/2027", "round": "3", "date": "2026-08-01" },
+  "teams": {
+    "us":   { "name": "Naprzód Jędrzejów", "short": "JDRZ", "color": "#E8C558" },
+    "them": { "name": "Pogoń-Sokół Lubaczów", "short": "Pogoń", "color": "#5B8DEF" }
+  },
+  "options": { "contrast_fix": true, "engine_locale": "pl_PL" }
+}
+JSON
+
+venv/bin/python -m coachanalyze build \
+  --csv  <mecz>.csv \
+  --json <projekt>.json \
+  --config /tmp/config.json \
+  --out-html /tmp/raport.html \
+  --out-meta /tmp/meta.json
+```
+
+`us` to klub, dla którego powstaje raport, `them` to rywal — **nie strony boiska**.
+W generacji v21 `us` jest podpisany „atakuje w lewo", a `them` „atakuje w prawo".
+
+**Domyślną generacją szablonu jest `v17`** — ta, której wyjścia pilnuje test złoty.
+Żeby zobaczyć ten sam mecz w nowej generacji:
+
+```bash
+venv/bin/python -m coachanalyze build … --html-template v21
+```
+
+To samo ustawia zmienna `CA_HTML_TEMPLATE` (dla całego przebiegu) i `HTML_TEMPLATE`
+w `.env` (dla aplikacji). Nieznana nazwa przerywa render kodem `4` i wymienia dozwolone.
+
+> `--html-template` to **nie** `--template`. Tamten parametr niesie templat raportu
+> klubu z konfiguratora (co raport liczy); ten wybiera plik szablonu (jak wygląda).
+
 ## Klient dzwoni w piątek przed meczem
 
 1. Czy raport w ogóle powstał — panel, lista zadań
@@ -39,12 +83,39 @@ Sygnał, że LiveTag zmienił eksport. Nie ignorować.
 
 ## Wycofanie wdrożenia
 
+> **POPRAWIONE 2026-09-24.** Poprzednia wersja tej sekcji kazała przestawić
+> dowiązanie `current` na katalog z `releases/`. **Takiego układu na serwerze nie ma
+> i nigdy nie było uruchomione** — `releases/` jest pusty, a aplikacja mieszka wprost
+> w `~/public_html/app.coachanalyze.pl/`, synchronizowanym przez `rsync` (patrz
+> nagłówek `deploy/deploy.sh`). Polecenie z tamtej wersji nie cofało wdrożenia:
+> tworzyło dowiązanie, na które nic nie patrzy, i meldowało sukces.
+>
+> Dowiązanie i tak by nie zadziałało: `open_basedir` sprawdza ścieżkę PO rozwinięciu,
+> więc katalog domeny wskazujący poza nią jest dla PHP-FPM niewidoczny
+> (`docs/OGRANICZENIA_HOSTINGU.md`). Z tego samego powodu `.env` jest kopiowany,
+> a nie dowiązywany.
+
+Wycofanie idzie TĄ SAMĄ DROGĄ co wdrożenie — przez `deploy.sh`, który przy okazji
+zrobi zrzut bazy i uruchomi kontrole po wdrożeniu:
+
 ```bash
-cd /home/uzytkownik/CoachAnalyze
-ln -sfn releases/<poprzednie> current
+git -C ~/CoachAnalyze/repo checkout <commit-albo-tag>
+bash ~/CoachAnalyze/repo/deploy/deploy.sh
 ```
 
-Migracje bazy nie cofają się automatycznie. Zrzut bazy przed każdą migracją jest obowiązkowy.
+`deploy.sh` z argumentem gałęzi robi `checkout` + `pull --ff-only`, więc do powrotu
+na KONKRETNY commit albo tag trzeba przestawić repozytorium ręcznie, jak wyżej,
+i uruchomić skrypt bez argumentu.
+
+**Migracje bazy nie cofają się automatycznie.** Zrzut bazy przed każdą migracją jest
+obowiązkowy, a powrót do starszego kodu przy nowszym schemacie to dwie czynności
+razem, nigdy jedna: `git checkout` **i** odtworzenie zrzutu. Od migracji `014`
+obowiązuje zasada wyłącznie addytywnych zmian (`app/migrations/README.md`), która
+ten przypadek ma uczynić rzadkim — ale go nie wyklucza.
+
+**Powrót do wersji `pro`** (przed pivotem „viewer") ma własną, zweryfikowaną
+procedurę i własne archiwum: `docs/STAN_PIVOTU.md`. Skrypt `app/repairs/przywroc_pro.sh`
+odtwarza ten stan **na bazie próbnej**, nie na produkcji.
 
 ---
 

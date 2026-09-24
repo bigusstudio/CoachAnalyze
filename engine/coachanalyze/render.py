@@ -1,4 +1,12 @@
-"""canonical_events + metryki -> HTML raportu (szablon v23-noname).
+"""canonical_events + metryki -> HTML raportu.
+
+DWIE GENERACJE SZABLONU (`TEMPLATE_FILES`): `v17` — DOMYŚLNA, ta, której klient używa
+dziś i którą odtwarza test złoty co do bajtu; `v21` — nowa, włączana świadomie.
+Wyboru dokonuje `--html-template`, zmienna `CA_HTML_TEMPLATE` albo argument
+`render(template_path=…)`; wszystkie trzy przyjmują nazwę generacji lub ścieżkę.
+
+NIE MYLIĆ Z `--template`: tamten parametr to templat raportu KLUBU (`report_template.py`),
+czyli zmienne i sekcje z konfiguratora. To zupełnie inna rzecz.
 
 Szablon jest samowystarczalny i nie ma zależności zewnętrznych poza fontami. To cecha, nie brak.
 
@@ -27,6 +35,7 @@ kontrola poprawności wyjścia, nie sprawdzenie założeń w testach.
 """
 
 import base64
+import html as html_mod
 import json
 import os
 import re
@@ -34,6 +43,39 @@ import re
 from .errors import EngineError
 
 TEMPLATE_FILENAME = "dashboard_template.html"
+
+# ------------------------------------------------------------------ generacje szablonu
+#
+# DWIE GENERACJE ŻYJĄ OBOK SIEBIE. `v17` to szablon, którego klient używa dziś
+# i którego wyjście odtwarza test złoty co do bajtu — **i on zostaje domyślny**.
+# `v21` to nowa generacja (nagłówek transmisyjny, sekcja Przegląd, motyw jasny,
+# druk i slajdy PNG), włączana świadomie.
+#
+# DLACZEGO DOMYŚLNY ZOSTAJE v17. Wzorzec złoty jest raportem v17. Przestawienie
+# domyślnej generacji znaczyłoby, że bramka wdrożenia sprawdza inny plik, niż
+# produkuje produkcja — albo że trzeba ruszyć manifest. Jedno i drugie zamienia
+# test złoty z bramki w formalność. v21 dostanie swój wzorzec dopiero po
+# porównaniu wizualnym i zgodzie klienta (docs/PRZEBUDOWA_KLUB_SESJE.md, S5b).
+#
+# NAZEWNICTWO — UWAGA NA ROZJAZD, KTÓRY JUŻ ISTNIEJE W REPOZYTORIUM.
+# `dashboard_template.html` nazywany jest „v17" w CLAUDE.md i w rozmowie, a
+# `golden/manifest.json` opisuje go jako generację `v23-noname`. To ten sam plik:
+# v17 to numer generacji szablonu klienta, v23-noname to numer raportu, z którego
+# szablon powstał. Nie zmieniamy tu żadnej z tych nazw — zmiana wartości
+# `szablon_generacja` w manifeście zapala test i wymaga osobnej decyzji.
+TEMPLATE_FILES = {
+    "v21": "dashboard_template_v21.html",
+    "v17": TEMPLATE_FILENAME,
+}
+
+DEFAULT_GENERATION = "v17"
+
+# Zmienna środowiskowa, nie pole w `config.json`: silnik nie zna sesji ani bazy
+# (CLAUDE.md §4), a warstwa PHP uruchamia go przez CLI, więc środowisko procesu
+# jest naturalnym miejscem na tę decyzję. Nazwa z przedrostkiem `CA_`, bo
+# `REPORT_TEMPLATE` myliłoby się z `--template`, czyli templatem raportu KLUBU
+# (`report_template.py`) — to zupełnie inna rzecz, opisana w kontrakcie CLI.
+TEMPLATE_ENV = "CA_HTML_TEMPLATE"
 
 # Placeholdery danych. Podmieniamy RAZEM ZE ŚREDNIKIEM — inaczej `const DATA = ;`.
 DATA_PLACEHOLDER = "/*__DATA__*/"
@@ -55,6 +97,18 @@ FALLBACK_LABELS = {"us": "Drużyna A", "them": "Drużyna B"}
 # Przygaszenie barwy drużyny. Zapis musi być identyczny jak w szablonie źródłowym.
 DIM_ALPHA = ".16"
 
+# Docelowa jasność barwy drużyny w MOTYWIE JASNYM (v21).
+#
+# Barwa dobrana pod ciemne tło bywa na papierze nieczytelna: żółć klubu na białym
+# panelu znika. Przyciemniamy ją więc do ustalonej jasności względnej — skalujemy
+# kanały, a nie przeliczamy odcień, żeby barwa klubu pozostała rozpoznawalna.
+#
+# TO JEST REGUŁA, NIE ODTWORZENIE RĘCZNYCH DOBORÓW z `tools/fill_v21.py`. Tamte
+# wartości dobierał człowiek, osobno dla każdej drużyny, i nie da się ich wyprowadzić
+# jednym wzorem. Klub, dla którego reguła wypadnie źle, podaje `color_light` wprost
+# w konfiguracji (docs/KONTRAKT_CLI.md) — bez zmiany kodu.
+LIGHT_TARGET_LUM = 0.45
+
 # Typ MIME herbu idzie za rozszerzeniem pliku. Wpisany na sztywno w szablonie
 # wyświetlałby PNG jako SVG i odwrotnie — przeglądarka pokazuje wtedy pusty kwadrat.
 CREST_MIME = {
@@ -72,6 +126,45 @@ EMPTY_PALETTE = {"tags": {}, "labels": {}}
 
 LEFTOVER_RE = re.compile(r"__[A-Z][A-Z0-9_]*__")
 
+# ------------------------------------------------------------------ grupy znaczników
+#
+# Znaczniki, których v17 NIE MA, a v21 ma. Podmieniamy je WYŁĄCZNIE tam, gdzie
+# szablon je niesie — generacja bez nich nie jest uszkodzona, tylko inna.
+#
+# GRUPA NIEKOMPLETNA NIE PRZERYWA RENDERU. Raport ma powstać zawsze (docs/RUNBOOK.md:
+# brak danych na sekcję to stan normalny, nie awaria) — a szablon, któremu przy edycji
+# zniknął jeden znacznik, jest bliższy brakowi danych niż uszkodzonemu plikowi.
+# Zamiast wyjątku idzie ostrzeżenie `BRAKUJACY_ZNACZNIK` w `meta.warnings`, z listą.
+#
+# Grupy istnieją właśnie po to, żeby to rozróżnić: brak CAŁEJ grupy to inna generacja
+# i o tym nie ostrzegamy (ostrzeżenie o stanie normalnym uczy ignorować ostrzeżenia).
+# Brak CZĘŚCI grupy to anomalia i o niej mówimy.
+SLOT_GROUPS = {
+    # Motyw jasny (v21). Barwa i jej przygaszenie dla `:root[data-theme="light"]`.
+    "motyw_jasny": (
+        "__TEAM_HOME_COLOR_L__", "__TEAM_HOME_DIM_L__",
+        "__TEAM_AWAY_COLOR_L__", "__TEAM_AWAY_DIM_L__",
+    ),
+    # Meta meczu w nagłówku transmisyjnym i w stopce slajdów (v21).
+    #
+    # `__DATA_MECZU__`, nie `__DATA__`: to drugie jest podnapisem `/*__DATA__*/`,
+    # czyli miejsca na zdarzenia meczu. Kolizja nazw wymuszała liczenie wystąpień
+    # z korektą i podmianę w ustalonej kolejności — znacznik został przemianowany
+    # w szablonie i cały ten mechanizm zniknął.
+    "meta_meczu": ("__SEZON__", "__KOLEJKA__", "__DATA_MECZU__"),
+}
+
+# Odwrotność mapy powyżej: znacznik -> nazwa grupy.
+SLOT_GROUP_OF = {p: nazwa for nazwa, grupa in SLOT_GROUPS.items() for p in grupa}
+
+# Skąd bierzemy wartość meta meczu. Silnik NIE CHODZI DO BAZY (CLAUDE.md §4) —
+# dostaje to w `config.json` albo nie dostaje wcale.
+MATCH_SLOT_SOURCES = (
+    ("__SEZON__", "season"),
+    ("__KOLEJKA__", "round"),
+    ("__DATA_MECZU__", "date"),
+)
+
 # Tagi, po których szablon liczy samodzielnie w JS. Służą wyłącznie kontroli
 # rozjazdu — patrz `crosscheck`.
 TEMPLATE_TAGS = (
@@ -81,19 +174,68 @@ TEMPLATE_TAGS = (
 )
 
 
-def default_template_path():
-    """Szablon jako DANE PAKIETU: `coachanalyze/templates/dashboard_template.html`.
+def template_path_for(name):
+    """Ścieżka pliku dla NAZWY generacji (`v17` / `v21`). Nieznana nazwa to błąd.
 
-    Ścieżka liczona względem katalogu pakietu, nie względem katalogu roboczego ani
-    korzenia repozytorium — po `pip install` silnik startuje spoza repozytorium
-    (deploy.sh uruchamia go z katalogu zadania) i szablon musi jechać razem z kodem.
+    Szablon jest DANYMI PAKIETU: ścieżka liczona względem katalogu pakietu, nie
+    względem katalogu roboczego ani korzenia repozytorium — po `pip install` silnik
+    startuje spoza repozytorium (deploy.sh uruchamia go z katalogu zadania) i szablon
+    musi jechać razem z kodem.
 
     Zwykły `os.path`, nie `importlib.resources`: paczka nigdy nie jest zipem —
     wdrożenie to rsync źródeł plus instalacja edytowalna — a ścieżka jako napis
     wraca w raporcie renderu i wchodzi wprost do logu.
     """
+    nazwa = str(name).strip()
+    if nazwa not in TEMPLATE_FILES:
+        raise EngineError(
+            "Nieznana generacja szablonu raportu: {!r}. Dozwolone: {} albo ścieżka "
+            "do pliku".format(nazwa, ", ".join(sorted(TEMPLATE_FILES)))
+        )
     package_dir = os.path.dirname(os.path.abspath(__file__))
-    return os.path.join(package_dir, "templates", TEMPLATE_FILENAME)
+    return os.path.join(package_dir, "templates", TEMPLATE_FILES[nazwa])
+
+
+def resolve_template(spec):
+    """`v17` / `v21` / ścieżka do pliku -> ścieżka. `None` -> szablon domyślny.
+
+    JEDEN PARAMETR PRZYJMUJE OBIE POSTACIE, bo do wyboru są dwa różne pytania:
+    „którą z naszych generacji" (nazwa) i „ten konkretny plik" (ścieżka, np. przy
+    porównywaniu wariantu szablonu przed jego zatwierdzeniem).
+
+    ROZRÓŻNIAMY PO KSZTAŁCIE NAPISU, NIE PO ISTNIENIU PLIKU. Gdyby o tym decydowało
+    `os.path.isfile`, literówka w nazwie generacji („v71") byłaby ścieżką, której nie
+    ma — a render mówiłby „nie udało się wczytać szablonu: v71" zamiast wymienić
+    dozwolone nazwy. Odwrotnie też: plik o nazwie `v21` w katalogu roboczym nie może
+    przejąć znaczenia nazwy generacji.
+
+    Ścieżką jest napis z separatorem albo z rozszerzeniem `.html`. Wszystko inne to
+    nazwa generacji i musi być w `TEMPLATE_FILES`.
+    """
+    if spec is None:
+        return default_template_path()
+    tekst = str(spec).strip()
+    if tekst in TEMPLATE_FILES:
+        return template_path_for(tekst)
+    if os.sep in tekst or "/" in tekst or tekst.lower().endswith(".html"):
+        return tekst
+    return template_path_for(tekst)  # nieznana nazwa -> EngineError z listą dozwolonych
+
+
+def default_template_path():
+    """Szablon domyślny: `CA_HTML_TEMPLATE`, a bez niej generacja `v17`.
+
+    NIEZNANA WARTOŚĆ ZMIENNEJ PRZERYWA RENDER — literówka nie może schodzić po cichu
+    na domyślną generację: raport wyszedłby w innym układzie, niż zamawiał ten, kto
+    zmienną ustawiał, a jedynym śladem byłby jego własny błąd.
+
+    Zmienna przyjmuje też ścieżkę, tak samo jak `--html-template`. Jedno miejsce
+    decyzji, dwa sposoby jej podania.
+    """
+    ze_srodowiska = (os.environ.get(TEMPLATE_ENV) or "").strip()
+    if ze_srodowiska:
+        return resolve_template(ze_srodowiska)
+    return template_path_for(DEFAULT_GENERATION)
 
 
 def load_template(path=None):
@@ -121,16 +263,43 @@ def _detected_teams(frame):
     return kolejnosc
 
 
-def hex_to_dim(color):
-    """`#E6A23C` -> `rgba(230,162,60,.16)`. Zapis bez spacji, jak w szablonie."""
+def _kanaly(color):
+    """`#E6A23C` -> (230, 162, 60). Jedno miejsce, w którym zapis barwy jest sprawdzany."""
     value = (color or "").lstrip("#")
     if len(value) != 6:
         raise EngineError("Barwa drużyny musi być zapisem #RRGGBB, jest: {!r}".format(color))
     try:
-        r, g, b = (int(value[i:i + 2], 16) for i in (0, 2, 4))
+        return tuple(int(value[i:i + 2], 16) for i in (0, 2, 4))
     except ValueError:
         raise EngineError("Barwa drużyny nie jest liczbą szesnastkową: {!r}".format(color))
+
+
+def hex_to_dim(color):
+    """`#E6A23C` -> `rgba(230,162,60,.16)`. Zapis bez spacji, jak w szablonie."""
+    r, g, b = _kanaly(color)
     return "rgba({},{},{},{})".format(r, g, b, DIM_ALPHA)
+
+
+def hex_to_light(color, target=LIGHT_TARGET_LUM):
+    """Barwa drużyny przyciemniona pod JASNE tło (v21, `data-theme="light"`).
+
+    Skalujemy kanały wspólnym współczynnikiem, dobranym tak, żeby jasność względna
+    spadła do `target`. Wspólny współczynnik znaczy, że stosunki kanałów zostają —
+    żółć klubu robi się ciemniejszą żółcią, a nie brązem ani zielenią.
+
+    Barwa dostatecznie ciemna WRACA BEZ ZMIANY. Rozjaśnianie jej „dla symetrii"
+    byłoby wymyślaniem barwy, której klub nie ma, a na papierze i tak jest czytelna.
+
+    Współczynniki jak w `sources/livetag/parse.py` (Rec. 709, bez korekty gamma) —
+    ta sama arytmetyka co przy korekcie jasności palety, więc dwie części silnika
+    nie mogą rozjechać się w ocenie „ta barwa jest za jasna".
+    """
+    r, g, b = _kanaly(color)
+    lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
+    if lum <= target:
+        return "#{:02X}{:02X}{:02X}".format(r, g, b)
+    wsp = target / lum
+    return "#{:02X}{:02X}{:02X}".format(*(min(255, round(k * wsp)) for k in (r, g, b)))
 
 
 def crest_data_uri(path):
@@ -179,6 +348,16 @@ def team_slots(frame, teams=None):
       render wpisuje ten sam napis po obu stronach porównania.
     - `__TEAM_*_LABEL__` nazwa wyświetlana (nagłówek, legendy, karty).
     - `__TEAM_*_SHORT__` etykieta toru na osi czasu, gdzie miejsca jest mało.
+
+    Warianty `_L` (barwa i przygaszenie dla motywu jasnego) wchodzą do słownika ZAWSZE.
+    Szablon, który ich nie ma (v17), po prostu ich nie użyje — grupą znaczników
+    zarządza `assert_placeholders`, a nie ten kod.
+
+    KONWENCJA STRON JEST STAŁA I NIE WYNIKA Z DANYCH: `HOME` to drużyna atakująca
+    w LEWO, `AWAY` w prawo (tak podpisuje je nagłówek v21). W modelu kanonicznym
+    `us` to klub, dla którego powstaje raport, a `them` to rywal — eksport LiveTag
+    nie niesie informacji o gospodarzu i nie wolno jej zgadywać (pułapka 2: dane
+    są już znormalizowane kierunkowo).
     """
     wykryte = _detected_teams(frame)
     slots = {}
@@ -192,6 +371,9 @@ def team_slots(frame, teams=None):
             podstawione.append(side)
 
         color = cfg.get("color") or DEFAULT_COLORS[side]
+        # Barwa pod jasne tło: jawna z konfiguracji ma pierwszeństwo przed regułą.
+        # Klub, któremu przeliczenie nie pasuje, podaje swoją i nikt nie rusza kodu.
+        color_light = cfg.get("color_light") or hex_to_light(color)
         crest = cfg.get("crest")
 
         slots["__TEAM_{}__".format(slot)] = label.upper()
@@ -199,11 +381,56 @@ def team_slots(frame, teams=None):
         slots["__TEAM_{}_SHORT__".format(slot)] = cfg.get("short") or label.upper()
         slots["__TEAM_{}_COLOR__".format(slot)] = color
         slots["__TEAM_{}_DIM__".format(slot)] = hex_to_dim(color)
+        slots["__TEAM_{}_COLOR_L__".format(slot)] = color_light
+        slots["__TEAM_{}_DIM_L__".format(slot)] = hex_to_dim(color_light)
         slots["__LOGO_{}__".format(slot)] = (
             crest_data_uri(crest) if crest else placeholder_crest(label, color)
         )
 
     return slots, podstawione
+
+
+def _tekst_do_szablonu(wartosc):
+    """Tekst od użytkownika w miejsce znacznika. Pusty napis dla braku danych.
+
+    Meta meczu (sezon, kolejka, data) wpisuje operator, a w v21 ląduje w DWÓCH
+    kontekstach naraz: w treści HTML i wewnątrz literału szablonowego JS
+    (`innerHTML = \\`… __DATA__ …\\``). Raport wisi pod publicznym adresem
+    `/r/{club_key}/{token}`, więc wartość musi być bezpieczna w obu.
+
+    `html.escape` domyka `& < > " '`, czyli treść HTML i literały JS w apostrofach
+    albo cudzysłowach. Zostaje grawis i `${` — otwierają literał szablonowy, którego
+    `html.escape` nie zna. Usuwamy je, bo w sezonie ani dacie nie mają czego szukać;
+    zamiana na encje niczego by nie dała, skoro JS czyta ten napis przed HTML-em.
+
+    NIE GENERUJEMY WARTOŚCI ZASTĘPCZEJ (CLAUDE.md §8). Brak sezonu ma być pustym
+    miejscem w nagłówku, a nie wymyśloną datą.
+    """
+    if wartosc is None:
+        return ""
+    tekst = str(wartosc).strip()
+    if not tekst:
+        return ""
+    return html_mod.escape(tekst).replace("`", "").replace("${", "")
+
+
+def match_slots(config):
+    """{'__SEZON__': …, '__KOLEJKA__': …, '__DATA__': …} z meta meczu w konfiguracji.
+
+    Silnik nie chodzi do bazy (CLAUDE.md §4) — dostaje to, co PHP włoży do
+    `config.json` w bloku `match`, albo nic. Nic znaczy pusty napis, nie brak
+    znacznika: szablon v21 ma te miejsca w nagłówku i muszą zostać wypełnione.
+
+    `season_label` z korzenia konfiguracji działa jako zapasowe źródło sezonu —
+    to pole istnieje w kontrakcie od dawna i szkoda byłoby wymagać drugiego wpisu
+    na tę samą wartość.
+    """
+    config = config or {}
+    meta = config.get("match") or {}
+    slots = {p: _tekst_do_szablonu(meta.get(klucz)) for p, klucz in MATCH_SLOT_SOURCES}
+    if not slots["__SEZON__"]:
+        slots["__SEZON__"] = _tekst_do_szablonu(config.get("season_label"))
+    return slots
 
 
 def view_data(frame, canon_result=None, teams=None):
@@ -254,12 +481,40 @@ def view_data(frame, canon_result=None, teams=None):
 
 
 # ------------------------------------------------------------------ podmiana
+def missing_slots(template, slots=None):
+    """Znaczniki z grupy CZĘŚCIOWO obecnej w szablonie — czyli te, których brakuje.
+
+    Grupa nieobecna w całości nie jest brakiem, tylko inną generacją szablonu:
+    v17 nie ma ani jednego znacznika motywu jasnego i to jest poprawne. Grupa
+    obecna w połowie to ślad po edycji, która zjadła znacznik — i o tym mówimy.
+
+    Zwraca listę posortowaną, żeby ostrzeżenie było powtarzalne między przebiegami.
+    """
+    braki = []
+    for grupa in SLOT_GROUPS.values():
+        nalezace = [p for p in grupa if p in (slots or {})]
+        if not nalezace:
+            continue
+        nieobecne = [p for p in nalezace if template.count(p) == 0]
+        if nieobecne and len(nieobecne) != len(nalezace):
+            braki.extend(nieobecne)
+    return sorted(braki)
+
+
 def assert_placeholders(template, slots=None):
     """Kontrola szablonu PRZED podmianą. Podnosi `EngineError` przy każdym braku.
 
     `/*__DATA__*/` i `/*__PAL__*/` — dokładnie raz, razem ze średnikiem.
     Znaczniki drużyn — co najmniej raz; z natury powtarzają się w wielu miejscach,
     więc sztywna liczba psułaby się przy każdej edycji szablonu.
+
+    Znaczniki z `SLOT_GROUPS` (motyw jasny, meta meczu) SĄ OPCJONALNE i ich brak
+    NIGDY nie przerywa renderu — raport ma powstać zawsze. Nieobecne po prostu nie
+    wchodzą do podmiany; o grupie niekompletnej mówi `missing_slots` i ostrzeżenie
+    `BRAKUJACY_ZNACZNIK` w `meta.warnings`.
+
+    Zwraca liczby wystąpień dla znaczników AKTYWNYCH, czyli tych, które faktycznie
+    trzeba podmienić.
     """
     liczby = {}
     problemy = []
@@ -277,6 +532,10 @@ def assert_placeholders(template, slots=None):
 
     for placeholder in sorted(slots or {}):
         ile = template.count(placeholder)
+        if SLOT_GROUP_OF.get(placeholder) is not None:
+            if ile:
+                liczby[placeholder] = ile
+            continue
         liczby[placeholder] = ile
         if ile == 0:
             problemy.append("{} — znacznik zniknął z szablonu".format(placeholder))
@@ -294,7 +553,7 @@ def inject(template, data, palette, slots=None):
     Ta asymetria jest w oryginale i zostaje: zmiana separatorów zmienia bajty pliku.
     """
     slots = slots or {}
-    assert_placeholders(template, slots)
+    aktywne = assert_placeholders(template, slots)
 
     html = template.replace(
         DATA_PLACEHOLDER + ";",
@@ -307,7 +566,12 @@ def inject(template, data, palette, slots=None):
     # Malejąco po długości. Domykające `__` sprawia, że `__TEAM_HOME__` nie jest
     # fragmentem `__TEAM_HOME_LABEL__` i kolejność nie ma dziś znaczenia — ale
     # znacznik dodany kiedyś bez domknięcia rozbiłby podmianę po cichu.
-    for placeholder in sorted(slots, key=len, reverse=True):
+    #
+    # Podmieniamy WYŁĄCZNIE znaczniki aktywne: grupa nieobecna w tej generacji
+    # szablonu nie ma czego podmieniać, a `str.replace` bez trafienia nie zgłasza
+    # błędu i schowałby literówkę.
+    do_podmiany = [p for p in slots if p in aktywne]
+    for placeholder in sorted(do_podmiany, key=len, reverse=True):
         html = html.replace(placeholder, slots[placeholder])
 
     zostalo = [p for p in (DATA_PLACEHOLDER, PAL_PLACEHOLDER) if p in html]
@@ -480,11 +744,18 @@ def render(frame, palette=None, metrics=None, canon_result=None, config=None, te
     `metrics` nie jest wstrzykiwane do szablonu: szablon liczy wszystko sam,
     w przeglądarce, ze zdarzeń w `DATA`. Pakiet metryk służy warstwie AI (D5)
     i archiwum — a tutaj wyłącznie kontroli rozjazdu (`crosscheck`).
+
+    `template_path` przyjmuje nazwę generacji (`v17`, `v21`) albo ścieżkę do pliku
+    i wygrywa ze wszystkim. Bez niego decyduje `CA_HTML_TEMPLATE`, a bez niej — v17,
+    czyli szablon, którego wyjścia pilnuje test złoty.
     """
     teams = (config or {}).get("teams")
 
-    template = load_template(template_path)
+    sciezka = resolve_template(template_path)
+    template = load_template(sciezka)
     slots, teams_defaulted = team_slots(frame, teams)
+    slots.update(match_slots(config))
+    braki_znacznikow = missing_slots(template, slots)
     data = view_data(frame, canon_result=canon_result, teams=teams)
     html = inject(template, data, palette if palette is not None else EMPTY_PALETTE, slots)
 
@@ -515,7 +786,15 @@ def render(frame, palette=None, metrics=None, canon_result=None, config=None, te
 
     return html, {
         "sections_dropped": sekcje_usuniete,
-        "template": template_path or default_template_path(),
+        "template": sciezka,
+        # Nazwa generacji idzie do logu obok ścieżki: pytanie „dlaczego raport
+        # z marca wygląda inaczej" (CLAUDE.md §7) ma mieć odpowiedź bez zgadywania,
+        # którą wartość miał wtedy `REPORT_TEMPLATE`.
+        "template_generation": next(
+            (nazwa for nazwa, plik in TEMPLATE_FILES.items()
+             if os.path.basename(sciezka) == plik),
+            None,
+        ),
         "events": len(data["events"]),
         "bytes": len(html.encode("utf-8")),
         "has_palette": palette is not None,
@@ -530,6 +809,9 @@ def render(frame, palette=None, metrics=None, canon_result=None, config=None, te
             if not ((teams or {}).get(side) or {}).get("crest")
         ],
         "unresolved_placeholders": unresolved_placeholders(html),
+        # Grupa znaczników obecna w szablonie tylko częściowo. Nie przerywa renderu
+        # (raport ma powstać zawsze) — idzie jako ostrzeżenie do `meta.warnings`.
+        "missing_slots": braki_znacznikow,
         "tag_mismatch": crosscheck(data, metrics),
     }
 

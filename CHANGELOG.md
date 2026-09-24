@@ -3,6 +3,67 @@
 Format: [wersja silnika] — data — opis.
 Każda zmiana, która modyfikuje wyjście silnika, MUSI mieć tu wpis wraz z powodem.
 
+## [0.12.0] — 2026-09-24
+### Szablon raportu: druga generacja (`v21`) i przełącznik `--html-template`
+Sesja 0 pivotu „viewer". Szablon przestaje być jeden.
+
+- **`--html-template v17|v21|ŚCIEŻKA`** w komendzie `build`, OPCJONALNY. Bez niego
+  obowiązuje `CA_HTML_TEMPLATE`, a bez niej **`v17`** — czyli szablon, którego wyjścia
+  pilnuje test złoty. **Wyjście domyślnej ścieżki jest niezmienione co do bajtu**:
+  ani szablon, ani wzorzec złoty, ani manifest nie zostały tknięte.
+- **To NIE jest `--template`.** Tamten parametr niesie templat raportu KLUBU (zmienne,
+  bindingi kanoniczne, sekcje z konfiguratora) i mówi, CO raport liczy. Nowy mówi,
+  JAK wygląda. Nazwy stoją blisko siebie, więc w kontrakcie CLI są opisane obok siebie,
+  a w kodzie obu miejsc stoi komentarz.
+- **Nieznana nazwa generacji przerywa render kodem `4`** i wymienia dozwolone.
+  Literówka (`v71`) nie może po cichu dać raportu w innym układzie niż zamawiany;
+  rozróżnienie „nazwa czy ścieżka" idzie po kształcie napisu, nie po istnieniu pliku —
+  inaczej komunikat brzmiałby „nie udało się wczytać szablonu: v71".
+- **Generacja idzie na stderr przy każdym renderze** (`szablon HTML: v17 (…)`).
+  Pytanie „dlaczego raport z marca wygląda inaczej" (CLAUDE.md §7) ma mieć odpowiedź
+  w logu, a nie w zgadywaniu, co wtedy było w środowisku.
+- **`v21` NIE MA wzorca złotego** i to jest stan świadomy: wzorzec wymaga porównania
+  wizualnego sekcja po sekcji i zgody klienta (docs/PRZEBUDOWA_KLUB_SESJE.md, S5b).
+  Do tego czasu nową generację pilnują niezmienniki: „HTML to szablon plus same
+  podmiany" (dla obu generacji), brak resztek `__COŚ__` po renderze, obecność cech
+  generacji i brak śladu jakiegokolwiek klubu w pliku.
+
+### Nowe znaczniki szablonu — wypełniane tylko wtedy, gdy szablon je zawiera
+`v17` nie ma ani jednego z nich i renderuje się bez zmian. `v21` ma komplet.
+
+**GRUPA NIEKOMPLETNA NIE PRZERYWA RENDERU** — raport ma powstać zawsze. Grupa nieobecna
+w całości to inna generacja szablonu i milczy (ostrzeżenie o stanie normalnym uczy
+ignorować ostrzeżenia). Grupa obecna w CZĘŚCI to ślad po edycji, która zjadła znacznik:
+brakujące są pomijane, a `meta.warnings` niesie nowy kod **`BRAKUJACY_ZNACZNIK`**
+z listą w polu `placeholders`. `LEFTOVER_RE` dalej pilnuje, żeby w HTML-u nic nie zostało.
+
+- **`__TEAM_*_COLOR_L__` / `__TEAM_*_DIM_L__`** — barwa drużyny w motywie jasnym.
+  Liczona z barwy klubu jak `hex_to_dim`, tylko w drugą stronę: skalowanie kanałów do
+  ustalonej jasności względnej (`LIGHT_TARGET_LUM`), tymi samymi współczynnikami co
+  korekta palety w parserze. Barwa już ciemna wraca bez zmiany. Klub, dla którego
+  reguła wypadnie źle, podaje `teams.*.color_light` w konfiguracji —
+  docelowo ma to być pole klubu (TODO sesja 4).
+- **`__SEZON__` / `__KOLEJKA__` / `__DATA_MECZU__`** — meta meczu z `config.match`
+  (`season`, `round`, `date`); sezon schodzi zapasowo na istniejące `season_label`.
+  Brak wartości daje PUSTE MIEJSCE, nie wymyśloną datę (CLAUDE.md §8). Wartości
+  przechodzą przez ucieczkę: wpisuje je operator, a lądują i w treści HTML,
+  i w literale szablonowym JS.
+
+### `__DATA_MECZU__` zamiast `__DATA__` — kolizja usunięta u źródła
+`__DATA__` było podnapisem `/*__DATA__*/`, czyli miejsca na zdarzenia meczu. Wspólna
+nazwa wymuszała liczenie wystąpień z korektą i podmianę w ustalonej kolejności, a tag
+zdarzenia o treści `__DATA__` mógł zostać zamieniony na datę meczu — raport pokazałby
+wtedy inne liczby niż archiwum. Znacznik został przemianowany w szablonie v21
+(nagłówek `hdr2` i stopka slajdów) i cały ten mechanizm zniknął z `render.py`.
+Podstawienie jest znowu zwykłe. `/*__DATA__*/` bez zmian.
+
+### Szablon v21: nagłówek składany z niepustych części
+Sezon, kolejka i data bywają puste (kolejki nie ma dziś skąd wziąć — brak kolumny
+w bazie). Separatory wpisane na sztywno dawały wtedy „sezon  · kolejka  · ", czyli
+trzy kropki bez treści. Nagłówek i stopka slajdów składają się odtąd z członów
+niepustych: brak danych zabiera CAŁY człon, a nie zostawia po sobie ozdobnika.
+Zmiana dotyczy **wyłącznie szablonu v21**; v17 nietknięty.
+
 ## [0.11.0] — 2026-08-19
 ### Kontrakt CLI: `--template` — templat raportu klubu jako wejście pipeline'u
 Sesja 5 przebudowy. Silnik przyjmuje config templatu zbudowany w konfiguratorze

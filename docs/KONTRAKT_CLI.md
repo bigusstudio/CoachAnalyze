@@ -15,6 +15,8 @@ $PYTHON_BIN -m coachanalyze build \
   --csv        /storage/uploads/2026/08/ab12cd.csv \
   --json       /storage/uploads/2026/08/ab12cd.json \
   --config     /tmp/job_881_config.json \
+  --template   /tmp/job_881_template.json \
+  --html-template v17 \
   --out-html   /storage/reports/881.html \
   --out-meta   /tmp/job_881_meta.json \
   --out-canon  /tmp/job_881_canon.json \
@@ -23,6 +25,9 @@ $PYTHON_BIN -m coachanalyze build \
 
 `--json` jest opcjonalny. Bez niego oś czasu traci paletę LiveTag i używa barw klubu jako zapasowych —
 fakt odnotowany w `meta.warnings`.
+
+`--template` opcjonalny; templat raportu KLUBU (zmienne, bindingi, sekcje).
+`--html-template` opcjonalny; GENERACJA SZABLONU HTML — inna rzecz, opis niżej.
 
 `--out-canon` opcjonalny; używany, gdy zdarzenia kanoniczne mają trafić do bazy.
 
@@ -78,10 +83,27 @@ Silnik wstrzykuje dane w szablon `engine/coachanalyze/templates/dashboard_templa
 | `__TEAM_*_COLOR__` · `__TEAM_*_DIM__` | Barwa klubu i jej przygaszona wersja |
 | `__LOGO_HOME__` · `__LOGO_AWAY__` | Pełny adres `data:` herbu — typ MIME idzie za rozszerzeniem pliku |
 
-Obecność znaczników jest sprawdzana **przed podmianą**, a po niej sprawdzamy, że żaden nie został;
-brak dowolnego przerywa render z kodem `4`. `/*__DATA__*/` i `/*__PAL__*/` muszą wystąpić dokładnie
-raz — drugie wystąpienie znaczy uszkodzony szablon. Znaczniki drużyn co najmniej raz, bo z natury
-powtarzają się w wielu miejscach.
+Znaczniki **tylko w generacji v21**, opcjonalne całą grupą (v17 nie ma żadnego z nich):
+
+| Znacznik | Grupa | Wypełniany |
+|---|---|---|
+| `__TEAM_*_COLOR_L__` · `__TEAM_*_DIM_L__` | `motyw_jasny` | Barwa klubu dla `data-theme="light"` — `color_light` albo przyciemnienie `color` |
+| `__SEZON__` · `__KOLEJKA__` · `__DATA_MECZU__` | `meta_meczu` | Meta meczu z `config.match`; brak wartości = pusty napis |
+
+> **`__DATA_MECZU__`, nie `__DATA__`.** To drugie jest podnapisem `/*__DATA__*/`, czyli
+> miejsca na zdarzenia meczu. Wspólna nazwa wymagałaby liczenia wystąpień z korektą
+> i podmiany w ustalonej kolejności, a tag zdarzenia o treści `__DATA__` mógłby zostać
+> zamieniony na datę. Znacznik został przemianowany w szablonie i problem zniknął.
+
+Obecność znaczników jest sprawdzana **przed podmianą**, a po niej sprawdzamy, że żaden nie został.
+`/*__DATA__*/` i `/*__PAL__*/` muszą wystąpić dokładnie raz — drugie wystąpienie znaczy uszkodzony
+szablon. Znaczniki drużyn co najmniej raz, bo z natury powtarzają się w wielu miejscach; brak
+któregokolwiek przerywa render z kodem `4`.
+
+**Znaczniki opcjonalne NIGDY nie przerywają renderu** — raport ma powstać zawsze. Grupa nieobecna
+w całości to po prostu inna generacja szablonu i milczy. Grupa obecna w części to ślad po edycji,
+która zjadła znacznik: brakujące są pomijane, a `meta.warnings` niesie `BRAKUJACY_ZNACZNIK`
+z listą w polu `placeholders`.
 
 Do przeglądarki trafiają wyłącznie `events` i `half_split`. Nagłówki eksportu, `format_fingerprint`
 i nazwa kolumny zawodnika zostają po stronie serwera — raport jest dostępny pod publicznym
@@ -190,9 +212,10 @@ wykryte w danych, a wszystkie zdarzenia mają `team_side: "none"`.
 {
   "match_id": 881,
   "season_label": "2026/2027",
+  "match": { "season": "2026/2027", "round": "3", "date": "2026-08-01" },
   "teams": {
-    "us":   { "name": "Klub A", "short": "KLA", "color": "#E8722C", "crest": "/storage/crests/3.png",
-              "source_names": ["KLUB A", "KLUB A II"] },
+    "us":   { "name": "Klub A", "short": "KLA", "color": "#E8722C", "color_light": "#A8780A",
+              "crest": "/storage/crests/3.png", "source_names": ["KLUB A", "KLUB A II"] },
     "them": { "name": "Klub B", "short": "KLB", "color": "#2C6FE8", "crest": "/storage/crests/9.png" }
   },
   "mapping_profile": { "version": 4, "rules": [] },
@@ -249,7 +272,61 @@ zwraca w `meta.coverage.teams`, żeby PHP mógł zaproponować dopasowanie przy 
 | `short` | Etykieta toru na osi czasu, gdzie miejsca jest mało | `name` wielkimi literami |
 | `color` | Barwa drużyny w wykresach i na mapach | `#E6A23C` (gospodarz), `#5CA8E0` (rywal) |
 | `crest` | Ścieżka do herbu. Formaty: svg, png, jpg, webp, gif | Herb zastępczy: biały krążek z pierwszą literą nazwy + ostrzeżenie na stderr |
+| `color_light` | Barwa drużyny w MOTYWIE JASNYM raportu (generacja v21) | Liczona z `color` przez przyciemnienie do ustalonej jasności (`render.hex_to_light`) |
 | `source_names` | Nazwy tak, jak zapisał je LiveTag — dokładają się do dopasowania obok `name` i `short` | Dopasowanie tylko po `name` i `short` |
+
+### Meta meczu (`match`) — nagłówek raportu w generacji v21
+
+Blok czysto opisowy: sezon, kolejka i data rozegrania w nagłówku transmisyjnym.
+**Silnik nie liczy z niego niczego** i nie sprawdza formatu — wpisuje to, co dostał.
+
+| Pole | Znacznik w szablonie | Gdy go brak |
+|---|---|---|
+| `match.season` | `__SEZON__` | zapasowo `season_label` z korzenia konfiguracji, dalej puste |
+| `match.round` | `__KOLEJKA__` | puste |
+| `match.date` | `__DATA_MECZU__` | puste |
+
+**Puste znaczy puste, nie „dziś" ani „—"** (CLAUDE.md §8). Szablon v21 składa nagłówek
+z NIEPUSTYCH części, więc brak kolejki zabiera CAŁY CZŁON razem z separatorem, zamiast
+zostawiać „kolejka  · ". Operator widzi, że mety nie wypełniono, a nie ozdobnik bez treści.
+
+Wartości wpisuje człowiek, a raport wisi pod publicznym adresem — przechodzą więc
+przez ucieczkę HTML plus usunięcie grawisu i `${`, bo w szablonie v21 lądują
+jednocześnie w treści HTML i w literale szablonowym JS.
+
+### `--html-template` — generacja szablonu HTML
+
+> **NIE MYLIĆ Z `--template`.** Dwie nazwy blisko siebie, dwie różne rzeczy:
+>
+> | Parametr | Co opisuje | Skąd pochodzi |
+> |---|---|---|
+> | `--template` | **CO** raport liczy i pokazuje: zmienne, bindingi kanoniczne, sekcje | `club_report_templates`, konfigurator (Sesje 3–5) |
+> | `--html-template` | **JAK** raport wygląda: plik szablonu HTML | `.env` (`HTML_TEMPLATE`), docelowo ustawienie klubu |
+
+```
+--html-template v17|v21|ŚCIEŻKA
+```
+
+| Wartość | Plik | Znaczenie |
+|---|---|---|
+| `v17` | `templates/dashboard_template.html` | **domyślna**; generacja, której wyjścia pilnuje test złoty |
+| `v21` | `templates/dashboard_template_v21.html` | nagłówek transmisyjny, sekcja Przegląd, motyw jasny, druk, slajdy PNG |
+| ścieżka | dowolny plik | podgląd wariantu szablonu przed zatwierdzeniem |
+
+Ścieżką jest napis z separatorem katalogu albo z rozszerzeniem `.html`; wszystko inne
+to nazwa generacji. **Nieznana nazwa przerywa render kodem `4`** i wymienia dozwolone —
+literówka (`v71`) nie może po cichu dać raportu w innym układzie niż zamawiany.
+
+Bez parametru obowiązuje zmienna środowiskowa **`CA_HTML_TEMPLATE`**, a bez niej `v17`.
+Zmienna, a nie pole w `config.json`, bo to decyzja WDROŻENIA, nie meczu: wszystkie
+raporty jednego przebiegu mają wyjść tą samą generacją.
+
+**Generacja trafia na stderr przy każdym renderze** (`szablon HTML: v17 (…/plik)`),
+więc log odpowiada na pytanie „dlaczego raport z marca wygląda inaczej" bez zgadywania.
+
+**`v21` nie ma jeszcze wzorca złotego.** Wzorzec wymaga porównania wizualnego sekcja
+po sekcji i zgody klienta (docs/PRZEBUDOWA_KLUB_SESJE.md, S5b). Do tego czasu v21
+pilnują testy niezmienników, a domyślną generacją zostaje v17.
 
 **`source_names` istnieje po to, żeby nazwa w raporcie nie zależała od zapisu w eksporcie.**
 Klub bywa otagowany skrótem, pod starą nazwą albo z literówką; bez tego pola każda taka zmiana
@@ -389,11 +466,13 @@ nie znika po cichu, tylko trafia do raportu pokrycia.
 | `UNMAPPED_TAGS` | Tagi bez mapowania na pojęcie kanoniczne — zdarzenia zachowane, poza metrykami |
 | `XG_POZA_STRZALEM` | Liczba w komentarzu przy tagu, który nie jest strzałem — pominięta przy xG |
 | `XG_MODEL` | xG uzupełnione modelem (`options.xg_model`) — wartości szacowane, czytać porównawczo |
+| `BRAKUJACY_ZNACZNIK` | Szablon niesie tylko CZĘŚĆ znaczników swojej grupy — pominięte wymienione w `placeholders` |
 
 Każde ostrzeżenie ma zawsze trzy pola: `code`, `msg` (po polsku), `count`.
 Część niesie dodatkowe pola diagnostyczne — `XG_POZA_STRZALEM` dokłada `tags`
-z listą tagów, których to dotyczyło, a `XG_MODEL` pole `assumed` z liczbą
-strzałów, przy których przyjęto założenie gry otwartej nogą.
+z listą tagów, których to dotyczyło, `XG_MODEL` pole `assumed` z liczbą
+strzałów, przy których przyjęto założenie gry otwartej nogą, a
+`BRAKUJACY_ZNACZNIK` pole `placeholders` z listą nazw.
 PHP ma czytać po nazwach, nie po zestawie kluczy.
 
 **`sections_unavailable` zawsze niesie powód po polsku.** Trafia bezpośrednio do interfejsu —

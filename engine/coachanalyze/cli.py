@@ -24,6 +24,19 @@ def build_parser() -> argparse.ArgumentParser:
     # Templat raportu klubu (Sesja 5). OPCJONALNY — bez niego pipeline zachowuje
     # sie dokladnie tak, jak przed ta sesja, co do bajtu w wyjsciu renderu.
     b.add_argument("--template", dest="template_path")
+    # GENERACJA SZABLONU HTML — INNA RZECZ NIZ `--template` POWYZEJ.
+    #
+    # `--template` to templat raportu KLUBU: zmienne, bindingi kanoniczne i sekcje
+    # z konfiguratora, czyli CO liczymy i co pokazujemy. `--html-template` to plik
+    # szablonu, czyli JAK to wyglada. Dwie nazwy blisko siebie sa ryzykiem i dlatego
+    # obie sa opisane w docs/KONTRAKT_CLI.md obok siebie.
+    #
+    # Bez tego parametru obowiazuje `CA_HTML_TEMPLATE`, a bez niej `v17` — szablon,
+    # ktorego wyjscia pilnuje test zloty.
+    b.add_argument(
+        "--html-template", dest="html_template", metavar="v17|v21|ŚCIEŻKA",
+        help="generacja szablonu HTML albo ścieżka do pliku (domyślnie v17)",
+    )
     b.add_argument("--out-html", required=True)
     b.add_argument("--out-meta", required=True)
     b.add_argument("--out-canon")
@@ -100,7 +113,17 @@ def log_render(report):
       z pliku. Raport dla klubu powinien nieść jego herb.
     - `tag_mismatch` — szablon liczy po nazwie tagu, archiwum po pojęciu kanonicznym.
       Rozjazd znaczy, że coach i porównanie sezonowe zobaczą inne liczby.
+
+    Generacja szablonu idzie do logu ZAWSZE, nie tylko przy nietypowej: pytanie
+    „dlaczego raport z marca wygląda inaczej" (CLAUDE.md §7) ma mieć odpowiedź
+    w logu, a nie w zgadywaniu, co wtedy było w `CA_HTML_TEMPLATE`.
     """
+    print(
+        "szablon HTML: {} ({})".format(
+            report.get("template_generation") or "spoza zestawu", report["template"]
+        ),
+        file=sys.stderr,
+    )
     if report["unresolved_placeholders"]:
         print(
             "UWAGA: szablon zawiera nierozwiązane znaczniki: "
@@ -111,6 +134,12 @@ def log_render(report):
         print(
             "UWAGA: brak nazwy drużyny '{}' w konfiguracji i w danych — "
             "podstawiono '{}'".format(side, report["teams"][side]),
+            file=sys.stderr,
+        )
+    if report["missing_slots"]:
+        print(
+            "UWAGA: szablon niesie tylko część znaczników swojej grupy — brakuje: "
+            + ", ".join(report["missing_slots"]),
             file=sys.stderr,
         )
     for side in report["crests_generated"]:
@@ -181,9 +210,28 @@ def cmd_build(args) -> int:
     html, report = render.render(
         frame, palette=palette, metrics=metrics_pack,
         canon_result=canon_result, config=config,
+        template_path=getattr(args, "html_template", None),
     )
     render.write(args.out_html, html)
     log_render(report)
+
+    # OSTRZEŻENIE ZAMIAST WYJĄTKU. Szablon, któremu przy edycji zniknął jeden
+    # znacznik z grupy, nie zatrzymuje renderu — raport ma powstać zawsze
+    # (docs/RUNBOOK.md). Brak trafia do `meta.warnings`, czyli tam, gdzie operator
+    # ogląda resztę ubytków w tym raporcie, a nie do logu, który czyta wykonawca.
+    #
+    # Dopisujemy PO renderze i przed `write_meta` — `meta.json` powstaje na samym
+    # końcu (patrz niżej), więc ostrzeżenie zdąży do pliku i na stdout.
+    if report["missing_slots"]:
+        meta.setdefault("warnings", []).append({
+            "code": "BRAKUJACY_ZNACZNIK",
+            "msg": (
+                "Szablon nie zawiera części znaczników swojej grupy — pominięte: "
+                + ", ".join(report["missing_slots"])
+            ),
+            "count": len(report["missing_slots"]),
+            "placeholders": report["missing_slots"],
+        })
 
     # `meta.json` na SAM KONIEC i tylko przy powodzeniu. Zapisane przed renderem
     # zostawiałoby na dysku `ok: true` bez raportu, a `main` dopisałby drugi obiekt
