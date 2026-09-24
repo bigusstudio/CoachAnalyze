@@ -55,11 +55,16 @@ liczy dostępność `mapy`, `tl_sbz` i `tl_iii` z SUROWYCH TAGÓW zmiennych temp
 a `canon.py` czyta xG zmiennej bez pojęcia po kształcie liczby (ułamek w (0,1]) —
 tą samą regułą, co szablon v21. **Bez templatu nic się nie zmienia.**
 
-> **Zostało: `duels`.** Ta sekcja dalej liczy się z pojęcia `duel`, więc przy
-> templacie bez pojęć znika z raportu dokładnie tak, jak znikały mapy. Zakres
-> sesji 1b jej nie obejmował; naprawa to jedna linia w `coverage._powody_z_templatu`.
-> Pilnuje tego asercja w `test_1b_sekcje_dostepne_mimo_braku_pojec`, żeby zmiana
-> tego zachowania była świadoma. **Do decyzji.**
+Obejmuje to także **`duels`**, dopisane osobnym commitem: sekcja pojedynków
+liczyła się dalej z pojęcia `duel` i przy templacie bez pojęć znikała dokładnie
+tak, jak znikały mapy. Ta sama usterka, ten sam powód, ta sama naprawa.
+
+**Kryterium odbioru w jednym zdaniu:** templat bez ANI JEDNEGO pojęcia
+kanonicznego daje na eksporcie referencyjnym **komplet siedmiu sekcji**.
+Pilnuje tego `test_1b_sekcje_dostepne_mimo_braku_pojec`.
+
+`noteam` zostaje wspólne dla obu ścieżek i to jest poprawne: liczy się z surowego
+pola `team`, a nie z pojęcia, więc templat nie ma tam czego zmieniać.
 
 **Od sesji 2 warstwa kanoniczna ma następcę dla warstwy widocznej.** `--out-events`
 i tabela `events` (migracja 014) zapisują zdarzenia po **surowych nazwach tagów** —

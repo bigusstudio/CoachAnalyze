@@ -130,6 +130,13 @@ def _powody_z_templatu(template, stats):
     if not zdarzen("tl_sbz"):
         reasons["tl_sbz"] = "Żadna zmienna tej sekcji nie ma zdarzeń w tym eksporcie"
 
+    # POJEDYNKI TĄ SAMĄ MIARĄ. Dopisane po sesji 1b: `duels` liczyło się dalej
+    # z pojęcia `duel`, więc przy templacie bez pojęć sekcja znikała dokładnie
+    # tak, jak znikały mapy i oś SBZ. Ta sama usterka, ten sam powód, ta sama
+    # naprawa — zostawiona wtedy poza zakresem i domknięta osobno.
+    if not zdarzen("duels"):
+        reasons["duels"] = "Żadna zmienna tej sekcji nie ma zdarzeń w tym eksporcie"
+
     # III strefa zachowuje ROZRÓŻNIENIE Z PUŁAPKI 3: brak zdarzeń to co innego
     # niż zdarzenia bez pozycji, i operator ma widzieć, które z dwojga.
     if not zdarzen("tl_iii"):
@@ -175,9 +182,14 @@ def build_sections(coverage, requested=None, template=None, frame=None):
         elif not coverage["third_pos"]:
             reasons["tl_iii"] = "Eksport nie zawiera pozycji III STREFY (kolumny pos_* puste)"
 
-    if not coverage["duels"]:
-        reasons["duels"] = "Eksport nie zawiera pojedynków (1x1, pierwszy kontakt)"
+        # POJEDYNKI PO POJĘCIU — wyłącznie na ścieżce BEZ templatu. Z templatem
+        # rozstrzyga `_powody_z_templatu`, po surowych tagach.
+        if not coverage["duels"]:
+            reasons["duels"] = "Eksport nie zawiera pojedynków (1x1, pierwszy kontakt)"
 
+    # `noteam` zostaje wspólne dla obu ścieżek i to jest poprawne: liczy się
+    # z SUROWEGO pola `team` (`coverage["no_team"]`), a nie z żadnego pojęcia,
+    # więc templat nie ma tu czego zmieniać.
     if not coverage["no_team"]:
         reasons["noteam"] = (
             "Wszystkie zdarzenia mają przypisaną drużynę — sekcja bez przypisania byłaby pusta"

@@ -600,23 +600,16 @@ def test_1b_sekcje_dostepne_mimo_braku_pojec(case):
         "oś III strefy wycięta mimo zdarzeń z pozycjami: " + niedostepne.get("tl_iii", "")
     )
 
-    # ┌──────────────────────────────────────────────────────────────────────┐
-    # │ ZNALEZISKO, NIE ZACHOWANIE DOCELOWE — do decyzji.                    │
-    # │                                                                      │
-    # │ `duels` WYPADA z tego samego powodu, z którego wypadały mapy i oś    │
-    # │ SBZ: `coverage["duels"]` liczy pojęcie `duel`, a zmienne templatu    │
-    # │ pojęcia nie mają. Zakres sesji 1b wymieniał wyłącznie mapy, tl_sbz   │
-    # │ i tl_iii, więc `duels` zostaje po staremu — ale to ta sama usterka   │
-    # │ i przy templacie bez pojęć sekcja pojedynków zniknie z raportu.      │
-    # │                                                                      │
-    # │ Naprawa to jedna linia w `_powody_z_templatu` (`duels` liczony jak   │
-    # │ `tl_sbz`). Asercja stoi tu po to, żeby zmiana tego zachowania była   │
-    # │ świadoma, a nie przypadkowa.                                         │
-    # └──────────────────────────────────────────────────────────────────────┘
-    assert "duels" in niedostepne, (
-        "jeśli to przestało być prawdą, `duels` został naprawiony — zaktualizuj "
-        "ten test i docs/STAN_PIVOTU.md"
+    # POJEDYNKI TĄ SAMĄ MIARĄ. Sesja 1b zostawiła `duels` przy pojęciu `duel`,
+    # więc sekcja znikała przy templacie bez pojęć dokładnie tak, jak znikały
+    # mapy — ta sama usterka, domknięta osobnym commitem.
+    assert "duels" not in niedostepne, (
+        "sekcja pojedynków wycięta mimo zdarzeń: " + niedostepne.get("duels", "")
     )
+
+    # Na eksporcie referencyjnym templat bez ANI JEDNEGO pojęcia kanonicznego
+    # ma dać KOMPLET sekcji. To jest kryterium odbioru sesji 1b w jednym zdaniu.
+    assert niedostepne == {}, "sekcje wycięte mimo danych: " + str(niedostepne)
 
 
 @pytest.mark.parametrize("case", load_cases(), ids=lambda c: c["id"])
@@ -651,7 +644,7 @@ def test_1b_sekcja_bez_zmiennej_jest_niedostepna_z_powodem(case):
 
     templat = templat_bez_pojec()
     for zmienna in templat["variables"]:
-        zmienna["sections"] = [s for s in zmienna["sections"] if s != "mapy"]
+        zmienna["sections"] = [s for s in zmienna["sections"] if s not in ("mapy", "duels")]
 
     canon_result = canon.build(frame, report_template=templat)
     meta = coverage.build_meta(
@@ -661,8 +654,9 @@ def test_1b_sekcja_bez_zmiennej_jest_niedostepna_z_powodem(case):
     )
 
     niedostepne = {s["id"]: s["reason"] for s in meta["sections_unavailable"]}
-    assert "mapy" in niedostepne
-    assert niedostepne["mapy"].strip(), "każda usunięta sekcja niesie powód"
+    for sekcja in ("mapy", "duels"):
+        assert sekcja in niedostepne, sekcja
+        assert niedostepne[sekcja].strip(), "każda usunięta sekcja niesie powód"
 
 
 @pytest.mark.parametrize("case", load_cases(), ids=lambda c: c["id"])

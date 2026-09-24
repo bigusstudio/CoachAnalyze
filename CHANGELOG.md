@@ -35,8 +35,18 @@ Przyczyna: `coverage.build_sections` liczyło dostępność z POJĘĆ KANONICZNY
   tak samo jak `xg_sum`. Dwie podstawy dawałyby „xg_parsed 0" obok „xg_sum 4,40"
   w jednym raporcie pokrycia. Bez templatu obie liczby są jak dotąd.
 
+### Sekcja pojedynków tą samą miarą
+Dopisane osobnym commitem. `duels` liczyło się dalej z pojęcia `duel`, więc przy
+templacie bez pojęć znikało dokładnie tak, jak znikały mapy — ta sama usterka
+zostawiona poza pierwotnym zakresem. Sekcja jest dostępna, gdy którakolwiek
+zmienna z sekcją `duels` ma ≥1 zdarzenie. Sprawdzenie po pojęciu zostaje na
+ścieżce BEZ templatu.
+
+`noteam` zostaje wspólne dla obu ścieżek: liczy się z surowego pola `team`,
+a nie z pojęcia, więc templat nie ma tam czego zmieniać.
+
 Na eksporcie referencyjnym z templatem bez pojęć: `xg_sum` **4,40**, brak
-`XG_POZA_STRZALEM`, mapy i obie osie dostępne.
+`XG_POZA_STRZALEM` i **komplet siedmiu sekcji**.
 
 ## [0.13.0] — 2026-09-24
 ### `--out-events`: zdarzenia meczu po SUROWYCH nazwach tagów
