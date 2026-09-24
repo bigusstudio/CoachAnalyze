@@ -232,9 +232,14 @@ dzisiaj na ekranie — i to na prawdziwym eksporcie, nie na wzorcu z repozytoriu
 Test złoty mówi to samo, ale o pliku; tutaj zgadza się z produkcją.
 
 > Liczby z testu b są podane w kolejności **HOME : AWAY** tak, jak wypisał je
-> `przeglad_liczby.py` — przy tej konfiguracji lewym slotem była Pogoń.
-> Po zmianie z punktu 7.7 lewy slot będzie należał do klubu-tenanta i ta sama
-> para liczb zamieni się miejscami. To nie będzie zmiana wyniku, tylko stron.
+> `przeglad_liczby.py`. W tym buildzie `us` = Pogoń, a render mapuje `us` → `HOME`,
+> więc **Pogoń jest już lewą kolumną** — i po wdrożeniu punktu 7.7 kolejność kolumn
+> dla tego meczu **się nie zmieni**. Ta para liczb zostaje, jak stoi.
+>
+> Zamiana stron po 7.7 dotyczy **wyłącznie raportów budowanych z configiem,
+> w którym `us` był rywalem** — jak ręczny config JDRZ z rana. Dziś to `us`
+> decyduje o lewym slocie, więc źle obsadzone `us` znaczy odwrócony raport;
+> po 7.7 decyduje klub-tenant i ta pomyłka przestaje być możliwa.
 
 ### 5.2 Powrót właściwy, na produkcji
 
