@@ -374,7 +374,19 @@ td.num, th.num { text-align: right; min-width: 88px; white-space: nowrap; }
 /* Nazwa klubu bywa długa („Pogoń-Sokół Lubaczów") — zawija się w swojej
    kolumnie zamiast rozpychać szynę. */
 .ctx__opis { min-width: 0; }
-.ctx__name { overflow-wrap: anywhere; }
+/* NAZWA KLUBU W JEDNEJ LINII, Z WIELOKROPKIEM (Sesja 6 pivotu „viewer").
+   Stało tu `overflow-wrap: anywhere`, czyli nazwa łamała się w dowolnym miejscu
+   — „Pogoń-So / kół Lubaczów" w dwóch wierszach, a pod spodem sezon, więc blok
+   kontekstu urastał do trzech linii i spychał nawigację. Wielokropek jest
+   krótszy niż nazwa, ale nie udaje, że nazwa się skończyła: pełna zostaje
+   w atrybucie `title` elementu nadrzędnego. */
+.ctx__name {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ctx__season { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ctx__sw { margin-left: auto; flex: none; color: var(--szyna-tekst2); font-size: 14px; }
 
 .grp { display: flex; flex-direction: column; gap: 2px; }
@@ -529,6 +541,10 @@ td.num, th.num { text-align: right; min-width: 88px; white-space: nowrap; }
 .q--d { background: var(--tlo-drugi); color: var(--tekst); }
 .q--next { border: 1.5px dashed var(--obramowanie); background: transparent; color: var(--tekst-slabszy); }
 .q small { position: absolute; bottom: 4px; font: 500 9px 'IBM Plex Mono', monospace; color: inherit; opacity: .75; }
+/* Numer PORZĄDKOWY meczu — wyszarzony, bez prefiksu (Sesja 6 pivotu „viewer").
+   Kolejka dostaje prefiks „k.", więc dwie różne rzeczy w jednym pasku różnią się
+   wyglądem, a nie tylko znaczeniem: „1, 2, 3, 4, 5, 3" czytało się jak pomyłka. */
+.q__nr { color: var(--tekst-slabszy); font-weight: 600; }
 .legend { display: flex; gap: 14px; font-size: 12px; color: var(--tekst-slaby); margin-top: 10px; flex-wrap: wrap; }
 .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
 

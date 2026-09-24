@@ -381,6 +381,10 @@ const PAL = /*__PAL__*/;
    Do sesji 4b siedziały tu jako literały (>=.7, >=.6) — zmiana progu wymagała
    edycji pliku HTML, czyli tej samej czynności co zmiana układu raportu. */
 const PROGI = __PROGI__;
+/* v24 (sesja 6): SKŁAD MECZU zatwierdzony przez człowieka (nie kolumna z eksportu).
+   Pusta tablica znaczy „nie wpisano składu" — i to jest co innego niż „wpisano
+   pusty", więc kafelek zawodników mówi to wprost, zamiast pokazywać pustą tabelę. */
+const SKLAD = __SKLAD__;
 const tagCol=t=>PAL.tags[t]||'#9DAFA6';
 const labCol=l=>PAL.labels[l]||'#9DAFA6';
 /* v19: słownik zmiennych. Liczymy po kluczu, nazwy w aliases to inne nazwy tego samego tagu w innych eksportach.
@@ -1345,27 +1349,50 @@ function renderOkazje(el, ctx){
    Kafelek mówi to wprost, zamiast pokazywać pustą tabelę. */
 function renderZawodnicy(el, ctx){
   const box=el.querySelector('#zawodnicy-box'); if(!box) return;
-  const zNazw=ctx.Ev.filter(e=>e.player);
-  if(!zNazw.length){
-    box.innerHTML=kom('<b>Eksport nie przypisuje zdarzeń do zawodników.</b> Kolumna zawodnika jest pusta (pułapka 4) — warstwa indywidualna będzie dostępna, gdy analityk zacznie ją wypełniać w LiveTag. Pusta tabela wyglądałaby jak brak zdarzeń, a zdarzenia są.');
-    return;
-  }
+
+  /* STATYSTYKI PO PEŁNEJ NAZWIE, PRZEZ RÓWNOŚĆ (pułapka 7). Fragment nazwiska
+     łapałby dwóch różnych zawodników („Nowak" wewnątrz „Nowakowski") i nikt by
+     tego nie zauważył, bo obie liczby wyglądają sensownie. */
   const po={};
-  zNazw.forEach(e=>{
-    const k=e.player;                     /* RÓWNOŚĆ na pełnej nazwie, nigdy fragment */
-    const w=po[k]||(po[k]={n:0,strzaly:0,xg:0,gole:0,sbz:0,druzyny:new Set()});
+  ctx.Ev.filter(e=>e.player).forEach(e=>{
+    const w=po[e.player]||(po[e.player]={n:0,strzaly:0,xg:0,gole:0,sbz:0,druzyny:new Set()});
     w.n++; if(e.team) w.druzyny.add(e.team);
     if(e.tag==='STRZAŁ'){ w.strzaly++; w.xg+=e.xg||0; if(goalOf(e)) w.gole++; }
     if(e.tag==='ZDOBYCIE SBZ') w.sbz++;
   });
-  const wiersze=Object.entries(po).sort((a,b)=>b[1].n-a[1].n||a[0].localeCompare(b[0],'pl'));
+  const pusty={n:0,strzaly:0,xg:0,gole:0,sbz:0,druzyny:new Set()};
+
+  /* SKŁAD JEST NADRZĘDNY NAD EKSPORTEM. Zawodnik, który rozegrał 90 minut i nie
+     zrobił nic, co analityk tagował, w eksporcie nie istnieje — a w składzie
+     owszem, i ma się pokazać z zerami. Odwrotnie też: nazwisko ze zdarzeń spoza
+     składu zostaje na liście, oznaczone, bo znaczy albo literówkę w składzie,
+     albo zawodnika, o którym ktoś zapomniał. */
+  const wSkladzie=new Set(SKLAD.map(z=>z.player));
+  const wiersze=SKLAD.map(z=>({...z, stat:po[z.player]||pusty, spoza:false}))
+    .concat(Object.keys(po).filter(n=>!wSkladzie.has(n)).sort((a,b)=>a.localeCompare(b,'pl'))
+      .map(n=>({player:n, number:null, position:null, minutes:null, is_starter:false,
+                stat:po[n], spoza:true})));
+
+  if(!wiersze.length){
+    box.innerHTML=kom(SKLAD.length
+      ? `<b>Skład wpisany, ale fragment (${ctx.fragment}) nie zawiera jego zdarzeń.</b>`
+      : '<b>Nie wpisano składu, a eksport nie przypisuje zdarzeń do zawodników.</b> Skład wpisuje się w meta meczu; kolumna zawodnika w eksporcie jest pusta (pułapka 4). Pusta tabela wyglądałaby jak brak zdarzeń, a zdarzenia są.');
+    return;
+  }
+
+  const minuty=SKLAD.length
+    ? '<th>Rozegrane min</th>'
+    : '';
   box.innerHTML=`<table class="tbl">
-    <thead><tr><th>Zawodnik</th><th>Drużyna</th><th>Zdarzeń</th><th>Strzały</th><th>Gole</th><th>xG</th><th>Wejścia w SBZ</th></tr></thead>
-    <tbody>${wiersze.map(([nazwa,w])=>{
-      const t=[...w.druzyny];
-      return `<tr><td>${nazwa}</td>
+    <thead><tr><th>Zawodnik</th><th>Nr</th><th>Poz.</th>${minuty}<th>Drużyna</th><th>Zdarzeń</th><th>Strzały</th><th>Gole</th><th>xG</th><th>Wejścia w SBZ</th></tr></thead>
+    <tbody>${wiersze.map(z=>{
+      const w=z.stat, t=[...w.druzyny];
+      return `<tr><td>${z.player}${z.spoza?' <span class="mut">(spoza składu)</span>':''}${z.is_starter?' <span class="mut">·&nbsp;wyjściowy</span>':''}</td>
+        <td class="num mut">${z.number!=null?z.number:'–'}</td>
+        <td class="mut">${z.position||'–'}</td>
+        ${minuty?`<td class="num">${z.minutes!=null?z.minutes:'–'}</td>`:''}
         <td class="mut">${t.length===1?tName(t[0]):(t.length?'—':'–')}</td>
-        <td class="num sum">${w.n}</td><td class="num">${w.strzaly||'–'}</td>
+        <td class="num sum">${w.n||'–'}</td><td class="num">${w.strzaly||'–'}</td>
         <td class="num">${w.gole||'–'}</td><td class="num">${w.xg?fmt(w.xg,2):'–'}</td>
         <td class="num">${w.sbz||'–'}</td></tr>`;
     }).join('')}</tbody></table>`;

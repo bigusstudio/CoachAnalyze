@@ -3516,6 +3516,11 @@ function showMatchMeta(int $importId): void
         'akcja'   => '/import/' . $importId . '/meta',
         'powrot'  => '/import/' . $importId,
         'edycja'  => false,
+        'sklad'   => skladDoFormularza($mecz, $import),
+        // Propozycja z kolumny zawodnika eksportu — do ZATWIERDZENIA, nie zapis.
+        'propozycja' => \CoachAnalyze\Roster::zEksportu(
+            (array) json_decode((string) ($import['coverage_json'] ?? ''), true)
+        ),
         'notice'  => Session::flash('notice'),
         'error'   => Session::flash('error'),
     ]);
@@ -3567,9 +3572,73 @@ function showMatchMetaEdit(int $matchId): void
         'powrot'  => safeReturn($_GET['powrot'] ?? ('/mecze/' . $matchId . '/historia')),
         'edycja'  => true,
         'maRaport' => Imports::latestReport($matchId) !== null,
+        'sklad'   => skladDoFormularza($mecz, $import),
+        'propozycja' => \CoachAnalyze\Roster::zEksportu(
+            (array) json_decode((string) (($import ?? [])['coverage_json'] ?? ''), true)
+        ),
         'notice'  => Session::flash('notice'),
         'error'   => Session::flash('error'),
     ]);
+}
+
+/**
+ * Skład do wypełnienia formularza.
+ *
+ * TRZY ŹRÓDŁA, W TEJ KOLEJNOŚCI:
+ *   1. to, co operator właśnie wpisał (`$_POST`) — przy powrocie po błędzie
+ *      albo po kliknięciu „wypełnij z eksportu" jego praca ma zostać,
+ *   2. skład zapisany w bazie,
+ *   3. pusto.
+ *
+ * Klik „wypełnij z eksportu" dokłada nazwiska do PUSTYCH wierszy i NIE ZAPISUJE:
+ * eksport niesie wyłącznie tych, którzy dostali taga, i nie wie nic o minutach
+ * ani numerach (pułapka 4). Zapisany bez pytania udawałby skład, którym nie jest.
+ *
+ * @param array<string,mixed>|null $mecz
+ * @param array<string,mixed>|null $import
+ * @return list<array<string,mixed>>
+ */
+function skladDoFormularza(?array $mecz, ?array $import): array
+{
+    if ($mecz === null || $mecz['club_id'] === null) {
+        return [];
+    }
+
+    $zBazy = \CoachAnalyze\Roster::forMatch((int) $mecz['id'], (int) $mecz['club_id']);
+    $zSesji = Session::flash('sklad_roboczy');
+    $biezacy = is_array($zSesji) && $zSesji !== [] ? $zSesji : $zBazy;
+
+    if (Session::flash('sklad_z_eksportu') === null) {
+        return $biezacy;
+    }
+
+    // Nazwiska z eksportu wchodzą WYŁĄCZNIE tam, gdzie nie ma już wpisu —
+    // propozycja nie ma prawa nadpisać tego, co operator wpisał ręcznie.
+    $zajete = [];
+    foreach ($biezacy as $z) {
+        $nazwa = trim((string) ($z['player'] ?? ''));
+        if ($nazwa !== '') {
+            $zajete[\CoachAnalyze\Clubs::normalize($nazwa)] = true;
+        }
+    }
+
+    $propozycja = \CoachAnalyze\Roster::zEksportu(
+        (array) json_decode((string) (($import ?? [])['coverage_json'] ?? ''), true)
+    );
+    foreach ($propozycja as $poz) {
+        if (count($biezacy) >= \CoachAnalyze\Roster::WIERSZY) {
+            break;
+        }
+        $klucz = \CoachAnalyze\Clubs::normalize($poz['player']);
+        if (isset($zajete[$klucz])) {
+            continue;
+        }
+        $zajete[$klucz] = true;
+        $biezacy[] = ['player' => $poz['player'], 'number' => null, 'position' => null,
+                      'minutes' => null, 'is_starter' => 0];
+    }
+
+    return $biezacy;
 }
 
 /** Zapis meta. Rywal wybrany z listy albo zakładany na miejscu. */
@@ -3579,6 +3648,16 @@ function saveMatchMeta(int $importId, int $userId): void
     if ($import === null) {
         tenantNotFound();
         return;
+    }
+
+    if ((string) ($_POST['akcja'] ?? '') === 'z_eksportu') {
+        // WYPEŁNIENIE, NIE ZAPIS: wracamy na ten sam ekran z propozycją
+        // wpisaną w puste wiersze. Zatwierdza operator, osobnym kliknięciem.
+        Session::flash('sklad_roboczy', \CoachAnalyze\Roster::normalizuj(
+            (array) ($_POST['sklad'] ?? [])
+        ));
+        Session::flash('sklad_z_eksportu', '1');
+        redirect('/import/' . $importId . '/meta');
     }
 
     if (!zapiszMetaMeczu((int) $import['match_id'], $userId, '/import/' . $importId . '/meta')) {
@@ -3599,6 +3678,14 @@ function saveMatchMetaEdit(int $matchId, int $userId): void
     }
 
     $powrot = safeReturn($_POST['powrot'] ?? ('/mecze/' . $matchId . '/historia'));
+
+    if ((string) ($_POST['akcja'] ?? '') === 'z_eksportu') {
+        Session::flash('sklad_roboczy', \CoachAnalyze\Roster::normalizuj(
+            (array) ($_POST['sklad'] ?? [])
+        ));
+        Session::flash('sklad_z_eksportu', '1');
+        redirect('/mecze/' . $matchId . '/meta');
+    }
 
     if (!zapiszMetaMeczu($matchId, $userId, '/mecze/' . $matchId . '/meta')) {
         return;
@@ -3683,9 +3770,26 @@ function zapiszMetaMeczu(int $matchId, int $userId, string $powrot): bool
         'is_home'      => $isHome === '' ? null : ($isHome === '1'),
         'competition'  => trim((string) ($_POST['competition'] ?? '')),
         'season_id'    => ($_POST['season_id'] ?? '') !== '' ? (int) $_POST['season_id'] : null,
+        'round'        => $_POST['round'] ?? null,
         'score_us'     => $_POST['score_us'] ?? null,
         'score_them'   => $_POST['score_them'] ?? null,
     ], $userId);
+
+    /*
+     * SKŁAD ZAPISUJE SIĘ TYM SAMYM FORMULARZEM (Sesja 6). Osobny przycisk
+     * „zapisz skład" znaczyłby, że operator, który poprawił minuty i datę,
+     * musi kliknąć dwa razy — i że jedna z tych zmian ginie, gdy kliknie raz.
+     *
+     * Skład jest PER KLUB-TENANT: to jego zawodników opisuje raport. Mecz bez
+     * tenanta (stan sprzed migracji 012) składu nie dostaje — nie wiadomo,
+     * czyj miałby być.
+     */
+    $mecz = Matches::find($matchId);
+    if ($mecz !== null && $mecz['club_id'] !== null && isset($_POST['sklad'])) {
+        \CoachAnalyze\Roster::save(
+            $matchId, (int) $mecz['club_id'], (array) $_POST['sklad'], $userId
+        );
+    }
 
     return true;
 }

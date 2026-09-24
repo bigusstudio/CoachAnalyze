@@ -298,5 +298,33 @@ def test_slownik_bez_zdarzen_nie_wywala():
     więc przez `inspect` ten stan nie przejdzie. Sama funkcja ma być jednak
     odporna: bywa wołana na ramce składanej w testach i narzędziach, a wtedy
     wyjątek z zliczania byłby awarią w miejscu, które niczego nie liczy."""
-    assert coverage.build_dictionary({"events": []}) == {"tags": [], "labels": []}
-    assert coverage.build_dictionary({}) == {"tags": [], "labels": []}
+    pusty = {"tags": [], "labels": [], "players": []}
+    assert coverage.build_dictionary({"events": []}) == pusty
+    assert coverage.build_dictionary({}) == pusty
+
+
+def test_slownik_niesie_zawodnikow_z_kolumny(write_csv):
+    """Blok `players` zasila propozycję składu na ekranie mety (sesja 6).
+
+    Kolejność po liczbie zdarzeń malejąco — od tych, o których eksport mówi
+    najwięcej. Pusta komórka nie jest zawodnikiem (pułapka 4).
+    """
+    from coachanalyze.sources.livetag import parse
+    naglowki = [
+        "tag_name", "begin", "end", "team", "labels", "comment",
+        "pos_x_meters", "pos_y_meters", "pos_target_x_meters", "pos_target_y_meters",
+        "players",
+    ]
+    sciezka = write_csv([
+        ["STRZAŁ", 10, 16, "A", "CELNY", "", "", "", "", "", "Kowalski Jan"],
+        ["STRZAŁ", 20, 26, "A", "CELNY", "", "", "", "", "", "Kowalski Jan"],
+        ["STRZAŁ", 30, 36, "A", "CELNY", "", "", "", "", "", "Nowak Piotr"],
+        ["STRZAŁ", 40, 46, "A", "CELNY", "", "", "", "", "", "   "],
+    ], headers=naglowki)
+
+    slownik = coverage.build_dictionary(parse.prep_frame(sciezka))
+
+    assert slownik["players"] == [
+        {"player": "Kowalski Jan", "count": 2},
+        {"player": "Nowak Piotr", "count": 1},
+    ]

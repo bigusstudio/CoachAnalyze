@@ -165,7 +165,8 @@ $pozycja = static function (
     <?php if ($klubSzyny !== null): ?>
       <?php /* Kontekst klubu, sezonu i liczby meczów: pierwsza rzecz, którą
                trzeba wiedzieć, zanim spojrzy się na jakąkolwiek liczbę niżej. */ ?>
-      <a class="ctx" href="/klub/<?= (int) $klubSzyny['id'] ?>">
+      <a class="ctx" href="/klub/<?= (int) $klubSzyny['id'] ?>"
+         title="<?= View::e((string) $klubSzyny['name']) ?>">
         <span class="ctx__crest">
           <?php if (!empty($klubSzyny['crest_path'])): ?>
             <img src="/herb/<?= (int) $klubSzyny['id'] ?>" alt="">

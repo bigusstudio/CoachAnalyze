@@ -196,6 +196,12 @@ final class Matches
      * Sezon nadpisujemy TYLKO gdy podany — ręczne przypisanie operatora jest
      * ważniejsze niż wykrywanie z daty (tak samo jak w `setDate()`).
      *
+     * KOLEJKA (`round`) DOSZŁA W SESJI 6 i to zamyka `docs/STAN_PIVOTU.md` §7.2.
+     * Kolumna istniała od migracji 014, nagłówek raportu v21 miał dla niej
+     * znacznik, a dashboard ją wyświetlał — ale NIC JEJ NIE ZAPISYWAŁO, więc
+     * wszędzie było pusto. Trzymamy ją jako NAPIS, nie liczbę: „3", ale też
+     * „1/8 finału" i „baraż" są kolejkami w rozumieniu operatora.
+     *
      * @param array<string,mixed> $data
      */
     public static function saveMeta(int $matchId, array $data, int $userId): void
@@ -211,6 +217,7 @@ final class Matches
             'UPDATE matches
                 SET club_away_id = :away,
                     played_at    = :date,
+                    round        = :round,
                     is_home      = :home,
                     competition  = :comp,
                     season_id    = :season,
@@ -220,6 +227,7 @@ final class Matches
             [
                 'away'   => $data['club_away_id'] ?? null,
                 'date'   => $data_meczu !== '' ? $data_meczu : null,
+                'round'  => self::kolejka($data['round'] ?? null),
                 // Trzy stany, nie dwa: u siebie, na wyjeździe, nie wiemy.
                 'home'   => $data['is_home'] === null ? null : (int) (bool) $data['is_home'],
                 'comp'   => ($data['competition'] ?? '') !== '' ? $data['competition'] : null,
@@ -234,6 +242,23 @@ final class Matches
             'club_away_id' => $data['club_away_id'] ?? null,
             'played_at'    => $data_meczu !== '' ? $data_meczu : null,
         ]);
+    }
+
+    /**
+     * Kolejka jako krótki napis albo `null`.
+     *
+     * NAPIS, NIE LICZBA — „1/8 finału" i „baraż" są kolejkami tak samo jak „3".
+     * Pusty wpis to brak danych: nagłówek raportu składa się z członów
+     * niepustych i brak kolejki ma zabierać cały człon, a nie zostawiać
+     * „kolejka  · " (CLAUDE.md §8).
+     */
+    private static function kolejka(mixed $wartosc): ?string
+    {
+        $tekst = trim((string) ($wartosc ?? ''));
+        if ($tekst === '') {
+            return null;
+        }
+        return mb_substr(preg_replace('/\s+/u', ' ', $tekst) ?? $tekst, 0, 16);   // kolumna to VARCHAR(16) (migracja 014)
     }
 
     /**

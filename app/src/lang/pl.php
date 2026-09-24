@@ -769,6 +769,22 @@ return [
     'diff.act.alias.target' => 'Kontynuacja zmiennej',
     'diff.act.alias.pick' => '— wybierz zmienną —',
 
+    // --- meta meczu: kolejka i skład (Sesja 6 pivotu) ---
+    'meta.round' => 'Kolejka',
+    'meta.round.hint' => 'np. 3 albo 1/8 finału',
+
+    'roster.title' => 'Skład',
+    'roster.hint' => 'Zawodnicy klubu w tym meczu. Minuty i numery nie mają odpowiednika w eksporcie — wpisuje je operator. Pusty wiersz nie jest zapisywany.',
+    'roster.col.player' => 'Zawodnik',
+    'roster.col.number' => 'Nr',
+    'roster.col.position' => 'Pozycja',
+    'roster.col.minutes' => 'Rozegrane min',
+    'roster.col.starter' => 'Wyjściowy',
+    'roster.empty_row' => 'Wiersz bez nazwiska jest pomijany. Powtórzone nazwisko liczy się raz — raport dopasowuje zdarzenia po pełnej nazwie.',
+    'roster.from_export' => 'Eksport przypisuje zdarzenia do %d zawodników.',
+    'roster.from_export.submit' => 'Wypełnij puste wiersze z eksportu',
+    'roster.saved' => 'Skład zapisany: %d zawodników.',
+
     // --- biblioteka meczów (Etap 4c) ---
     'matches.title'       => 'Mecze',
     'matches.club'        => 'Klub',
@@ -1177,6 +1193,9 @@ return [
     'dash.no_events'      => 'Ten mecz nie ma zapisanych zdarzeń — przelicz raport, żeby je uzupełnić.',
     'dash.season_strip'   => 'Sezon',
     'dash.season_sum'     => 'SUMA',
+    // Prefiks odróżnia KOLEJKĘ od numeru porządkowego meczu w pasku sezonu.
+    // Bez niego „3" znaczyło raz jedno, raz drugie (Sesja 6 pivotu).
+    'dash.round.prefix'   => 'k. %s',
     'dash.attention'      => 'Wymaga uwagi',
     'dash.attention.none' => 'Nic nie czeka.',
     'dash.recent'         => 'Ostatnie mecze',

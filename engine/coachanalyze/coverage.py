@@ -477,9 +477,28 @@ def build_dictionary(frame, probka=3):
             if len(poz["samples"]) < probka:
                 poz["samples"].append(_probka_zdarzenia(e))
 
+    # ZAWODNICY (sesja 6). Osobny blok, bo nazwisko nie jest ani tagiem, ani
+    # etykietą: to KOLUMNA eksportu, równoległa do zdarzeń (`frame["players"]`).
+    #
+    # Służy JEDNEJ rzeczy — propozycji składu na ekranie mety meczu. Eksport
+    # niesie wyłącznie tych, którzy dostali taga, i nie wie nic o minutach ani
+    # numerach, więc propozycja wymaga zatwierdzenia przez człowieka i nigdy
+    # nie zapisuje się sama (pułapka 4).
+    zawodnicy = {}
+    for nazwa in frame.get("players") or []:
+        nazwa = (nazwa or "").strip()
+        if nazwa:
+            zawodnicy[nazwa] = zawodnicy.get(nazwa, 0) + 1
+
     return {
         "tags": _pozycje_slownika(tagi, "tag"),
         "labels": _pozycje_slownika(etykiety, "label"),
+        # Kolejność: po liczbie zdarzeń malejąco, przy równej alfabetycznie —
+        # wyjście ma być powtarzalne między przebiegami.
+        "players": [
+            {"player": nazwa, "count": ile}
+            for nazwa, ile in sorted(zawodnicy.items(), key=lambda kv: (-kv[1], kv[0]))
+        ],
     }
 
 

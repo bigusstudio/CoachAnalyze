@@ -21,6 +21,8 @@ use CoachAnalyze\View;
  * @var bool   $edycja         tryb poprawiania meczu już zaimportowanego
  * @var int|null $seasonDefault sezon proponowany, gdy mecz go nie ma
  * @var bool   $maRaport       czy dla tego meczu istnieje już raport
+ * @var list<array<string,mixed>> $sklad      skład zapisany w bazie (migracja 017)
+ * @var list<array<string,mixed>> $propozycja nazwiska z kolumny zawodnika eksportu
  */
 $isHome = $mecz['is_home'] ?? null;
 
@@ -125,6 +127,19 @@ $sezonWybrany = $sezonWybrany !== null ? (int) $sezonWybrany : ($seasonDefault ?
       </label>
 
       <label class="field">
+        <span class="field__label"><?= View::e(View::t('meta.round')) ?></span>
+        <?php /*
+          KOLEJKA JAKO NAPIS, nie liczba: „3", ale też „1/8 finału" i „baraż".
+          Kolumna istniała od migracji 014 i nic jej nie zapisywało — nagłówek
+          raportu miał znacznik, dashboard miał wyświetlanie, a wszędzie było
+          pusto (docs/STAN_PIVOTU.md §7.2).
+        */ ?>
+        <input class="field__input" type="text" name="round" maxlength="16"
+               placeholder="<?= View::e(View::t('meta.round.hint')) ?>"
+               value="<?= View::e((string) ($mecz['round'] ?? '')) ?>">
+      </label>
+
+      <label class="field">
         <span class="field__label"><?= View::e(View::t('matches.season')) ?></span>
         <select class="field__input" name="season_id">
           <option value=""><?= View::e(View::t('meta.season.auto')) ?></option>
@@ -177,7 +192,73 @@ $sezonWybrany = $sezonWybrany !== null ? (int) $sezonWybrany : ($seasonDefault ?
              value="<?= View::e((string) ($mecz['competition'] ?? '')) ?>">
     </label>
 
-    <button class="btn" type="submit">
+    <?php /* ------------------------------------------------ skład meczu (Sesja 6) */ ?>
+    <h2 class="h2"><?= View::e(View::t('roster.title')) ?></h2>
+    <p class="hint"><?= View::e(View::t('roster.hint')) ?></p>
+
+    <?php if ($propozycja !== []): ?>
+      <?php /*
+        PROPOZYCJA, NIE ZAPIS. Eksport niesie wyłącznie tych, którzy dostali
+        taga, i nie wie nic o minutach ani numerach — zapisany bez pytania
+        udawałby skład, którym nie jest. Przycisk wypełnia puste wiersze
+        i wymaga ponownego zapisu, więc decyzja zostaje po stronie operatora.
+      */ ?>
+      <p class="notice" role="status">
+        <?= View::e(View::t('roster.from_export', count($propozycja))) ?>
+        <button class="btn s" type="submit" name="akcja" value="z_eksportu">
+          <?= View::e(View::t('roster.from_export.submit')) ?>
+        </button>
+      </p>
+    <?php endif; ?>
+
+    <div class="tbl-scroll">
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th><?= View::e(View::t('roster.col.player')) ?></th>
+            <th><?= View::e(View::t('roster.col.number')) ?></th>
+            <th><?= View::e(View::t('roster.col.position')) ?></th>
+            <th><?= View::e(View::t('roster.col.minutes')) ?></th>
+            <th><?= View::e(View::t('roster.col.starter')) ?></th>
+          </tr>
+        </thead>
+        <tbody>
+        <?php for ($i = 0; $i < \CoachAnalyze\Roster::WIERSZY; $i++): ?>
+          <?php $z = $sklad[$i] ?? []; ?>
+          <tr>
+            <td>
+              <input class="field__input" type="text" maxlength="160"
+                     name="sklad[<?= $i ?>][player]"
+                     value="<?= View::e((string) ($z['player'] ?? '')) ?>">
+            </td>
+            <td>
+              <input class="field__input" type="number" min="1" max="999"
+                     name="sklad[<?= $i ?>][number]"
+                     value="<?= $z['number'] ?? '' ?>">
+            </td>
+            <td>
+              <input class="field__input" type="text" maxlength="16"
+                     name="sklad[<?= $i ?>][position]"
+                     value="<?= View::e((string) ($z['position'] ?? '')) ?>">
+            </td>
+            <td>
+              <input class="field__input" type="number" min="0"
+                     max="<?= \CoachAnalyze\Roster::MAX_MINUT ?>"
+                     name="sklad[<?= $i ?>][minutes]"
+                     value="<?= $z['minutes'] ?? '' ?>">
+            </td>
+            <td>
+              <input type="checkbox" name="sklad[<?= $i ?>][is_starter]" value="1"
+                     <?= !empty($z['is_starter']) ? 'checked' : '' ?>>
+            </td>
+          </tr>
+        <?php endfor; ?>
+        </tbody>
+      </table>
+    </div>
+    <p class="hint"><?= View::e(View::t('roster.empty_row')) ?></p>
+
+    <button class="btn" type="submit" name="akcja" value="zapisz">
       <?= View::e(View::t($edycja ? 'meta.edit.submit' : 'meta.submit')) ?>
     </button>
   </form>

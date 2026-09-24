@@ -404,18 +404,22 @@ Podstawienie jest znowu zwykłe, `/*__DATA__*/` bez zmian.
 Zostaje jako zapis decyzji: dwa znaczniki nie mogą być swoimi podnapisami. Następna
 generacja szablonu ma to wiedzieć, zanim wymyśli `__PAL_KLUBU__`.
 
-### 7.2 `__KOLEJKA__` nie ma skąd wziąć wartości
+### 7.2 ~~`__KOLEJKA__` nie ma skąd wziąć wartości~~ — ZAMKNIĘTE w sesji 6
 
-`matches` niesie `season_id`, `played_at`, `competition` i wynik — **kolejki nie ma**.
-`__KOLEJKA__` wypełni się dopiero, gdy PHP zacznie podawać `config.match.round`,
-a to wymaga kolumny, czyli migracji `014` (addytywnej: `ADD COLUMN round … NULL`).
+Kolumna `matches.round` powstała w migracji `014`, `run_job.php` przekazuje ją
+w `config.match.round` od sesji 2, a nagłówek v21 ma dla niej znacznik.
 
-**Wygląd jest już rozwiązany:** nagłówek v21 składa się z członów NIEPUSTYCH, więc
-brak kolejki zabiera cały człon razem z separatorem. Nie ma „sezon  · kolejka  · ".
+**Brakowało ostatniego ogniwa: NIC JEJ NIE ZAPISYWAŁO.** Formularz mety nie miał
+pola kolejki, więc kolumna stała pusta w całej bazie, a pusty był i nagłówek
+raportu, i kolumna „Kolejka" na liście meczów, i pasek sezonu na pulpicie.
+Sesja 6 dokłada pole do formularza (`Matches::saveMeta`).
 
-Zostaje samo pytanie o dane: czy kolejka ma być kolumną w `matches` (wtedy migracja
-`014`), czy zostaje poza produktem. **Do decyzji Tomasa** — nic nie jest zepsute,
-dopóki jej nie ma.
+Kolejkę trzymamy jako **napis**, nie liczbę: „3", ale też „1/8 finału" i „baraż"
+są kolejkami w rozumieniu operatora.
+
+Zostaje jako zapis lekcji: kolumna, kontrakt i znacznik w szablonie to jeszcze
+nie jest działająca funkcja. Brakującego ogniwa nie widać w żadnym z tych trzech
+miejsc — widać je dopiero na ekranie, jako puste pole.
 
 ### 7.3 `config.match` nie jest jeszcze wypełniane przez PHP
 

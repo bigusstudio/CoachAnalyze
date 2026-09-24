@@ -3,6 +3,56 @@
 Format: [wersja silnika] — data — opis.
 Każda zmiana, która modyfikuje wyjście silnika, MUSI mieć tu wpis wraz z powodem.
 
+## [0.16.0] — 2026-09-24 · sesja 6 pivotu „viewer"
+### Meta meczu i skład z minutami
+
+**ZMIANA WYJŚCIA — WYŁĄCZNIE W GENERACJI v21.** v17 nie ma znacznika `__SKLAD__`
+ani kafelka zawodników. Test złoty nietknięty.
+
+- **`config.match.roster`** — skład ZATWIERDZONY PRZEZ CZŁOWIEKA (migracja 017),
+  a nie kolumna zawodnika z eksportu. Eksport niesie wyłącznie tych, którzy
+  dostali taga, i nie wie nic o minutach ani numerach. Kafelek Zawodnicy pokazuje
+  `Rozegrane min` i łączy skład ze zdarzeniami **po pełnej nazwie, przez równość**
+  (pułapka 7). Zawodnik bez zdarzeń zostaje z zerami; nazwisko ze zdarzeń spoza
+  składu ląduje pod tabelą z adnotacją.
+- **Skład nie jedzie do przeglądarki bez kafelka zawodników** — ta sama zasada,
+  co dla nazwisk w `DATA`. Pola spoza kontraktu (`player`, `number`, `position`,
+  `minutes`, `is_starter`) odpadają: `config.match` przychodzi z bazy, a raport
+  wisi pod publicznym adresem. **Nieczytelne minuty to `null`, nigdy `0`.**
+- **`config.match.venue`** (`dom` / `wyjazd` / `null`) — czytane z istniejącej
+  kolumny `matches.is_home`. **Osobnej kolumny `venue` nie ma i nie będzie:**
+  trzy stany, ten sam fakt, to samo źródło; druga kolumna znaczyłaby dwa miejsca
+  zapisu jednej rzeczy.
+- **`meta.dictionary.players`** — nazwiska z kolumny zawodnika z licznikiem
+  zdarzeń. Zasila PROPOZYCJĘ składu na ekranie mety; propozycja wymaga
+  zatwierdzenia i nigdy nie zapisuje się sama.
+
+## Aplikacja — 2026-09-24 · sesja 6 pivotu „viewer"
+### Kolejka, skład, pasek sezonu
+
+- **Migracja `017`** (addytywna): tabela `match_players` — nazwisko, numer,
+  pozycja, minuty, wyjściowy; `UNIQUE (match_id, club_id, player)`, bo
+  dopasowanie zdarzeń idzie po pełnej nazwie.
+- **Kolejka w formularzu mety.** Kolumna `matches.round` istniała od migracji
+  014, `run_job.php` ją przekazywał, nagłówek v21 miał znacznik, a dashboard
+  wyświetlanie — **i nic jej nie zapisywało**, więc wszędzie było pusto.
+  Zamyka `docs/STAN_PIVOTU.md` §7.2. Trzymana jako **napis**: „3", ale też
+  „1/8 finału" i „baraż".
+- **Skład w tym samym formularzu** — edytowalna tabela 18 wierszy, zapis jednym
+  przyciskiem. Wiersz bez nazwiska i powtórzone nazwisko odpadają; minuty spoza
+  0–120 to brak danych, a zawodnik zostaje. Zapis **zastępuje** poprzedni skład
+  (kasowanie ciasne: jeden mecz, jeden klub) — dopisywanie zostawiałoby
+  w bazie zawodników wykreślonych z ekranu.
+- **Import składu z eksportu jako PROPOZYCJA** — wypełnia puste wiersze
+  i wymaga osobnego zapisu. Nie nadpisuje tego, co operator wpisał ręcznie.
+- **Pasek sezonu: kolejka z prefiksem `k. 3`**, numer porządkowy wyszarzony bez
+  prefiksu. Dotąd jedno i drugie było gołą liczbą, więc pasek czytało się
+  „1, 2, 3, 4, 5, 3" — ostatni kafelek był kolejką, a wyglądał jak piąty mecz
+  policzony od nowa.
+- **Kontekst klubu w szynie: nazwa w jednej linii z wielokropkiem.** Stało tam
+  `overflow-wrap: anywhere`, czyli nazwa łamała się w dowolnym miejscu i blok
+  urastał do trzech linii. Pełna nazwa zostaje w `title`.
+
 ## [0.15.0] — 2026-09-24 · sesja 5 pivotu „viewer"
 ### Kreator sekcji: układ raportu z templatu, aliasy zmiennych
 

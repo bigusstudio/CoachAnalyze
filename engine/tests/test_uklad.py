@@ -263,3 +263,93 @@ def test_alias_liczy_sie_razem_ze_zmienna(write_csv, row, tmp_path, capsys):
     assert sorted(e["tag"] for e in dane["events"]) == [
         "SBZ PODAJĄCY", "SBZ PODAJĄCY", "ZDOBYCIE SBZ"
     ]
+
+
+# ===========================================================================
+# SKŁAD MECZU (sesja 6)
+
+
+def _csv_ze_skladem(write_csv, row):
+    naglowki = [
+        "tag_name", "begin", "end", "team", "labels", "comment",
+        "pos_x_meters", "pos_y_meters", "pos_target_x_meters", "pos_target_y_meters",
+        "players",
+    ]
+    return write_csv([
+        ["STRZAŁ", 60, 66, "A", "CELNY", "X 0,40", "88", "34", "", "", "Kowalski Jan"],
+        ["STRZAŁ", 120, 126, "A", "NIECELNY", "", "80", "30", "", "", "Kowalski Jan"],
+        ["ZDOBYCIE SBZ", 180, 186, "A", "STRZAŁ", "", "70", "34", "90", "34", "Nowak Piotr"],
+    ], headers=naglowki)
+
+
+def _zbuduj(tmp_path, capsys, csv_path, roster, sekcje=None):
+    cfg = tmp_path / "config.json"
+    cfg.write_text(json.dumps({
+        "teams": {"us": {"name": "A", "color": "#E6A23C"},
+                  "them": {"name": "B", "color": "#5CA8E0"}},
+        "match": {"roster": roster},
+        "sections": sekcje or ["przeglad", "makro", "bilans", "mapy", "zawodnicy"],
+    }), encoding="utf-8")
+    html = tmp_path / "r.html"
+    main(["build", "--csv", csv_path, "--config", str(cfg), "--html-template", "v21",
+          "--out-html", str(html), "--out-meta", str(tmp_path / "meta.json")])
+    capsys.readouterr()
+    return html.read_text(encoding="utf-8")
+
+
+def test_sklad_jedzie_do_raportu_z_minutami(write_csv, row, tmp_path, capsys):
+    tresc = _zbuduj(tmp_path, capsys, _csv_ze_skladem(write_csv, row), [
+        {"player": "Kowalski Jan", "number": 9, "position": "NAP",
+         "minutes": 90, "is_starter": True},
+        {"player": "Cichy Marek", "number": 17, "position": "POM",
+         "minutes": 12, "is_starter": False},
+    ])
+
+    assert '"player":"Kowalski Jan"' in tresc
+    assert '"minutes":90' in tresc
+    assert "__SKLAD__" not in tresc
+    # Zawodnik BEZ zdarzeń zostaje w składzie: rozegrał minuty, tylko nikt go
+    # nie otagował. Eksport o nim nie wie, protokół owszem.
+    assert '"player":"Cichy Marek"' in tresc
+
+
+def test_bez_skladu_szablon_dostaje_pusta_tablice(write_csv, row, tmp_path, capsys):
+    """Pusto to nie brak znacznika: szablon rozróżnia „nie wpisano" od „wpisano pusty"."""
+    tresc = _zbuduj(tmp_path, capsys, _csv_ze_skladem(write_csv, row), [])
+
+    assert "const SKLAD = [];" in tresc
+    assert "__SKLAD__" not in tresc
+
+
+def test_sklad_nie_jedzie_bez_kafelka_zawodnikow(write_csv, row, tmp_path, capsys):
+    """Raport bez kafelka zawodników nie niesie nazwisk — także ze składu.
+
+    Raport wisi pod publicznym adresem (CLAUDE.md §5), a warstwa indywidualna
+    jest osobną decyzją klubu.
+    """
+    tresc = _zbuduj(
+        tmp_path, capsys, _csv_ze_skladem(write_csv, row),
+        [{"player": "Kowalski Jan", "minutes": 90}],
+        sekcje=["bilans", "mapy"],
+    )
+
+    assert "Kowalski Jan" not in tresc
+
+
+def test_pole_spoza_kontraktu_nie_wychodzi_do_przegladarki():
+    slot = render.roster_slot({"match": {"roster": [
+        {"player": "Kowalski Jan", "minutes": 90, "pesel": "nie twoja sprawa"},
+    ]}})
+
+    assert "pesel" not in slot["__SKLAD__"]
+    assert '"player":"Kowalski Jan"' in slot["__SKLAD__"]
+
+
+@pytest.mark.parametrize("minuty", ["", None, "brak", {}])
+def test_nieczytelne_minuty_to_brak_danych_nie_zero(minuty):
+    slot = render.roster_slot({"match": {"roster": [
+        {"player": "Kowalski Jan", "minutes": minuty},
+    ]}})
+
+    assert '"minutes":null' in slot["__SKLAD__"]
+    assert '"minutes":0' not in slot["__SKLAD__"]

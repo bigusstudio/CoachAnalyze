@@ -265,6 +265,33 @@ kosmetyczny: `thresholds` pochodzi z bazy, czyli od użytkownika, a te liczby id
 wprost do literału JS w raporcie pod publicznym adresem `/r/{club_key}/{token}`.
 Napis w tym miejscu nie jest „złym progiem", tylko treścią do wykonania.
 
+#### Skład meczu (`match.roster`)
+
+Skład **zatwierdzony przez człowieka** (migracja 017), a nie kolumna zawodnika
+z eksportu. Eksport niesie wyłącznie tych, którzy dostali taga, i nie wie nic
+o minutach ani numerach — zawodnik, który rozegrał 90 minut i nie zrobił nic,
+co analityk tagował, w eksporcie nie istnieje.
+
+```json
+"roster": [
+  { "player": "Kowalski Jan", "number": 9, "position": "NAP",
+    "minutes": 90, "is_starter": true }
+]
+```
+
+Pola spoza tej listy **nie wychodzą do przeglądarki** — `config.match` przychodzi
+z bazy, a raport wisi pod publicznym adresem. Nieczytelne minuty to `null`,
+nigdy `0`: „wszedł i nie zagrał minuty" to co innego niż „nie podano".
+
+Skład jest nadrzędny nad eksportem: zawodnik bez zdarzeń zostaje w tabeli
+z zerami, a nazwisko ze zdarzeń spoza składu ląduje pod nią z adnotacją —
+znaczy albo literówkę w składzie, albo kogoś, o kim zapomniano.
+
+**`match.venue`** (`dom` / `wyjazd` / `null`) opisuje, gdzie rozegrano mecz.
+Po stronie bazy czyta się z `matches.is_home`; osobnej kolumny `venue` NIE MA
+i mieć nie będzie — dwa miejsca zapisu jednej rzeczy rozjeżdżają się przy
+pierwszej edycji, która ruszy jedno z nich.
+
 #### Nazwiska zawodników w `DATA`
 
 Pole `player` pojawia się w zdarzeniu **tylko wtedy, gdy raport je pokaże**:
@@ -511,6 +538,8 @@ Blok czysto opisowy: sezon, kolejka i data rozegrania w nagłówku transmisyjnym
 | `match.round` | `__KOLEJKA__` | puste |
 | `match.date` | `__DATA_MECZU__` | puste |
 | `match.tenant_club_id` | — (nie znacznik: rozstrzyga, która drużyna dostaje slot `HOME`) | Lewy slot dostaje `us` |
+| `match.venue` | — (nie znacznik: opis meczu dla warstwy PHP i przyszłych metryk) | `null` |
+| `match.roster` | Kafelek **Zawodnicy** (v21): nazwisko, numer, pozycja, `Rozegrane min` | `[]` — kafelek mówi „nie wpisano składu" |
 
 **Puste znaczy puste, nie „dziś" ani „—"** (CLAUDE.md §8). Szablon v21 składa nagłówek
 z NIEPUSTYCH części, więc brak kolejki zabiera CAŁY CZŁON razem z separatorem, zamiast

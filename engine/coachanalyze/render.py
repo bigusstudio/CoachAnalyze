@@ -179,6 +179,8 @@ SLOT_GROUPS = {
     "progi": ("__PROGI__",),
     # Nadpisania słownika zmiennych z templatu klubu (v21, sesja 5).
     "vars_templatu": ("__VARS_TEMPLATU__",),
+    # Skład meczu zatwierdzony przez człowieka (v21, sesja 6).
+    "sklad": ("__SKLAD__",),
 }
 
 # Odwrotność mapy powyżej: znacznik -> nazwa grupy.
@@ -395,6 +397,53 @@ def _literal_js(obiekt):
     """
     tekst = json.dumps(obiekt, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return tekst.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+
+
+# Pola składu, które wchodzą do raportu. Lista ZAMKNIĘTA: `config.match.roster`
+# przychodzi z bazy, a raport wisi pod publicznym adresem — pole dołożone kiedyś
+# po stronie PHP nie ma prawa wyjechać do przeglądarki samym faktem istnienia.
+POLA_SKLADU = ("player", "number", "position", "minutes", "is_starter")
+
+
+def roster_slot(config=None, pokaz=True):
+    """`{'__SKLAD__': '[…]'}` — skład meczu jako literał tablicy JS.
+
+    PUSTA TABLICA PRZY BRAKU SKŁADU, nie brak znacznika: szablon rozróżnia
+    „nie wpisano składu" od „wpisano pusty" i mówi to wprost, zamiast pokazywać
+    pustą tabelę (pułapka 4 — brak warstwy indywidualnej ma być widoczny).
+
+    `pokaz=False` daje pustą tablicę mimo wpisanego składu. Ta sama zasada, co
+    przy nazwiskach w `DATA`: raport bez kafelka zawodników NIE NIESIE nazwisk.
+    Raport wisi pod publicznym adresem (CLAUDE.md §5), a warstwa indywidualna
+    jest osobną decyzją klubu — skład wysłany „na zapas" znaczyłby, że każdy
+    raport go niesie i nikt o tym nie wie.
+
+    Nazwiska przepuszczamy przez tę samą ucieczkę, co nazwy zmiennych: pochodzą
+    z bazy, czyli od użytkownika.
+    """
+    sklad = ((config or {}).get("match") or {}).get("roster") if pokaz else None
+    wiersze = []
+    for z in sklad if isinstance(sklad, list) else ():
+        if not isinstance(z, dict):
+            continue
+        nazwa = str(z.get("player") or "").strip()
+        if not nazwa:
+            continue
+        wiersz = {"player": nazwa, "is_starter": bool(z.get("is_starter"))}
+        for pole in ("number", "position", "minutes"):
+            wartosc = z.get(pole)
+            if wartosc is None or (isinstance(wartosc, str) and not wartosc.strip()):
+                wiersz[pole] = None
+            elif pole == "position":
+                wiersz[pole] = str(wartosc).strip()
+            else:
+                try:
+                    wiersz[pole] = int(wartosc)
+                except (TypeError, ValueError):
+                    wiersz[pole] = None
+        wiersze.append({k: wiersz.get(k) for k in POLA_SKLADU})
+
+    return {"__SKLAD__": _literal_js(wiersze)}
 
 
 def report_template_layout(template=None):
@@ -1156,6 +1205,16 @@ def render(frame, palette=None, metrics=None, canon_result=None, config=None,
 
     sciezka = resolve_template(template_path)
     template = load_template(sciezka)
+
+    # NAZWISKA JADĄ DO PRZEGLĄDARKI TYLKO WTEDY, GDY RAPORT JE POKAŻE: szablon
+    # musi nieść kafelek zawodników, a sekcja musi przetrwać wybór z templatu.
+    # Raport wisi pod publicznym adresem (CLAUDE.md §5), więc „na zapas" znaczy
+    # tu „skład wysłany bez powodu". Kolumna zawodnika w `Najlepszych okazjach`
+    # idzie za tą samą decyzją — bez kafelka zawodników nie ma skąd wziąć nazwisk.
+    pokaz_zawodnikow = (
+        WIDGET_ZAWODNICY in template
+        and "zawodnicy" not in ((config or {}).get("drop_sections") or ())
+    )
     slots, teams_defaulted = team_slots(frame, teams, tenant=tenant)
     slots.update(match_slots(config))
     # Podpis kierunku dostaje nazwy JUŻ PO UCIECZCE — jedna ścieżka zabezpieczania
@@ -1166,16 +1225,8 @@ def render(frame, palette=None, metrics=None, canon_result=None, config=None,
     ))
     slots.update(progi_slot(report_template))
     slots.update(vars_slot(report_template))
+    slots.update(roster_slot(config, pokaz=pokaz_zawodnikow))
     braki_znacznikow = missing_slots(template, slots)
-    # NAZWISKA JADĄ DO PRZEGLĄDARKI TYLKO WTEDY, GDY RAPORT JE POKAŻE: szablon
-    # musi nieść kafelek zawodników, a sekcja musi przetrwać wybór z templatu.
-    # Raport wisi pod publicznym adresem (CLAUDE.md §5), więc „na zapas" znaczy
-    # tu „skład wysłany bez powodu". Kolumna zawodnika w `Najlepszych okazjach`
-    # idzie za tą samą decyzją — bez kafelka zawodników nie ma skąd wziąć nazwisk.
-    pokaz_zawodnikow = (
-        WIDGET_ZAWODNICY in template
-        and "zawodnicy" not in ((config or {}).get("drop_sections") or ())
-    )
     data = view_data(
         frame, canon_result=canon_result, teams=teams, players=pokaz_zawodnikow,
     )

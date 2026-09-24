@@ -122,6 +122,15 @@ function ca_test_db(string $file, bool $withData = true): PDO
         updated_at TEXT NULL)');
     $pdo->exec('CREATE UNIQUE INDEX uq_tag_catalog ON tag_catalog (club_id, kind, name)');
 
+    // Migracja 017: sklad meczu. Kolumny lustrzane wobec produkcji — UNIQUE po
+    // (mecz, klub, zawodnik), bo dopasowanie zdarzen idzie po PELNEJ nazwie.
+    $pdo->exec('CREATE TABLE match_players (id INTEGER PRIMARY KEY AUTOINCREMENT,
+        match_id INT NOT NULL, club_id INT NOT NULL, player TEXT NOT NULL,
+        number INT NULL, position TEXT NULL, minutes INT NULL,
+        is_starter INT NOT NULL DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP)');
+    $pdo->exec('CREATE UNIQUE INDEX uq_match_players ON match_players (match_id, club_id, player)');
+
     $pdo->exec('CREATE INDEX idx_events_match_tag ON events (match_id, tag_name)');
     $pdo->exec('CREATE INDEX idx_events_match_side ON events (match_id, team_side, t_ms)');
     $pdo->exec('CREATE TABLE imports (id INTEGER PRIMARY KEY AUTOINCREMENT, match_id INT,

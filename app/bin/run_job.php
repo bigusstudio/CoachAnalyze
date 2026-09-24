@@ -42,6 +42,7 @@ use CoachAnalyze\ReportTemplates;
 use CoachAnalyze\PasswordReset;
 use CoachAnalyze\Rebuilds;
 use CoachAnalyze\RedisClient;
+use CoachAnalyze\Roster;
 use CoachAnalyze\Stats;
 use CoachAnalyze\Storage;
 use CoachAnalyze\View;
@@ -273,7 +274,7 @@ function uruchomSilnik(int $jobId, array $import, string $outHtml): array
     // byłoby drugim miejscem, w którym mogą się rozjechać.
     $match = Db::one(
         'SELECT m.club_home_id, m.club_away_id, m.club_id, m.played_at, m.round,
-                s.label AS season_label
+                m.is_home, s.label AS season_label
            FROM matches m
            LEFT JOIN seasons s ON s.id = m.season_id
           WHERE m.id = :id',
@@ -345,16 +346,32 @@ function uruchomSilnik(int $jobId, array $import, string $outHtml): array
      * nagłówek z członów niepustych, więc brak kolejki zabiera CAŁY człon
      * razem z separatorem (CLAUDE.md §8 — brak danych ma być widoczny).
      *
-     * `tenant_club_id` jedzie tu dla sesji 4: to od niego będzie zależeć,
-     * która drużyna zajmuje LEWĄ stronę raportu (docs/STAN_PIVOTU.md §7.7d).
-     * Dziś render go nie używa i to jest w porządku — pole ma być na miejscu,
-     * zanim zacznie być potrzebne.
+     * `tenant_club_id` rozstrzyga od sesji 4a, która drużyna zajmuje LEWĄ stronę
+     * raportu (docs/STAN_PIVOTU.md §7.7 a).
+     *
+     * `venue` CZYTAMY Z `matches.is_home`, a nie z osobnej kolumny. Trzy stany —
+     * `dom`, `wyjazd`, `null` — to dokładnie te same trzy, które `is_home` już
+     * trzyma (1 / 0 / NULL). Druga kolumna o tej samej treści znaczyłaby dwa
+     * miejsca zapisu jednej rzeczy i pytanie „która jest prawdziwa" przy
+     * pierwszym rozjeździe. Nazwa w kontrakcie zostaje mówiąca: `is_home` po
+     * stronie silnika myliłoby się ze slotem `HOME`, który od sesji 4a znaczy
+     * „klub-tenant", a nie „gospodarz".
+     *
+     * `roster` to SKŁAD ZATWIERDZONY PRZEZ CZŁOWIEKA (migracja 017), nie
+     * kolumna zawodnika z eksportu. Eksport niesie wyłącznie tych, którzy
+     * dostali taga, i nie wie nic o minutach — pusta lista znaczy „nie wpisano
+     * składu" i szablon mówi to wprost, zamiast pokazywać pustą tabelę.
      */
+    $venue = $match['is_home'] === null ? null : ((int) $match['is_home'] === 1 ? 'dom' : 'wyjazd');
     $metaMeczu = [
         'date'           => (string) ($match['played_at'] ?? ''),
         'season'         => (string) ($match['season_label'] ?? ''),
         'round'          => (string) ($match['round'] ?? ''),
+        'venue'          => $venue,
         'tenant_club_id' => $clubIdTenanta,
+        'roster'         => $clubIdTenanta !== null
+            ? Roster::engineConfig($matchId, $clubIdTenanta)
+            : [],
     ];
 
     $configPath = $dir . '/config.json';

@@ -336,9 +336,20 @@ $klasaWyniku = static function (?int $nas, ?int $ich): string {
                 . ' · ' . ($r['played_at'] ?? View::t('match.no_date'))
                 . ($ma ? ' · ' . $nas . ':' . $ich : '');
           ?>
+          <?php /*
+            KOLEJKA Z PREFIKSEM, NUMER PORZĄDKOWY WYSZARZONY (Sesja 6).
+            Do tej sesji jedno i drugie było gołą liczbą, więc pasek czytało się
+            „1, 2, 3, 4, 5, 3" — ostatni kafelek to była kolejka 3, a wyglądał
+            jak piąty mecz policzony od nowa. Dwie różne rzeczy w jednym pasku
+            muszą się różnić wyglądem, a nie tylko znaczeniem.
+          */ ?>
           <a class="<?= $kl ?>" href="/mecze/<?= (int) $r['id'] ?>/historia"
              title="<?= View::e($tytul) ?>">
-            <?= View::e($kolejka ?? (string) ($nr + 1)) ?>
+            <?php if ($kolejka !== null): ?>
+              <?= View::e(View::t('dash.round.prefix', $kolejka)) ?>
+            <?php else: ?>
+              <span class="q__nr"><?= View::e((string) ($nr + 1)) ?></span>
+            <?php endif; ?>
             <small><?= View::e($podpis) ?></small>
           </a>
         <?php endforeach; ?>

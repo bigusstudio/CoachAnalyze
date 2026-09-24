@@ -397,5 +397,80 @@ check('z huba klubu',
 check('z historii meczu',
     str_contains(http('GET', '/mecze/' . $matchId . '/historia')['body'], '/mecze/' . $matchId . '/meta'));
 
+// ============================================================ G. kolejka i skład
+echo "\n== G. kolejka i skład meczu (Sesja 6 pivotu) ==\n";
+
+$formG = http('GET', '/mecze/' . $matchId . '/meta');
+check('formularz ma pole kolejki',
+    str_contains($formG['body'], 'name="round"'),
+    'kolumna `round` istniała od migracji 014 i NIC jej nie zapisywało');
+check('formularz ma 18 wierszy składu',
+    substr_count($formG['body'], 'name="sklad[') === 18 * 5,
+    'pięć pól na wiersz: nazwisko, numer, pozycja, minuty, wyjściowy');
+
+$zapisG = http('POST', '/mecze/' . $matchId . '/meta', ['form' => [
+    'csrf'      => csrfZ($formG['body']),
+    'played_at' => '2026-09-20',
+    'round'     => '7',
+    'is_home'   => '0',
+    'sklad'     => [
+        0 => ['player' => 'Kowalski Jan', 'number' => '9', 'position' => 'NAP',
+              'minutes' => '90', 'is_starter' => '1'],
+        1 => ['player' => 'Nowak Piotr', 'number' => '4', 'position' => 'OBR',
+              'minutes' => '62'],
+        // Wiersz bez nazwiska — minuty bez zawodnika nie są niczyimi minutami.
+        2 => ['player' => '  ', 'minutes' => '45'],
+        // Powtórzone nazwisko: raport dopasowuje po PEŁNEJ nazwie i nie umiałby
+        // rozróżnić tych dwóch wierszy.
+        3 => ['player' => 'Kowalski Jan', 'minutes' => '12'],
+        // Minuty spoza zakresu to literówka, nie dane.
+        4 => ['player' => 'Wiśniewski Adam', 'minutes' => '999'],
+    ],
+]]);
+check('zapis składu przekierowuje', $zapisG['status'] === 302, (string) $zapisG['location']);
+
+ca_test_db($baza);
+$poG = Db::one('SELECT round, is_home FROM matches WHERE id = :m', ['m' => $matchId]);
+check('kolejka zapisana', (string) $poG['round'] === '7');
+check('wyjazd zapisany', (int) $poG['is_home'] === 0,
+    '`venue` z kontraktu czyta się z tej kolumny — nie ma drugiej');
+
+$sklad = Db::all('SELECT player, number, position, minutes, is_starter
+                    FROM match_players WHERE match_id = :m ORDER BY player',
+    ['m' => $matchId]);
+check('zapisano trzech zawodników', count($sklad) === 3,
+    'pusty wiersz i powtórzone nazwisko odpadają — zapisano: ' . count($sklad));
+
+$poNazwie = [];
+foreach ($sklad as $z) { $poNazwie[(string) $z['player']] = $z; }
+check('numer, pozycja i minuty zapisane',
+    (int) $poNazwie['Kowalski Jan']['number'] === 9
+    && (string) $poNazwie['Kowalski Jan']['position'] === 'NAP'
+    && (int) $poNazwie['Kowalski Jan']['minutes'] === 90);
+check('wyjściowy oznaczony', (int) $poNazwie['Kowalski Jan']['is_starter'] === 1);
+check('rezerwowy nie jest wyjściowym', (int) $poNazwie['Nowak Piotr']['is_starter'] === 0);
+check('minuty spoza zakresu to brak danych, nie 999',
+    $poNazwie['Wiśniewski Adam']['minutes'] === null,
+    'zawodnik ZOSTAJE w składzie — odpada sama liczba');
+
+$formPo = http('GET', '/mecze/' . $matchId . '/meta');
+check('skład wraca do formularza',
+    str_contains($formPo['body'], 'value="Kowalski Jan"')
+    && str_contains($formPo['body'], 'value="7"'));
+
+// Skład zapisany drugi raz ZASTĘPUJE poprzedni — formularz jest edytowalną
+// tabelą, a dopisywanie zostawiałoby zawodników wykreślonych z ekranu.
+$zapisH = http('POST', '/mecze/' . $matchId . '/meta', ['form' => [
+    'csrf'      => csrfZ($formPo['body']),
+    'played_at' => '2026-09-20',
+    'round'     => '7',
+    'sklad'     => [0 => ['player' => 'Kowalski Jan', 'minutes' => '90']],
+]]);
+check('ponowny zapis przekierowuje', $zapisH['status'] === 302);
+ca_test_db($baza);
+check('skład ZASTĘPUJE poprzedni, nie dokłada się',
+    (int) Db::one('SELECT COUNT(*) AS c FROM match_players WHERE match_id = :m',
+        ['m' => $matchId])['c'] === 1);
+
 echo "\n=== OK: {$ok}, BŁĘDÓW: {$fail} ===\n";
 exit($fail === 0 ? 0 : 1);

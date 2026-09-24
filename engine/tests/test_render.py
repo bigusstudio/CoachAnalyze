@@ -101,6 +101,12 @@ def test_render_nie_zmienia_niczego_poza_placeholderami(generacja):
                               "display_label": "ZzEtykieta", "aliases": ["ZzAlias"]}]}
     sciezka = render.template_path_for(generacja)
     szablon = render.load_template(sciezka)
+    # Skład NIEPUSTY z tego samego powodu, co niepuste nadpisania słownika:
+    # `[]` jest w szablonie za często, żeby dało się je jednoznacznie odwrócić.
+    config = dict(config, match=dict(config["match"], roster=[
+        {"player": "ZzZawodnik", "number": 9, "position": "ZzPoz", "minutes": 90,
+         "is_starter": True},
+    ]))
     html, _ = render.render(
         RAMKA, palette={"tags": {}, "labels": {}}, config=config, template_path=sciezka,
         direction=kierunek, report_template=templat,
@@ -122,6 +128,7 @@ def test_render_nie_zmienia_niczego_poza_placeholderami(generacja):
     ))
     slots.update(render.progi_slot())
     slots.update(render.vars_slot(templat))
+    slots.update(render.roster_slot(config))
     # Malejąco po długości wstawionej wartości — krótsza nie może zjeść fragmentu dłuższej.
     for placeholder in sorted(slots, key=lambda p: len(slots[p]), reverse=True):
         odwrocone = odwrocone.replace(slots[placeholder], placeholder)
