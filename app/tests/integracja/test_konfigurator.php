@@ -297,8 +297,12 @@ check('config NIE niesie pól roboczych konfiguratora',
     !isset($zmiennaConfig['count'], $zmiennaConfig['samples'], $zmiennaConfig['confidence']),
     'liczby z jednego importu nie opisują templatu klubu na stałe');
 check('config niesie wyłącznie pola kontraktu',
-    array_keys($zmiennaConfig) === ['id', 'source', 'canon', 'display_label', 'color', 'sections', 'visible'],
+    array_keys($zmiennaConfig)
+        === ['id', 'source', 'canon', 'display_label', 'color', 'sections', 'aliases', 'visible'],
     implode(',', array_keys($zmiennaConfig)));
+// `aliases` doszło w sesji 5 — inne nazwy TEJ SAMEJ zmiennej w innych eksportach.
+check('nowa zmienna startuje bez aliasów', $zmiennaConfig['aliases'] === [],
+    'alias to decyzja człowieka z ekranu różnic, nie stan domyślny');
 
 $pods = Configurator::podsumowanie($config);
 check('podsumowanie liczy zmienne i kanoniczne',

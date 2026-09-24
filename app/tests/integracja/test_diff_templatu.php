@@ -376,6 +376,87 @@ check('skrót obcej pozycji nie ma odwzorowania',
 check('tag i etykieta o tej samej nazwie mają różne klucze',
     TemplateDiff::kluczHtml('tag', 'CELNY') !== TemplateDiff::kluczHtml('label', 'CELNY'));
 
+// ---------------------------------------------------------------- kontynuacja zmiennej
+echo "\n== kontynuacja zmiennej dopisuje alias, nie nową zmienną ==\n";
+
+/*
+ * SEDNO: klub zmienia nazwę taga między sezonami (`SBZ PODAJĄCY` -> `ZDOBYCIE SBZ`).
+ * Dodanie tego jako NOWEJ zmiennej dałoby raport z dwiema seriami zamiast jednej,
+ * a obie liczby wyglądałyby sensownie — więc nikt by tego nie zauważył.
+ */
+$bazowy = Configurator::config(
+    [[
+        'id' => 'v_001', 'source' => ['type' => 'tag', 'raw' => 'ZDOBYCIE SBZ'],
+        'canon' => null, 'display_label' => 'Wejście w SBZ', 'color' => '#E8722C',
+        'sections' => ['bilans', 'tl_sbz'], 'visible' => true,
+    ]],
+    ['bilans', 'tl_sbz']
+);
+$pozycjeAlias = [['type' => 'tag', 'name' => 'SBZ PODAJĄCY', 'count' => 12, 'samples' => []]];
+$kluczAlias = TemplateDiff::klucz('tag', 'SBZ PODAJĄCY');
+
+check('kontynuacja liczy się jako zmiana templatu',
+    TemplateDiff::czyDopisuje([$kluczAlias => TemplateDiff::KONTYNUACJA]),
+    'zmienia definicję raportu, więc musi dostać własną wersję');
+
+$zAliasem = TemplateDiff::nowyConfig(
+    $bazowy, $pozycjeAlias,
+    [$kluczAlias => TemplateDiff::KONTYNUACJA],
+    [$kluczAlias => ['alias_of' => 'ZDOBYCIE SBZ']]
+);
+check('nie powstała nowa zmienna', count($zAliasem['variables']) === 1,
+    'to ta sama zmienna pod inną nazwą, a nie druga zmienna');
+check('alias dopisany do istniejącej zmiennej',
+    ($zAliasem['variables'][0]['aliases'] ?? []) === ['SBZ PODAJĄCY']);
+check('nazwa główna zmiennej nietknięta',
+    $zAliasem['variables'][0]['source']['raw'] === 'ZDOBYCIE SBZ');
+
+$wskazanieDonikad = TemplateDiff::nowyConfig(
+    $bazowy, $pozycjeAlias,
+    [$kluczAlias => TemplateDiff::KONTYNUACJA],
+    [$kluczAlias => ['alias_of' => 'ZMIENNA KTÓREJ NIE MA']]
+);
+check('wskazanie na nieistniejącą zmienną jest pomijane',
+    ($wskazanieDonikad['variables'][0]['aliases'] ?? []) === [],
+    'alias prowadzący donikąd byłby gorszy niż jego brak');
+
+$dwaRazy = TemplateDiff::nowyConfig(
+    $zAliasem, $pozycjeAlias,
+    [$kluczAlias => TemplateDiff::KONTYNUACJA],
+    [$kluczAlias => ['alias_of' => 'ZDOBYCIE SBZ']]
+);
+check('ten sam alias nie dubluje się przy powtórnej decyzji',
+    ($dwaRazy['variables'][0]['aliases'] ?? []) === ['SBZ PODAJĄCY']);
+
+$cele = TemplateDiff::celeKontynuacji($bazowy);
+check('lista celów niesie etykietę operatora, nie surową nazwę',
+    $cele === [['raw' => 'ZDOBYCIE SBZ', 'label' => 'Wejście w SBZ']]);
+check('bez templatu nie ma czego kontynuować', TemplateDiff::celeKontynuacji(null) === []);
+
+// ---------------------------------------------------------------- układ przeżywa rewizję
+echo "\n== układ raportu przeżywa dopisanie zmiennej ==\n";
+
+$zUkladem = $bazowy;
+$zUkladem['sections'] = [
+    ['id' => 's1', 'size' => '1/2', 'widgets' => ['donuty'], 'title' => 'Moje udziały'],
+    ['id' => 's2', 'size' => '1', 'widgets' => ['bilans'], 'title' => ''],
+];
+$zUkladem['thresholds'] = ['pressing' => 55];
+
+$poRewizji = TemplateDiff::nowyConfig(
+    $zUkladem,
+    [['type' => 'tag', 'name' => 'NOWY TAG', 'count' => 3, 'samples' => []]],
+    [TemplateDiff::klucz('tag', 'NOWY TAG') => TemplateDiff::DODAJ],
+    [TemplateDiff::klucz('tag', 'NOWY TAG') => ['sections' => ['bilans']]]
+);
+check('kolejność i szerokość kafli zostają',
+    ($poRewizji['sections'][0]['widgets'][0] ?? '') === 'donuty'
+    && ($poRewizji['sections'][0]['size'] ?? '') === '1/2'
+    && ($poRewizji['sections'][0]['title'] ?? '') === 'Moje udziały',
+    'rewizja mapowań dopisuje ZMIENNE, a nie przestawia raport');
+check('progi klubu zostają', ($poRewizji['thresholds']['pressing'] ?? null) === 55);
+check('nowa zmienna faktycznie doszła', count($poRewizji['variables']) === 2);
+
 echo "\n=== OK: {$ok}, BŁĘDÓW: {$fail} ===\n";
 if ($pominiete !== []) {
     echo "POMINIĘTE (nie są zielone — po prostu się nie wykonały):\n";

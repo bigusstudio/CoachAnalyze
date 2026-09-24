@@ -424,9 +424,20 @@ check('templat zapisany do katalogu zadania jako dowod',
     $templatePliki !== [],
     'z czego powstal ten konkretny raport ma byc widoczne na dysku');
 if ($templatePliki !== []) {
-    $zPliku = json_decode((string) file_get_contents($templatePliki[0]), true);
+    /*
+     * ASERCJA O TOZSAMOSCI, NIE O NUMERZE SCHEMATU.
+     *
+     * Stalo tu `schema_version === 1`, czyli test pilnowal wersji struktury
+     * zamiast tego, co mial pilnowac — i zapalil sie w sesji 5, kiedy schemat
+     * urosl do 2, mimo ze mechanizm dzialal bez zmian. Teraz porownujemy plik
+     * z TRESCIA KOLUMNY: przepakowanie po drodze (inna kolejnosc kluczy, inne
+     * kodowanie polskich znakow) odbieraloby dowodowi wartosc niezaleznie od
+     * tego, ktory schemat jest aktualny.
+     */
+    $zKolumny = (string) (\CoachAnalyze\ReportTemplates::current(1)['config'] ?? '');
     check('plik templatu to TRESC KOLUMNY bez przeksztalcen',
-        ($zPliku['schema_version'] ?? null) === 1 && isset($zPliku['variables']),
+        rtrim((string) file_get_contents($templatePliki[0])) === rtrim($zKolumny)
+        && isset(json_decode((string) file_get_contents($templatePliki[0]), true)['variables']),
         'przepakowanie po drodze odbieraloby dowodowi wartosc');
 }
 

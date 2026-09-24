@@ -161,6 +161,29 @@ $znaczniki = [
                    value="<?= View::e(TemplateDiff::POMIN) ?>" checked>
             <span><?= View::e(View::t($rewizja ? 'rev.act.keep' : 'diff.act.skip')) ?></span>
           </label>
+          <?php /*
+            KONTYNUACJA ZMIENNEJ — wyłącznie dla TAGÓW i wyłącznie wtedy, gdy
+            klub ma już zmienne, do których da się dopisać alias. Bez templatu
+            nie ma czego kontynuować, a pusty `<select>` obok zaznaczalnej
+            opcji byłby zaproszeniem do zapisania decyzji bez treści.
+          */ ?>
+          <?php if ($cele !== [] && (string) $poz['type'] === Suggester::TAG): ?>
+            <label class="field--check">
+              <input type="radio" name="decyzja[<?= View::e($k) ?>]"
+                     value="<?= View::e(TemplateDiff::KONTYNUACJA) ?>">
+              <span><?= View::e(View::t('diff.act.alias')) ?></span>
+            </label>
+            <label class="field">
+              <span class="field__label"><?= View::e(View::t('diff.act.alias.target')) ?></span>
+              <select class="field__input" name="alias_of[<?= View::e($k) ?>]">
+                <option value=""><?= View::e(View::t('diff.act.alias.pick')) ?></option>
+                <?php foreach ($cele as $cel): ?>
+                  <option value="<?= View::e($cel['raw']) ?>"><?= View::e($cel['label']) ?></option>
+                <?php endforeach; ?>
+              </select>
+            </label>
+          <?php endif; ?>
+
           <?php if ($rewizja && $stan === TemplateDiff::STAN_NA_STALE): ?>
             <label class="field--check">
               <input type="radio" name="decyzja[<?= View::e($k) ?>]"

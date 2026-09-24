@@ -177,6 +177,8 @@ SLOT_GROUPS = {
     "kierunek": ("__KIERUNEK_HOME__", "__KIERUNEK_AWAY__", "__KIERUNEK_OPIS__"),
     # Progi faktów sekcji Przegląd (v21, sesja 4b). Jeden znacznik, cały obiekt.
     "progi": ("__PROGI__",),
+    # Nadpisania słownika zmiennych z templatu klubu (v21, sesja 5).
+    "vars_templatu": ("__VARS_TEMPLATU__",),
 }
 
 # Odwrotność mapy powyżej: znacznik -> nazwa grupy.
@@ -378,6 +380,38 @@ def progi_slot(template=None):
     """`{'__PROGI__': '{"pressing":70,…}'}` — gotowy literał obiektu JS."""
     return {"__PROGI__": json.dumps(progi(template), ensure_ascii=False, sort_keys=True,
                                     separators=(",", ":"))}
+
+
+def _literal_js(obiekt):
+    """Obiekt Pythona -> literał JS bezpieczny WEWNĄTRZ `<script>`.
+
+    `json.dumps` daje poprawny JSON, a JSON jest poprawnym JS — ale nie to jest
+    problemem. Problemem jest `</script>` wewnątrz napisu: przeglądarka domyka
+    na nim blok skryptu, nie patrząc, że to środek literału. Nazwy zmiennych
+    pochodzą z bazy, czyli od użytkownika, a raport wisi pod publicznym adresem.
+
+    Uciekamy `<`, `>` i `&` jako sekwencje ``\\uXXXX`` — wewnątrz napisu JS znaczą dokładnie
+    ten sam znak, więc porównania i wyświetlanie działają bez zmian.
+    """
+    tekst = json.dumps(obiekt, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return tekst.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+
+
+def report_template_layout(template=None):
+    """Układ sekcji z templatu. Wydzielone, żeby `render` nie importował modułu w ciele."""
+    from . import report_template as tpl
+    return tpl.sections_layout(template)
+
+
+def vars_slot(template=None):
+    """`{'__VARS_TEMPLATU__': '{…}'}` — nadpisania słownika `VARS` szablonu.
+
+    Pusty obiekt przy braku templatu: szablon robi wtedy `Object.assign` z niczym
+    i zostaje przy własnym słowniku. Znacznik ma być wypełniony ZAWSZE, bo
+    niewypełniony zostawiłby w pliku `__VARS_TEMPLATU__` i wywrócił skrypt.
+    """
+    from . import report_template as tpl
+    return {"__VARS_TEMPLATU__": _literal_js(tpl.variable_overrides(template))}
 
 
 def crest_data_uri(path):
@@ -950,6 +984,135 @@ def drop_sections(html, section_ids):
     return html, usuniete
 
 
+# Kontener układu sekcji (sesja 5). Wstawiany WYŁĄCZNIE wtedy, gdy templat
+# faktycznie coś o układzie mówi — bez niego sekcje zostają zwykłymi blokami
+# jeden pod drugim, tak jak przed tą sesją.
+KONTENER_UKLADU = "ca-sekcje"
+
+# Szerokość pełna. Układ złożony z samych pełnych kafli NIE WŁĄCZA siatki:
+# wynik byłby ten sam, a `display: grid` zmienia zachowanie podziału stron
+# przy druku (PDF A4 i slajdy) — i to jest zmiana, której nikt nie zamawiał.
+SPAN_PELNY = 6
+
+
+def _zakres_sekcji(html, dom_id):
+    """(początek, koniec) bloku `<section id="…">…</section>` albo `None`."""
+    start = html.find('<section id="{}"'.format(dom_id))
+    if start == -1:
+        return None
+    koniec = html.find("</section>", start)
+    if koniec == -1:
+        return None
+    return start, koniec + len("</section>")
+
+
+def _z_tytulem(blok, tytul):
+    """Nagłówek `<h2>` sekcji podmieniony na tytuł z templatu.
+
+    Pusty tytuł zostawia nagłówek szablonu — templat, który nic nie mówi,
+    nie ma prawa wykasować nazwy sekcji.
+    """
+    if not tytul:
+        return blok
+    i = blok.find("<h2>")
+    j = blok.find("</h2>", i)
+    if i == -1 or j == -1:
+        return blok
+    return blok[:i + len("<h2>")] + html_mod.escape(tytul) + blok[j:]
+
+
+def _ze_span(blok, span):
+    """Szerokość kafla wpisana w atrybut `style` znacznika `<section>`.
+
+    W atrybucie, nie w klasie: szablon jest samowystarczalnym plikiem, a klasa
+    `.sec-w3` wymagałaby reguły w arkuszu, której v17 nie ma i mieć nie powinien.
+    """
+    koniec_znacznika = blok.find(">")
+    if koniec_znacznika == -1:
+        return blok
+    return (blok[:koniec_znacznika]
+            + ' style="grid-column:span {}"'.format(int(span))
+            + blok[koniec_znacznika:])
+
+
+def uklad_sekcji(html, layout):
+    """Kolejność, szerokość i tytuły sekcji wg układu z templatu (schemat 2).
+
+    ┌──────────────────────────────────────────────────────────────────────┐
+    │ TA SAMA KLASA OBEJŚCIA, CO `drop_sections` — i z tego samego powodu.  │
+    │ Szablon v21 ma sekcje wpisane w plik, więc „przesuń pojedynki nad     │
+    │ mapy" robimy na GOTOWYM HTML-u, a nie sterując szablonem.             │
+    │                                                                      │
+    │ Ograniczenie jest realne: przenosimy blok `<section>` wraz z treścią, │
+    │ ale skrypt szablonu szuka węzłów po `id` i po `[data-widget]`, więc   │
+    │ kolejność w DOM-ie mu nie przeszkadza. Gdyby kiedyś zaczął polegać    │
+    │ na sąsiedztwie, to miejsce trzeba będzie przepisać.                   │
+    └──────────────────────────────────────────────────────────────────────┘
+
+    `layout` to płaska lista z `report_template.sections_layout`. Pusta lista
+    albo `None` zostawia HTML NIETKNIĘTY — templat schematu 1 nie ma układu
+    i ma dawać dokładnie ten sam raport, co dotąd.
+
+    Zwraca `(html, kolejność[])`.
+    """
+    if not layout:
+        return html, []
+
+    # 1. Wszystkie sekcje obecne w dokumencie, w kolejności wystąpienia.
+    obecne = {}
+    for sid, dom_id in SECTION_DOM_ID.items():
+        zakres = _zakres_sekcji(html, dom_id)
+        if zakres is not None:
+            obecne[sid] = zakres
+
+    if not obecne:
+        return html, []
+
+    # 2. Kolejność docelowa: najpierw układ, potem to, czego układ nie wymienił.
+    #    Przy schemacie 2 ten ogon jest pusty (`sections_enabled` czyta z układu),
+    #    ale sekcja wyrzucona poza układ przez błąd zapisu ma ZOSTAĆ w raporcie,
+    #    a nie zniknąć bez powodu w raporcie pokrycia.
+    spany = {}
+    tytuly = {}
+    kolejnosc = []
+    for wpis in layout:
+        sid = wpis.get("widget")
+        if sid not in obecne or sid in kolejnosc:
+            continue
+        kolejnosc.append(sid)
+        spany[sid] = int(wpis.get("span") or SPAN_PELNY)
+        tytuly[sid] = wpis.get("title") or ""
+
+    ogon = [sid for sid in sorted(obecne, key=lambda k: obecne[k][0]) if sid not in kolejnosc]
+    kolejnosc += ogon
+
+    siatka = any(spany.get(sid, SPAN_PELNY) != SPAN_PELNY for sid in kolejnosc)
+
+    # 3. Bloki wycinamy OD KOŃCA, żeby wcześniejsze indeksy zostały ważne.
+    bloki = {}
+    for sid in sorted(obecne, key=lambda k: obecne[k][0], reverse=True):
+        start, koniec = obecne[sid]
+        bloki[sid] = html[start:koniec]
+        html = html[:start] + html[koniec:]
+
+    wstaw_w = min(start for start, _k in obecne.values())
+
+    czesci = []
+    for sid in kolejnosc:
+        blok = _z_tytulem(bloki[sid], tytuly.get(sid, ""))
+        if siatka:
+            blok = _ze_span(blok, spany.get(sid, SPAN_PELNY))
+        czesci.append(blok)
+
+    zlozone = "\n".join(czesci)
+    if siatka:
+        zlozone = '<div id="{}" data-uklad="siatka">\n{}\n</div>'.format(
+            KONTENER_UKLADU, zlozone
+        )
+
+    return html[:wstaw_w] + zlozone + html[wstaw_w:], kolejnosc
+
+
 def stamp_block(template_version, generated_at):
     """Dyskretna stopka „templat vN · wygenerowano DATA", doklejana przed </body>.
 
@@ -1002,6 +1165,7 @@ def render(frame, palette=None, metrics=None, canon_result=None, config=None,
         labels={slot: slots["__TEAM_{}_LABEL__".format(slot)] for _side, slot in sloty},
     ))
     slots.update(progi_slot(report_template))
+    slots.update(vars_slot(report_template))
     braki_znacznikow = missing_slots(template, slots)
     # NAZWISKA JADĄ DO PRZEGLĄDARKI TYLKO WTEDY, GDY RAPORT JE POKAŻE: szablon
     # musi nieść kafelek zawodników, a sekcja musi przetrwać wybór z templatu.
@@ -1034,6 +1198,10 @@ def render(frame, palette=None, metrics=None, canon_result=None, config=None,
     # normalny (pulapka 3 — III STREFA bywa bez wspolrzednych), a nie awaria.
     html, sekcje_usuniete = drop_sections(html, (config or {}).get("drop_sections"))
 
+    # UKLAD SEKCJI Z TEMPLATU (schemat 2). Po wycieciu, nie przed: przestawiamy
+    # to, co faktycznie zostalo w dokumencie.
+    html, kolejnosc_sekcji = uklad_sekcji(html, report_template_layout(report_template))
+
     # Stempel wersji templatu. Bez wersji — bez stopki i bajt w bajt jak dotad.
     stempel = stamp_block(
         (config or {}).get("template_version"),
@@ -1044,6 +1212,9 @@ def render(frame, palette=None, metrics=None, canon_result=None, config=None,
 
     return html, {
         "sections_dropped": sekcje_usuniete,
+        # Kolejnosc sekcji po zastosowaniu ukladu z templatu. Pusta lista znaczy
+        # „templat nie mowil o ukladzie" — czyli kolejnosc szablonu.
+        "sections_order": kolejnosc_sekcji,
         "template": sciezka,
         # Nazwa generacji idzie do logu obok ścieżki: pytanie „dlaczego raport
         # z marca wygląda inaczej" (CLAUDE.md §7) ma mieć odpowiedź bez zgadywania,

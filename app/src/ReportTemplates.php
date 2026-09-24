@@ -29,7 +29,18 @@ final class ReportTemplates
      * Wersja struktury `config`. Podbijana, gdy zmienia się KSZTAŁT JSON-a,
      * a nie jego zawartość — silnik czyta po niej, jak interpretować plik.
      */
-    public const SCHEMA_VERSION = 1;
+    public const SCHEMA_VERSION = 2;
+
+    /*
+     * SCHEMAT 2 (Sesja 5) dokłada dwa pola i NIE USUWA żadnego:
+     *   `sections`   — układ raportu (kolejność, szerokość, tytuł kafla),
+     *   `thresholds` — progi faktów sekcji Przegląd.
+     *
+     * Templaty schematu 1 leżą dalej w bazie i mają dawać DOKŁADNIE TEN SAM
+     * raport, co przed sesją 5: silnik czyta numer schematu i przy jedynce nie
+     * szuka układu, a kafle dołożone w 4a/4b wracają do stanu domyślnego
+     * zamiast wyglądać na wyłączone (`coverage.sekcje_z_templatu`).
+     */
 
     /**
      * Aktualny templat klubu albo null, gdy klub nie przeszedł konfiguratora.

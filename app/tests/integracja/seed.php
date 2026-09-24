@@ -117,6 +117,8 @@ function ca_test_db(string $file, bool $withData = true): PDO
         club_id INT NOT NULL, kind TEXT NOT NULL, name TEXT NOT NULL, color TEXT NULL,
         first_seen_import_id INT NULL, last_seen_import_id INT NULL,
         seen_matches INT NOT NULL DEFAULT 0, seen_events INT NOT NULL DEFAULT 0,
+        -- Migracja 016: „ten tag jest kontynuacją tamtej zmiennej" (sesja 5).
+        alias_of TEXT NULL,
         updated_at TEXT NULL)');
     $pdo->exec('CREATE UNIQUE INDEX uq_tag_catalog ON tag_catalog (club_id, kind, name)');
 

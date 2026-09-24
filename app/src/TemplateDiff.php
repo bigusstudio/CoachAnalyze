@@ -39,6 +39,27 @@ final class TemplateDiff
      */
     public const COFNIJ = 'cofnij';
 
+    /**
+     * „To jest KONTYNUACJA istniejącej zmiennej" — nowa nazwa tego samego tagu.
+     *
+     * ═══════════════════════════════════════════════════════════════════════
+     * TO NIE JEST TO SAMO, CO „DODAJ".
+     *
+     * Klub zmienia nazwę taga między sezonami: `SBZ PODAJĄCY` staje się
+     * `ZDOBYCIE SBZ`. Dodanie tego jako NOWEJ ZMIENNEJ daje raport z dwiema
+     * seriami zamiast jednej — i nic nie mówi, że to ta sama rzecz. Porównanie
+     * sezonowe rozjeżdża się cicho, bo obie liczby wyglądają sensownie.
+     *
+     * Kontynuacja dopisuje nazwę do `aliases` ISTNIEJĄCEJ zmiennej. Szablon
+     * raportu scala wtedy jedno z drugim przy wczytaniu danych, a katalog tagów
+     * zapamiętuje decyzję w `tag_catalog.alias_of` (migracja 016).
+     * ═══════════════════════════════════════════════════════════════════════
+     *
+     * PODBIJA WERSJĘ TEMPLATU, bo zmienia definicję raportu — inaczej niż
+     * „zignoruj na stałe", które jest decyzją o pytaniu, nie o raporcie.
+     */
+    public const KONTYNUACJA = 'kontynuacja';
+
     /** Stany pozycji w trybie rewizji — do oznaczenia na ekranie. */
     public const STAN_NOWA     = 'nowa';
     public const STAN_POMINIETA = 'pominieta';
@@ -252,6 +273,10 @@ final class TemplateDiff
             }
         }
 
+        // KONTYNUACJE NAJPIERW: dopisują aliasy do zmiennych, które już są,
+        // więc nie zależą od numeracji nowych i nie mogą jej popsuć.
+        $zmienne = self::dopiszAliasy($zmienne, $nowe, $decyzje, $pola);
+
         foreach ($nowe as $poz) {
             $klucz = self::klucz((string) $poz['type'], (string) $poz['name']);
             if (($decyzje[$klucz] ?? '') !== self::DODAJ) {
@@ -293,22 +318,108 @@ final class TemplateDiff
             ];
         }
 
+        // UKŁAD I PROGI PRZENOSZĄ SIĘ Z POPRZEDNIEJ WERSJI. Rewizja mapowań
+        // dopisuje ZMIENNE, a nie przestawia raport — klub, który poukładał
+        // kafle, nie ma ich stracić przy pierwszym nowym tagu w eksporcie.
         return Configurator::config(
             $zmienne,
             array_values((array) ($config['sections_enabled'] ?? Configurator::SEKCJE)),
-            array_values((array) ($config['team_us_rule']['markers'] ?? ['NASZA', 'MASZA']))
+            array_values((array) ($config['team_us_rule']['markers'] ?? ['NASZA', 'MASZA'])),
+            ReportLayout::zConfigu($config),
+            (array) ($config['thresholds'] ?? [])
         );
     }
 
     /**
+     * Nazwy dopisane jako aliasy istniejących zmiennych.
+     *
+     * WYŁĄCZNIE TAGI. Słownik `VARS` szablonu trzyma tagi, nie etykiety —
+     * etykieta (`CELNY`) jest przymiotnikiem zdarzenia, a nie zdarzeniem,
+     * i nie ma czego scalać po nazwie.
+     *
+     * Cel wskazuje SUROWA NAZWA zmiennej, nie jej `id`: to po niej liczy
+     * szablon i to ją widzi operator na ekranie. Wskazanie, którego w templacie
+     * nie ma, jest pomijane — alias prowadzący donikąd byłby gorszy niż jego brak.
+     *
+     * @param list<array<string,mixed>> $zmienne
+     * @param list<array<string,mixed>> $nowe
+     * @param array<string,string> $decyzje
+     * @param array<string,array<string,mixed>> $pola
+     * @return list<array<string,mixed>>
+     */
+    public static function dopiszAliasy(array $zmienne, array $nowe, array $decyzje, array $pola): array
+    {
+        $indeks = [];
+        foreach ($zmienne as $i => $z) {
+            $typ = (string) ($z['source']['type'] ?? '');
+            $raw = (string) ($z['source']['raw'] ?? '');
+            if ($typ === Suggester::TAG && $raw !== '') {
+                $indeks[$raw] = $i;
+            }
+        }
+
+        foreach ($nowe as $poz) {
+            $typ = (string) $poz['type'];
+            $nazwa = (string) $poz['name'];
+            $klucz = self::klucz($typ, $nazwa);
+
+            if (($decyzje[$klucz] ?? '') !== self::KONTYNUACJA || $typ !== Suggester::TAG) {
+                continue;
+            }
+
+            $cel = trim((string) ($pola[$klucz]['alias_of'] ?? ''));
+            if ($cel === '' || $cel === $nazwa || !isset($indeks[$cel])) {
+                continue;
+            }
+
+            $i = $indeks[$cel];
+            $aliasy = array_map('strval', (array) ($zmienne[$i]['aliases'] ?? []));
+            $aliasy[] = $nazwa;
+            // Bez powtórzeń i w stałej kolejności — templat ma być porównywalny
+            // między wersjami, a `array_unique` zostawia dziury w kluczach.
+            $aliasy = array_values(array_unique($aliasy));
+            sort($aliasy);
+            $zmienne[$i]['aliases'] = $aliasy;
+        }
+
+        return $zmienne;
+    }
+
+    /**
+     * Cele kontynuacji: zmienne templatu, do których da się dopisać alias.
+     *
+     * @param array<string,mixed>|null $config
+     * @return list<array{raw:string,label:string}>
+     */
+    public static function celeKontynuacji(?array $config): array
+    {
+        $out = [];
+        foreach ((array) (($config ?? [])['variables'] ?? []) as $z) {
+            if (!is_array($z) || (string) ($z['source']['type'] ?? '') !== Suggester::TAG) {
+                continue;
+            }
+            $raw = (string) ($z['source']['raw'] ?? '');
+            if ($raw === '') {
+                continue;
+            }
+            $etykieta = trim((string) ($z['display_label'] ?? ''));
+            $out[] = ['raw' => $raw, 'label' => $etykieta !== '' ? $etykieta : $raw];
+        }
+        return $out;
+    }
+
+    /**
      * Czy decyzje w ogóle coś dopisują do templatu.
+     *
+     * Kontynuacja też — zmienia definicję raportu (dokłada alias zmiennej),
+     * więc musi dostać własną wersję templatu jak każda inna zmiana.
      *
      * @param array<string,string> $decyzje
      */
     public static function czyDopisuje(array $decyzje): bool
     {
         foreach ($decyzje as $decyzja) {
-            if ($decyzja === self::DODAJ) {
+            if ($decyzja === self::DODAJ || $decyzja === self::KONTYNUACJA) {
                 return true;
             }
         }

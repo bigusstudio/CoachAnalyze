@@ -95,6 +95,7 @@ Znaczniki **tylko w generacji v21**, opcjonalne całą grupą (v17 nie ma żadne
 | `__SEZON__` · `__KOLEJKA__` · `__DATA_MECZU__` | `meta_meczu` | Meta meczu z `config.match`; brak wartości = pusty napis |
 | `__KIERUNEK_HOME__` · `__KIERUNEK_AWAY__` · `__KIERUNEK_OPIS__` | `kierunek` | Podpis kierunku ataku z `meta.direction` **po ewentualnym odbiciu**; kierunek nieznany = pusty napis |
 | `__PROGI__` | `progi` | Progi faktów Przeglądu jako literał obiektu JS — patrz niżej |
+| `__VARS_TEMPLATU__` | `vars_templatu` | Nadpisania słownika zmiennych szablonu (`display`, `aliases`) — patrz niżej |
 
 > **`__DATA_MECZU__`, nie `__DATA__`.** To drugie jest podnapisem `/*__DATA__*/`, czyli
 > miejsca na zdarzenia meczu. Wspólna nazwa wymagałaby liczenia wystąpień z korektą
@@ -188,6 +189,69 @@ dziś używa, a jedynym śladem byłby brak sekcji w raporcie. Templat
 Sekcje **wyłącznie generacji v21**: `przeglad`, `makro`, `donuty`, `okazje`,
 `zawodnicy`, `siatka`. W v17 tych identyfikatorów nie ma i to nie jest brak —
 `drop_sections` pomija sekcję, której w HTML-u nie znalazł.
+
+#### Templat schematu 2: układ raportu i aliasy (Sesja 5 pivotu)
+
+`config.schema_version: 2` dokłada dwa pola i **nie usuwa żadnego**. Templat
+schematu 1 (tak wyglądają wszystkie w bazie przed tą sesją) daje ten sam raport,
+co dotąd: silnik czyta numer schematu i przy jedynce nie szuka układu.
+
+```json
+{
+  "schema_version": 2,
+  "sections": [
+    { "id": "s1", "size": "1",   "widgets": ["przeglad"], "title": "Najważniejsze liczby" },
+    { "id": "s2", "size": "1/2", "widgets": ["donuty"] },
+    { "id": "s3", "size": "1/2", "widgets": ["okazje"] }
+  ],
+  "thresholds": { "pressing": 55 },
+  "variables": [
+    { "source": { "type": "tag", "raw": "ZDOBYCIE SBZ" },
+      "display_label": "Wejście w SBZ", "aliases": ["SBZ PODAJĄCY"] }
+  ]
+}
+```
+
+| Pole | Znaczenie |
+|---|---|
+| `sections[].widgets` | kafle w tej sekcji; identyfikatory z `coverage.ALL_SECTIONS` |
+| `sections[].size` | `1`, `1/2` albo `1/3`. Nieznana wartość → pełna szerokość |
+| `sections[].title` | nadpisuje `<h2>` **pierwszego** kafelka. Puste = nagłówek szablonu |
+| `variables[].aliases` | inne nazwy TEJ SAMEJ zmiennej w innych eksportach |
+| `thresholds` | progi faktów Przeglądu (patrz niżej) |
+
+**Sekcje czytamy Z UKŁADU, nie z `sections_enabled`.** Dwie listy mówiące o tej
+samej rzeczy rozjeżdżają się przy pierwszej edycji, która ruszy jedną z nich —
+a wtedy sekcja bywa „włączona", ale nie ma miejsca w układzie, albo odwrotnie.
+`sections_enabled` **zostaje** i znaczy co innego: do których sekcji operator
+przypisał ZMIENNE (`tags_by_section`, liczenie dostępności sekcji).
+
+**Sekcja z kilkoma kaflami spłaszcza się.** DOM szablonu v21 jest płaski — każdy
+kafelek to własny `<section data-widget="…">`. Drugi i kolejny kafelek dostaje tę
+samą szerokość i ląduje zaraz za pierwszym.
+
+**Układ z samych pełnych kafli nie włącza siatki.** Wynik byłby ten sam,
+a `display: grid` zmienia zachowanie podziału stron przy druku (PDF i slajdy).
+
+#### Aliasy zmiennych (`__VARS_TEMPLATU__`)
+
+Klub zmienia nazwę taga między sezonami (`SBZ PODAJĄCY` → `ZDOBYCIE SBZ`).
+Bez aliasu raport pokazuje **dwie serie zamiast jednej** i nic tego nie
+sygnalizuje — obie liczby wyglądają sensownie.
+
+Silnik wstrzykuje `{ "ZDOBYCIE SBZ": {"display": "…", "aliases": [...]} }`, a
+szablon scala to ze swoim słownikiem **per klucz**: wartości z pliku szablonu są
+DOMYŚLNE, templat je nadpisuje. Klub, który nazwał jedną zmienną, nie traci
+aliasów wszystkich pozostałych.
+
+**Zdarzenia w `DATA` zostają pod SUROWĄ nazwą** — scala dopiero szablon, przy
+wczytaniu. Gdyby scalał silnik, tabela `events` i archiwum przestałyby zgadzać
+się z eksportem.
+
+Bierzemy wyłącznie **tagi**: etykieta (`CELNY`) jest przymiotnikiem zdarzenia,
+a nie zdarzeniem, i szablon nie trzyma jej w `VARS`. Nazwy przechodzą przez
+ucieczkę `\uXXXX` dla `<`, `>` i `&` — pochodzą z bazy, a raport wisi pod
+publicznym adresem.
 
 #### Progi faktów Przeglądu (`__PROGI__`)
 

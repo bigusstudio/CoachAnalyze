@@ -235,7 +235,8 @@ else
   if [ -x "$PYTHON" ]; then
     for nazwa in test_mapowania_http test_konfigurator_http test_import_n1_http \
                  test_przelicz_http test_wskaznik_http test_rewizja_http \
-                 test_meta_sezon_http test_hasla_indeksu_http test_api_metryki_http; do
+                 test_meta_sezon_http test_hasla_indeksu_http test_api_metryki_http \
+                 test_uklad_http; do
       [ -f "$TUTAJ/$nazwa.php" ] || continue
       zestaw "$nazwa" env PYTHONPATH="$KORZEN/engine" php "$TUTAJ/$nazwa.php"
     done

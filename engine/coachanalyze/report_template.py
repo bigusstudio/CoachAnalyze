@@ -29,20 +29,6 @@ def load(path):
         return json.load(fh)
 
 
-def sections_enabled(template):
-    """Sekcje włączone w templacie albo `None`, gdy templatu nie ma.
-
-    `None` znaczy „bez ograniczenia" i trafia do `build_sections` jako brak
-    listy — czyli wszystkie sekcje, jak dotychczas. Pusta lista to co innego:
-    templat, który świadomie nie włącza żadnej sekcji, i tak ma zostać
-    potraktowany.
-    """
-    if not template:
-        return None
-    sekcje = template.get("sections_enabled")
-    return list(sekcje) if isinstance(sekcje, list) else None
-
-
 def team_markers(template):
     """Napisy oznaczające „naszą" drużynę w kolumnie `team` eksportu.
 
@@ -213,3 +199,162 @@ def generic_variables(template):
         z for z in (template.get("variables") or [])
         if isinstance(z, dict) and z.get("canon") is None
     ]
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SCHEMAT 2: UKŁAD RAPORTU I ALIASY ZMIENNYCH (sesja 5)
+#
+# Schemat 1 opisywał WYŁĄCZNIE zmienne i listę włączonych sekcji. Kolejność
+# i szerokość kafli były wpisane w szablon, więc „przesuń pojedynki nad mapy"
+# znaczyło edycję pliku HTML — czyli czynność wykonawcy, a nie trenera.
+#
+# ZGODNOŚĆ WSTECZ JEST WARUNKIEM, NIE MIŁYM DODATKIEM: w bazie leżą templaty
+# schematu 1 i mają dalej dawać dokładnie ten sam raport. Każda funkcja poniżej
+# przy schemacie 1 zwraca `None` albo pustą wartość, czyli „nie mam nic do
+# powiedzenia" — a nie wartość domyślną, która po cichu przestawiłaby układ.
+# ══════════════════════════════════════════════════════════════════════════════
+
+# Szerokość kafla w kolumnach siatki dwunastopolowej… a właściwie sześciopolowej:
+# trzy dopuszczalne szerokości dzielą się bez reszty przez 6, a mniejsza siatka
+# to mniej miejsc, w których da się wpisać wartość bez sensu.
+KOLUMNY_SIATKI = 6
+ROZMIARY = {"1": 6, "1/2": 3, "1/3": 2}
+ROZMIAR_DOMYSLNY = "1"
+
+
+def schema_version(template):
+    """Numer schematu configu. Brak pola znaczy 1 — tak wyglądają templaty w bazie."""
+    try:
+        return int((template or {}).get("schema_version") or 1)
+    except (TypeError, ValueError):
+        return 1
+
+
+def sections_layout(template):
+    """Układ raportu jako PŁASKA lista `[{'widget', 'span', 'title'}]`, albo `None`.
+
+    `None` znaczy „templat nie mówi o układzie" i zostawia szablon nietknięty.
+    Tak jest przy schemacie 1 i przy schemacie 2 bez pola `sections`.
+
+    ═══════════════════════════════════════════════════════════════════════════
+    SPŁASZCZAMY `widgets` DO POJEDYNCZYCH KAFLI I TO JEST ŚWIADOME.
+
+    Config opisuje sekcję jako `{id, size, widgets: [...], title}`, czyli
+    dopuszcza kilka kafli w jednej sekcji. DOM szablonu v21 jest PŁASKI: każdy
+    kafelek to własny `<section data-widget="...">`. Zagnieżdżanie sekcji dałoby
+    podwójne nagłówki i podwójne odstępy, a zysk byłby żaden — te same kafle
+    obok siebie w tej samej szerokości wyglądają tak samo.
+
+    Drugi i kolejny kafelek sekcji dostaje więc TĘ SAMĄ szerokość i ląduje zaraz
+    za pierwszym. `title` nadpisuje nagłówek WYŁĄCZNIE pierwszego: tytuł sekcji
+    powtórzony nad każdym kaflem przestaje być tytułem sekcji.
+    ═══════════════════════════════════════════════════════════════════════════
+    """
+    if schema_version(template) < 2:
+        return None
+    sekcje = (template or {}).get("sections")
+    if not isinstance(sekcje, list):
+        return None
+
+    uklad = []
+    for wpis in sekcje:
+        if not isinstance(wpis, dict):
+            continue
+        span = ROZMIARY.get(str(wpis.get("size") or ROZMIAR_DOMYSLNY), ROZMIARY[ROZMIAR_DOMYSLNY])
+        widgety = wpis.get("widgets")
+        if isinstance(widgety, str):
+            widgety = [widgety]
+        if not isinstance(widgety, list):
+            continue
+        for i, widget in enumerate(widgety):
+            nazwa = str(widget or "").strip()
+            if not nazwa:
+                continue
+            uklad.append({
+                "widget": nazwa,
+                "span": span,
+                "title": str(wpis.get("title") or "").strip() if i == 0 else "",
+            })
+    return uklad
+
+
+def sections_enabled(template):
+    """Sekcje włączone w templacie albo `None`, gdy templatu nie ma.
+
+    `None` znaczy „bez ograniczenia" i trafia do `build_sections` jako brak
+    listy — czyli zestaw domyślny, jak dotychczas. Pusta lista to co innego:
+    templat, który świadomie nie włącza żadnej sekcji, i tak ma zostać
+    potraktowany.
+
+    SCHEMAT 2 CZYTA TO Z UKŁADU, nie z osobnego pola. Dwie listy mówiące o tej
+    samej rzeczy rozjeżdżają się przy pierwszej edycji, która ruszy jedną z nich
+    — a wtedy sekcja bywa „włączona", ale nie ma miejsca w układzie, albo
+    odwrotnie. Pole `sections_enabled` przy schemacie 2 jest ignorowane.
+    """
+    if not template:
+        return None
+
+    uklad = sections_layout(template)
+    if uklad is not None:
+        kolejnosc = []
+        for wpis in uklad:
+            if wpis["widget"] not in kolejnosc:
+                kolejnosc.append(wpis["widget"])
+        return kolejnosc
+
+    sekcje = template.get("sections_enabled")
+    return list(sekcje) if isinstance(sekcje, list) else None
+
+
+def thresholds(template):
+    """Progi faktów z templatu. Walidację robi `render.progi` — tu tylko odczyt."""
+    progi = (template or {}).get("thresholds")
+    return progi if isinstance(progi, dict) else {}
+
+
+def variable_overrides(template):
+    """{surowa nazwa tagu: {'display': …, 'aliases': [...]}} — nadpisania słownika VARS.
+
+    ═══════════════════════════════════════════════════════════════════════════
+    ALIAS TO „TA SAMA ZMIENNA POD INNĄ NAZWĄ", NIE „PODOBNY TAG".
+
+    Klub zmienia nazwę taga między sezonami (`SBZ PODAJĄCY` -> `ZDOBYCIE SBZ`),
+    a porównanie sezonowe ma pokazać JEDNĄ serię, a nie dwie. Szablon v21 ma
+    własny słownik `VARS` z aliasami wpisanymi na sztywno — i to działa dla
+    klienta, od którego te nazwy pochodzą, a dla następnego nie.
+
+    Templat nadpisuje słownik szablonu: wartości z pliku stają się DOMYŚLNE.
+    Nadpisanie, a nie zastąpienie — klub, który nazwał tylko jedną zmienną,
+    nie traci aliasów wszystkich pozostałych.
+    ═══════════════════════════════════════════════════════════════════════════
+
+    Bierzemy WYŁĄCZNIE tagi. Etykieta (`CELNY`) jest przymiotnikiem zdarzenia
+    i szablon nie trzyma jej w `VARS`.
+    """
+    out = {}
+    for zmienna in (template or {}).get("variables") or []:
+        if not isinstance(zmienna, dict):
+            continue
+        zrodlo = zmienna.get("source") or {}
+        if zrodlo.get("type") not in (None, "tag"):
+            continue
+        raw = str(zrodlo.get("raw") or "").strip()
+        if not raw:
+            continue
+
+        wpis = {}
+        etykieta = zmienna.get("display_label")
+        if isinstance(etykieta, str) and etykieta.strip():
+            wpis["display"] = etykieta.strip()
+
+        aliasy = [
+            str(a).strip() for a in (zmienna.get("aliases") or [])
+            if str(a or "").strip() and str(a).strip() != raw
+        ]
+        if aliasy:
+            # Kolejność stała i bez powtórzeń — wyjście ma być powtarzalne.
+            wpis["aliases"] = sorted(dict.fromkeys(aliasy))
+
+        if wpis:
+            out[raw] = wpis
+    return out

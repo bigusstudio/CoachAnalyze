@@ -99,6 +99,14 @@ header .meta{color:var(--ink2);font-size:13px;margin-left:auto}
 header .meta b{color:var(--ink)}
 
 section{margin-bottom:34px}
+/* v23 (sesja 5): układ kafli z templatu klubu. Kontener wstawia render WYŁĄCZNIE
+   wtedy, gdy templat mówi o szerokościach innych niż pełna — bez niego sekcje
+   zostają zwykłymi blokami jeden pod drugim, a podział stron przy druku
+   zachowuje się tak, jak dotąd. */
+#ca-sekcje[data-uklad="siatka"]{display:grid;grid-template-columns:repeat(6,1fr);column-gap:14px;align-items:start}
+#ca-sekcje[data-uklad="siatka"]>section{grid-column:span 6;min-width:0}
+@media(max-width:900px){#ca-sekcje[data-uklad="siatka"]>section{grid-column:span 6!important}}
+@media print{#ca-sekcje[data-uklad="siatka"]{display:block}#ca-sekcje[data-uklad="siatka"]>section{width:auto}}
 h2{font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:20px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink2);margin-bottom:4px}
 .sub{color:var(--ink3);font-size:12.5px;margin-bottom:14px}
 
@@ -389,6 +397,11 @@ const VARS = {
   'SKUTECZNY':{display:'Wysoki pressing: skuteczny'}, 'NISKUTECZNY':{display:'Wysoki pressing: nieskuteczny'},
   'AKCJA DEFENSYWNA':{display:'Akcja defensywna'}, 'ASYSTA':{display:'Asysta'},
 };
+/* v23 (sesja 5): nadpisania słownika z TEMPLATU KLUBU. Wartości z tego pliku są
+   DOMYŚLNE — klub, który nazwał jedną zmienną, nie traci aliasów pozostałych.
+   Scalamy per klucz, a nie podmieniamy wpis: `display` bez `aliases` w templacie
+   nie ma prawa skasować aliasów, które szablon już zna. */
+Object.entries(__VARS_TEMPLATU__).forEach(([k,v])=>{VARS[k]=Object.assign({},VARS[k],v);});
 const ALIAS={}; Object.entries(VARS).forEach(([k,v])=>(v.aliases||[]).forEach(a=>ALIAS[a]=k));
 const disp=k=>(VARS[k]&&VARS[k].display)||k;
 DATA.events.forEach(e=>{ if(ALIAS[e.tag]) e.tag=ALIAS[e.tag]; });
@@ -485,12 +498,20 @@ function renderPanel(i, fid){
       </div>`).join('');
   syncFragBtns(`.fbtn[data-p="${i}"]`, qs);
 }
-(function(){
+/* v23 (sesja 5): budowa paneli WOŁANA Z REJESTRU, nie natychmiast.
+   Sekcja wyłączona w templacie nie istnieje w DOM-ie, a `wrap.innerHTML` na
+   `null` wywracało CAŁY blok skryptu — razem z nagłówkiem i mapami, czyli
+   sekcjami, które z bilansem nie mają nic wspólnego. Dopóki wycinaliśmy
+   pojedynczą sekcję bez danych, nikt na to nie trafił; kreator układu
+   (sesja 5) czyni wycinanie sekcji stanem normalnym. */
+function renderBilansPanele(){
   const wrap=document.getElementById('bilans-panels');
+  if(!wrap||wrap.dataset.gotowe) return;
+  wrap.dataset.gotowe='1';
   wrap.innerHTML=panelHTML(0)+panelHTML(1);
   wrap.querySelectorAll('.fbtn').forEach(b=>b.addEventListener('click',()=>renderPanel(+b.dataset.p, b.dataset.f)));
   renderPanel(0); renderPanel(1);
-})();
+}
 
 /* pitch */
 const S=10; // 1m = 10px
@@ -600,7 +621,12 @@ function chartFrame(t0,t1,ymax,ystep,yfmt){
 function pitchSVG(id){return `<svg id="${id}" viewBox="0 0 1050 680" width="100%"></svg>`;}
 function chartSVG(id){return `<svg id="${id}" viewBox="0 0 ${CPL+CW+16} ${CPT+CH+CPB}" width="100%" style="max-width:560px"></svg>`;}
 
-document.getElementById('metric-rows').innerHTML=`
+/* v23: szkielet map budowany raz, dopiero gdy sekcja jest w dokumencie. */
+function budujSzkieletMap(){
+  const box=document.getElementById('metric-rows');
+  if(!box||box.dataset.gotowe) return false;
+  box.dataset.gotowe='1';
+  box.innerHTML=`
   <div class="maprow">
     <div class="pitchbox"><h3>Strzały — wynik</h3>${pitchSVG('mp1')}<div class="nodata" id="np1"></div><div class="legend" id="lg1"></div></div>
     <div class="pitchbox"><h3>Strzały w czasie (y = xG)</h3>${chartSVG('mc1')}</div>
@@ -643,6 +669,8 @@ document.getElementById('metric-rows').innerHTML=`
   <div class="legend" id="lg-eff" style="margin-top:2px"></div>
   <div class="grid" id="iii-eff" style="margin-top:14px"></div>
   <div id="pressing-block" style="margin-top:14px"></div>`;
+  return true;
+}
 
 /* v20: liczniki bazowe dla nagłówka i przeglądu */
 const USK=POG; // klub-tenant (perspektywa tagów bez drużyny)
@@ -679,6 +707,7 @@ function renderHeader2(){
 }
 function mcLabel(){const q=MC.qs,all=ALLQ.every(x=>q.has(x));if(all)return 'CAŁY MECZ';if(['q1','q2','q3'].every(x=>q.has(x))&&!['q4','q5','q6'].some(x=>q.has(x)))return 'I POŁOWA';if(['q4','q5','q6'].every(x=>q.has(x))&&!['q1','q2','q3'].some(x=>q.has(x)))return 'II POŁOWA';return ALLQ.filter(x=>q.has(x)).map(x=>QLBL[x]).join(' · ');}
 function renderOverview(){
+  if(!document.getElementById('ov-kpi')) return;
   const Ev=E.filter(e=>inSet(MC.qs,e)&&(e.team?MC.teams.has(e.team):MC.teams.has(USK)));
   const A=ovStats(Ev),h=A[HUT],p=A[POG],u=A.us,them=A.them,pc=(a,b)=>b?Math.round(100*a/b)+'%':'–';
   const k=(l,a,b,f=x=>x)=>`<div class="kpi"><div class="l">${l}</div><div class="v"><span class="h">${f(a)}</span><span class="sep">:</span><span class="p">${f(b)}</span></div></div>`;
@@ -707,6 +736,8 @@ function mapaBezPozycji(svgId, noteId, zdarzenia, czego){
   return pusto;
 }
 function renderMetricMaps(){
+  if(!document.getElementById('metric-rows')) return;
+  budujSzkieletMap();
   const [t0,t1]=envQ(MC.qs);
   const S1=mcShots(), Z=mcSBZ();
   /* zdarzenia fragmentu BEZ filtra pozycji — do odroznienia „nic nie bylo"
@@ -996,11 +1027,14 @@ document.querySelectorAll('[data-mctx]').forEach(b=>b.addEventListener('click',(
   else{MC.ctx.add(o);b.classList.add('on');}
   odswiezWidgety();
 }));
-renderHeader2();renderMetricMaps();renderOverview();
+/* v23: nagłówek jest poza rejestrem — istnieje w każdym raporcie i nie da się
+   go wyłączyć. Sekcje renderuje rejestr, na końcu ostatniego bloku skryptu. */
+renderHeader2();
 
 /* oś czasu — SBZ per drużyna, sterowana fragmentatorami map */
 function renderSBZTimeline(){
   const tl=document.getElementById('tl');
+  if(!tl) return;
   const [t0,t1]=envQ(MC.qs);
   const W=1000,LH=46,PAD=150;
   const lanes=[[HUT,'__TEAM_HOME_LABEL__'],[POG,'__TEAM_AWAY_LABEL__']].filter(([t])=>MC.teams.has(t));
@@ -1036,6 +1070,7 @@ function renderSBZTimeline(){
 }
 function renderIIITimeline(){
   const tl=document.getElementById('tl3');
+  if(!tl) return;
   const [t0,t1]=envQ(MC.qs);
   const W=1000,LH=46,PAD=150;
   const lanes=[HUT,POG].filter(t=>MC.teams.has(t));
@@ -1071,6 +1106,7 @@ function renderIIITimeline(){
 }
 function renderMasterTimeline(){
   const tl=document.getElementById('tlm');
+  if(!tl) return;
   const [t0,t1]=envQ(MC.qs);
   const W=1000,LH=32,PAD=170;
   const inT=e=>inSet(MC.qs,e);
@@ -1115,6 +1151,7 @@ function renderMasterTimeline(){
   tl.querySelectorAll('.pt').forEach(p=>{p.addEventListener('mousemove',ev=>showTip(ev,p.dataset.tip));p.addEventListener('mouseleave',hideTip);});
 }
 function renderDuels(){
+  if(!document.getElementById('duels-grid')) return;
   const inT=e=>inSet(MC.qs,e);
   const G=tag=>E.filter(e=>e.tag===tag&&inT(e));
   const pct=(n,tot)=>tot?Math.round(n/tot*100):0;
@@ -1149,11 +1186,6 @@ function renderDuels(){
   document.getElementById('duels-grid').innerHTML=cards.join('');
   document.querySelectorAll('#tlm .pt, #duels-grid .pt').forEach(p=>{p.addEventListener('mousemove',ev=>showTip(ev,p.dataset.tip));p.addEventListener('mouseleave',hideTip);});
 }
-renderSBZTimeline();
-renderIIITimeline();
-renderMasterTimeline();
-renderDuels();
-
 /* no-team cards */
 function count(evts,labels){return labels.map(l=>[l,evts.filter(e=>has(e,l)).length]);}
 const cards=[
@@ -1164,7 +1196,10 @@ const cards=[
   {title:'Pierwszy kontakt', tag:'PIERWSZY KONTAKT', rows:[['WYGRANY','ok'],['PRZEGRANY','bad'],['STRATA','bad'],['POSIADANIE','ok']]},
 ];
 const SEM={'REAKCJA':'var(--ok)','WYGRANY':'var(--ok)','UDANA':'var(--ok)','POSIADANIE':'var(--ok)','ICH POŁOWA':'var(--team-home)','NASZA POŁOWA':'var(--neut)','BRAK REAKCJI':'var(--bad)','PRZEGRANY':'var(--bad)','STRATA':'var(--bad)','NIEUDANA':'var(--bad)'};
-document.getElementById('cards').innerHTML=cards.map(c=>{
+function renderNoteam(){
+  const box=document.getElementById('cards');
+  if(!box) return;
+  box.innerHTML=cards.map(c=>{
   if(c.rows===null){
     const a=E.filter(e=>e.tag==='SKUTECZNY').length, b=E.filter(e=>e.tag==='NISKUTECZNY').length, mx=Math.max(a,b);
     return `<div class="card"><h3>${c.title}</h3><div class="n">${a+b} akcji</div>
@@ -1176,7 +1211,8 @@ document.getElementById('cards').innerHTML=cards.map(c=>{
   const mx=Math.max(...cs.map(r=>r[1]),1);
   return `<div class="card"><h3>${c.title}</h3><div class="n">${evts.length} akcji</div>`+
     cs.map(([l,n])=>`<div class="row"><div class="k">${l}</div><div class="b"><i style="width:${n/mx*100}%;background:${SEM[l]||'var(--neut)'}"></i></div><div class="v">${n}</div></div>`).join('')+`</div>`;
-}).join('');
+  }).join('');
+}
 </script>
 <script>
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -1360,19 +1396,25 @@ function renderSiatka(el, ctx){
 
 /* ---------------------------------------------------------------- rejestr */
 const WIDGETS={
-  przeglad:  {label:'Przegląd',                   nav:'Przegląd',  live:true,  slide:true,  render:()=>renderOverview()},
+  przeglad:  {label:'Przegląd',                   nav:'Przegląd',  live:true,  slide:true,  render:()=>renderOverview(),
+              slajdy:(el,h)=>[{nodes:[h.q('#ov-kpi'),h.q('#ov-facts')]}]},
   makro:     {label:'Tabela makro',               nav:'Makro',     live:true,  slide:true,  render:renderMakro},
-  bilans:    {label:'Bilans drużyn',              nav:'Bilans',    live:false, slide:true,  render:()=>{}},
-  mapy:      {label:'Mapy współczynników',        nav:'Mapy',      live:true,  slide:true,  render:()=>renderMetricMaps()},
+  bilans:    {label:'Bilans drużyn',              nav:'Bilans',    live:false, slide:true,  render:()=>renderBilansPanele(),
+              slajdy:(el,h)=>h.qa('#bilans-panels .h2h').map((p,i)=>
+                ({nodes:[p], title:h.naglowek(el)+' (panel '+(i+1)+')'}))},
+  mapy:      {label:'Mapy współczynników',        nav:'Mapy',      live:true,  slide:true,  render:()=>renderMetricMaps(),
+              slajdy:(el,h)=>h.qa('#metric-rows .maprow').map(r=>({nodes:[r], row:true, title:h.naglowek(el)}))
+                .concat([{nodes:[h.q('#sources'),h.q('#sbz-eff'),h.q('#lg-eff')], title:'Źródła zagrożenia i skuteczność SBZ'},
+                         {nodes:[h.q('#iii-eff'),h.q('#pressing-block')], title:'Skuteczność III strefy i wysoki pressing'}])},
   donuty:    {label:'Skuteczność w udziałach',    nav:'Udziały',   live:true,  slide:true,  render:renderDonuty},
   okazje:    {label:'Najlepsze okazje',           nav:'Okazje',    live:true,  slide:true,  render:renderOkazje},
-  tl_sbz:    {label:'Oś czasu — SBZ',             nav:'Oś SBZ',    live:false, slide:true,  render:()=>{}},
-  tl_iii:    {label:'Oś czasu — III strefa',      nav:'Oś III',    live:false, slide:true,  render:()=>{}},
-  tl_bilans: {label:'Oś czasu — bilans',          nav:'Oś bilansu',live:false, slide:true,  render:()=>{}},
-  duels:     {label:'Pojedynki, straty, odbiory', nav:'Pojedynki', live:false, slide:true,  render:()=>{}},
+  tl_sbz:    {label:'Oś czasu — SBZ',             nav:'Oś SBZ',    live:false, slide:true,  render:()=>renderSBZTimeline()},
+  tl_iii:    {label:'Oś czasu — III strefa',      nav:'Oś III',    live:false, slide:true,  render:()=>renderIIITimeline()},
+  tl_bilans: {label:'Oś czasu — bilans',          nav:'Oś bilansu',live:false, slide:true,  render:()=>renderMasterTimeline()},
+  duels:     {label:'Pojedynki, straty, odbiory', nav:'Pojedynki', live:false, slide:true,  render:()=>renderDuels()},
   zawodnicy: {label:'Zawodnicy',                  nav:'Zawodnicy', live:true,  slide:true,  render:renderZawodnicy},
   siatka:    {label:'Siatka ilości',              nav:'Siatka',    live:true,  slide:false, render:renderSiatka},
-  noteam:    {label:'Bez przypisania drużyny',    nav:'Bez druż.', live:false, slide:true,  render:()=>{}},
+  noteam:    {label:'Bez przypisania drużyny',    nav:'Bez druż.', live:false, slide:true,  render:()=>renderNoteam()},
 };
 
 /* PASEK NAWIGACJI SKŁADANY Z SEKCJI, KTÓRE FAKTYCZNIE SĄ W DOKUMENCIE.
@@ -1393,11 +1435,6 @@ const WIDGETS={
   });
 })();
 
-/* Kafle, które NIE MAJĄ własnego wywołania poza rejestrem — te, które doszły
-   w tej sesji. Reszta renderuje się tam, gdzie renderowała się dotąd, żeby
-   start raportu wyglądał dokładnie tak samo. */
-const WIDGETY_NOWE=['makro','donuty','okazje','zawodnicy','siatka'];
-
 function odswiezWidgety(tylko){
   const ctx=widgetCtx();
   document.querySelectorAll('[data-widget]').forEach(el=>{
@@ -1408,7 +1445,10 @@ function odswiezWidgety(tylko){
     catch(err){ console.warn('widget', id, err); }
   });
 }
-odswiezWidgety(WIDGETY_NOWE);
+/* PIERWSZE ZŁOŻENIE RAPORTU. Wszystkie kafle, nie tylko nowe: od sesji 5 to
+   rejestr decyduje, co się renderuje, a sekcja wycięta przez silnik nie ma
+   w DOM-ie elementu, więc po prostu nie zostanie dotknięta. */
+odswiezWidgety(Object.keys(WIDGETS));
 </script>
 <script>
 /* v19: eksport kafelka do PNG (SVG -> canvas, style z CSS wpisane inline) */
@@ -1449,33 +1489,41 @@ addPngButtons(); new MutationObserver(()=>addPngButtons()).observe(document.getE
 <script>
 /* v21: slajdy 16:9 jako PNG, generowane w przeglądarce (DOM -> SVG foreignObject -> canvas). Bez bibliotek, bez serwera. */
 const SLIDE_W=1280, SLIDE_H=720, OUT_W=1920, OUT_H=1080;
+/* v23 (sesja 5): SLAJDY SKŁADANE Z SEKCJI, KTÓRE SĄ W DOKUMENCIE.
+   Lista była wpisana na sztywno, więc kolejność slajdów nie miała nic wspólnego
+   z kolejnością raportu — a od tej sesji układ ustawia trener w kreatorze.
+   Iterujemy po `[data-widget]`, czyli po DOM-ie PO zastosowaniu układu: kafelek
+   z `slide:false` nie wchodzi, kafelek wycięty przez silnik nie istnieje.
+   Numer slajdu bierze się z POZYCJI W RAPORCIE, nie z tabeli w kodzie.
+
+   Kafelek bez własnej funkcji `slajdy` oddaje swój kontener treści — jeden
+   kafelek, jeden slajd. Własną mają tylko te, które dzielą się na kilka
+   (bilans: dwa panele; mapy: wiersze plus bloki skuteczności). */
 function slideDefs(){
   const q=s=>document.querySelector(s), qa=s=>[...document.querySelectorAll(s)];
-  const title=s=>{const h=q(s+' h2');return h?h.textContent:'';};
-  const defs=[
-    {name:'01_okladka', nodes:[q('#hdr2')], title:'', cover:true},
-    {name:'02_przeglad', title:title('#sec-przeglad'), nodes:[q('#ov-kpi'),q('#ov-facts')], flexify:true},
-  ];
-  qa('#bilans-panels .h2h').forEach((p,i)=>defs.push({name:`03_bilans_${i+1}`, title:title('#sec-bilans')+(i?' (panel 2)':' (panel 1)'), nodes:[p]}));
-  qa('#metric-rows .maprow').forEach((r,i)=>defs.push({name:`04_mapy_${i+1}`, title:title('#sec-mapy'), nodes:[r], row:true, flexify:true}));
-  defs.push({name:'05_zrodla_sbz', title:'Źródła zagrożenia i skuteczność SBZ', nodes:[q('#sources'),q('#sbz-eff'),q('#lg-eff')], flexify:true});
-  defs.push({name:'06_iii_pressing', title:'Skuteczność III strefy i wysoki pressing', nodes:[q('#iii-eff'),q('#pressing-block')], flexify:true});
-  defs.push({name:'07_os_sbz_iii', title:'Oś czasu: zdobycie SBZ i III strefy', nodes:[q('#sec-tlsbz .tlbox'),q('#sec-tl3 .tlbox')]});
-  defs.push({name:'08_os_bilansu', title:title('#sec-tlm'), nodes:[q('#sec-tlm .tlbox')]});
-  defs.push({name:'09_pojedynki', title:title('#sec-duels'), nodes:[q('#duels-grid')], flexify:true});
-  defs.push({name:'10_bez_druzyny', title:title('#sec-noteam'), nodes:[q('#cards')], flexify:true});
-  /* v22: kafle z sesji 4b. Ten sam mechanizm (1920x1080), kolejnosc jak w raporcie.
-     `slide:false` w rejestrze wycina kafelek ze slajdow — siatka ilosci jest
-     kafelkiem kontrolnym dla analityka, a nie materialem na odprawe. */
-  const naSlajd=id=>WIDGETS[id]&&WIDGETS[id].slide&&q(`[data-widget="${id}"]`);
-  [['11_makro','makro','#makro-box'],
-   ['12_donuty','donuty','#donuty-box'],
-   ['13_okazje','okazje','#okazje-box'],
-   ['14_zawodnicy','zawodnicy','#zawodnicy-box'],
-   ['15_siatka','siatka','#siatka-box']].forEach(([name,id,sel])=>{
-     if(!naSlajd(id)) return;
-     defs.push({name, title:title(`[data-widget="${id}"]`), nodes:[q(sel)], flexify:true});
-   });
+  const naglowek=el=>{const h=el.querySelector('h2');return h?h.textContent:'';};
+  const defs=[];
+
+  const okladka=q('#hdr2');
+  if(okladka) defs.push({name:'00_okladka', nodes:[okladka], title:'', cover:true});
+
+  let nr=0;
+  document.querySelectorAll('[data-widget]').forEach(el=>{
+    const id=el.dataset.widget, w=WIDGETS[id];
+    if(!w||!w.slide) return;
+    nr++;
+    const pre=String(nr).padStart(2,'0');
+    const czesci=(w.slajdy?w.slajdy(el,{q,qa,naglowek}):null)
+      || [{nodes:[el.querySelector('.tblwrap,.donuts,.grid,.tlbox')||el]}];
+    czesci.forEach((c,i)=>defs.push({
+      name: pre+'_'+id+(czesci.length>1?'_'+(i+1):''),
+      title: c.title!==undefined?c.title:naglowek(el),
+      nodes: c.nodes,
+      flexify: c.flexify!==false,
+      row: !!c.row,
+    }));
+  });
+
   return defs.filter(d=>d.nodes.every(Boolean));
 }
 const STYLE_PROPS=['display','position','top','left','right','bottom','width','height','min-width','min-height','max-width','max-height','margin','padding','border','border-radius','box-sizing','background','background-color','color','font','font-family','font-size','font-weight','font-style','line-height','letter-spacing','text-transform','text-align','text-decoration','white-space','vertical-align','overflow','opacity','flex','flex-direction','flex-wrap','justify-content','align-items','align-content','align-self','gap','grid-template-columns','grid-template-rows','grid-column','grid-row','grid-auto-flow','transform','transform-origin','box-shadow','list-style','border-collapse','border-spacing','table-layout','fill','stroke','stroke-width','stroke-opacity','fill-opacity','stroke-dasharray','stroke-linecap','text-anchor','dominant-baseline','visibility','z-index','float','clear','object-fit','cursor','filter'];

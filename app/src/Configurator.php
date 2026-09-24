@@ -49,6 +49,12 @@ final class Configurator
      */
     public const SEKCJE_GENERYCZNE = ['bilans', 'tl_bilans'];
 
+    /**
+     * Progi faktów sekcji Przegląd, które klub może nadpisać (Sesja 5).
+     * Odwzorowanie kluczy z `engine/coachanalyze/config/progi.json`.
+     */
+    public const PROGI = ['pressing', 'sbz_strzal', 'reakcja', 'duel_def', 'p3'];
+
     /** Klucz stanu roboczego w sesji. Draft jest PER KLUB. */
     private const KLUCZ_DRAFT = 'konfigurator_draft';
 
@@ -340,12 +346,32 @@ final class Configurator
      * raport klubu na stałe — liczba wystąpień z pierwszego meczu nie ma
      * w nim czego szukać i po roku wprowadzałaby w błąd.
      *
+     * SCHEMAT 2 (Sesja 5) dokłada UKŁAD (`sections`) i PROGI (`thresholds`).
+     * Oba są opcjonalne w wywołaniu i oba WCHODZĄ DO ZAPISU ZAWSZE:
+     *
+     * - układ, bo silnik przy schemacie 2 czyta z niego listę włączonych kafli;
+     *   config schematu 2 BEZ układu znaczyłby „żadnych kafli", a nie „domyślne",
+     * - progi, bo pusty obiekt jest poprawną odpowiedzią „klub nie zmieniał
+     *   progów" i silnik schodzi wtedy na wartości globalne.
+     *
+     * `null` w `$uklad` to nie to samo, co pusta tablica: `null` znaczy „zbuduj
+     * domyślny z włączonych sekcji", a pusta tablica przeszłaby przez walidację
+     * jako układ bez ani jednego kafelka.
+     *
      * @param list<array<string,mixed>> $zmienne
      * @param list<string> $sekcje
+     * @param list<string> $markery
+     * @param list<array<string,mixed>>|null $uklad
+     * @param array<string,mixed> $progi
      * @return array<string,mixed>
      */
-    public static function config(array $zmienne, array $sekcje, array $markery = ['NASZA', 'MASZA']): array
-    {
+    public static function config(
+        array $zmienne,
+        array $sekcje,
+        array $markery = ['NASZA', 'MASZA'],
+        ?array $uklad = null,
+        array $progi = []
+    ): array {
         $out = [];
         foreach ($zmienne as $z) {
             $out[] = [
@@ -358,16 +384,65 @@ final class Configurator
                 'display_label' => (string) ($z['display_label'] ?? ''),
                 'color'         => (string) ($z['color'] ?? ''),
                 'sections'      => array_values((array) ($z['sections'] ?? [])),
+                /*
+                 * ALIASY — inne nazwy TEJ SAMEJ zmiennej w innych eksportach
+                 * (Sesja 5). Pole przenosi się przez każdy zapis: klub zmienia
+                 * nazwę taga raz na sezon, a templat bywa zapisywany co import
+                 * — gubienie aliasu przy rewizji mapowań rozbijałoby jedną
+                 * serię na dwie i nic by tego nie zasygnalizowało.
+                 */
+                'aliases'       => array_values(array_unique(array_filter(
+                    array_map('strval', (array) ($z['aliases'] ?? [])),
+                    static fn(string $a): bool => trim($a) !== ''
+                ))),
                 'visible'       => !empty($z['visible']),
             ];
         }
 
+        $sekcjeUkladu = ReportLayout::normalizuj(
+            $uklad ?? ReportLayout::domyslny(array_map('strval', $sekcje))
+        );
+
         return [
             'schema_version'   => ReportTemplates::SCHEMA_VERSION,
             'team_us_rule'     => ['markers' => array_values($markery)],
+            // ZOSTAJE MIMO SCHEMATU 2 i to nie jest duplikat do usunięcia:
+            // pole opisuje, do których sekcji operator przypisał ZMIENNE, więc
+            // czyta je `tags_by_section` przy liczeniu dostępności sekcji.
+            // Listę WŁĄCZONYCH KAFLI silnik bierze z `sections`.
             'sections_enabled' => array_values($sekcje),
+            'sections'         => $sekcjeUkladu,
+            'thresholds'       => self::progi($progi),
             'variables'        => $out,
         ];
+    }
+
+    /**
+     * Progi faktów Przeglądu do zapisu w templacie.
+     *
+     * ODRZUCAMY WSZYSTKO, CZEGO SILNIK I TAK NIE PRZYJMIE — nazwę spoza zestawu
+     * i wartość spoza 0-100. Powód nie jest kosmetyczny: te liczby wchodzą wprost
+     * do literału JS w raporcie pod publicznym adresem (`render.progi`). Zapis
+     * wartości, która i tak odpadnie przy renderze, dawałby ekran twierdzący
+     * co innego niż raport.
+     *
+     * @param array<string,mixed> $progi
+     * @return array<string,int|float>
+     */
+    public static function progi(array $progi): array
+    {
+        $out = [];
+        foreach (self::PROGI as $klucz) {
+            if (!array_key_exists($klucz, $progi) || !is_numeric($progi[$klucz])) {
+                continue;
+            }
+            $wartosc = (float) $progi[$klucz];
+            if ($wartosc < 0 || $wartosc > 100) {
+                continue;
+            }
+            $out[$klucz] = $wartosc == (int) $wartosc ? (int) $wartosc : round($wartosc, 2);
+        }
+        return $out;
     }
 
     /**

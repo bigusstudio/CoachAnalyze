@@ -94,11 +94,16 @@ def test_render_nie_zmienia_niczego_poza_placeholderami(generacja):
     # przy nieznanym kierunku są PUSTYMI napisami, a pustego napisu nie da się
     # odwrócić z powrotem w znacznik — test przestałby cokolwiek sprawdzać.
     kierunek = {"us": "right", "them": "left", "confidence": "high"}
+    # TEMPLAT Z NIEPUSTYM NADPISANIEM SŁOWNIKA. Pusty dałby literał `{}`, a tego
+    # napisu w szablonie jest mnóstwo — odwracanie podmieniłoby pierwszy lepszy
+    # `{}` na znacznik i test sprawdzałby własną pomyłkę, nie render.
+    templat = {"variables": [{"source": {"type": "tag", "raw": "ZzTag"},
+                              "display_label": "ZzEtykieta", "aliases": ["ZzAlias"]}]}
     sciezka = render.template_path_for(generacja)
     szablon = render.load_template(sciezka)
     html, _ = render.render(
         RAMKA, palette={"tags": {}, "labels": {}}, config=config, template_path=sciezka,
-        direction=kierunek,
+        direction=kierunek, report_template=templat,
     )
 
     # v21 niesie kafelek zawodnikow, wiec `DATA` dostaje pole `player` — a v17 nie.
@@ -116,6 +121,7 @@ def test_render_nie_zmienia_niczego_poza_placeholderami(generacja):
         labels={slot: slots["__TEAM_{}_LABEL__".format(slot)] for _s, slot in render.TEAM_SLOTS},
     ))
     slots.update(render.progi_slot())
+    slots.update(render.vars_slot(templat))
     # Malejąco po długości wstawionej wartości — krótsza nie może zjeść fragmentu dłuższej.
     for placeholder in sorted(slots, key=lambda p: len(slots[p]), reverse=True):
         odwrocone = odwrocone.replace(slots[placeholder], placeholder)

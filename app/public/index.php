@@ -694,6 +694,26 @@ switch (true) {
         showTemplateHistory((int) $m[1]);
         break;
 
+    // ------------------------------------------- uklad raportu (Sesja 5 pivotu)
+    case preg_match('#^/klub/(\d+)/uklad$#', $path, $m) === 1 && $method === 'GET':
+        showReportLayout((int) $m[1]);
+        break;
+
+    case preg_match('#^/klub/(\d+)/uklad$#', $path, $m) === 1 && $method === 'POST':
+        // Uklad rozstrzyga, CO widac w raporcie klubu — ta sama bramka co
+        // decyzje o zmiennych. Przestawienie kafli to zmiana definicji raportu,
+        // nie ustawienie widoku dla jednego operatora.
+        requireCan($user, 'mappings');
+        requireCsrf();
+        handleReportLayout((int) $m[1], (int) $user['id']);
+        break;
+
+    case preg_match('#^/klub/(\d+)/templaty/(\d+)/klonuj$#', $path, $m) === 1 && $method === 'POST':
+        requireCan($user, 'mappings');
+        requireCsrf();
+        cloneTemplateVersion((int) $m[1], (int) $m[2], (int) $user['id']);
+        break;
+
     // ------------------------------------------- regeneracja raportow (Sesja 7)
     case preg_match('#^/klub/(\d+)/przelicz$#', $path, $m) === 1 && $method === 'GET':
         showClubRecalc((int) $m[1]);
@@ -3788,6 +3808,16 @@ function showTemplateDiff(int $importId): void
         ),
         'concepts'   => \CoachAnalyze\Mappings::POJECIA,
         'qualifiers' => \CoachAnalyze\Mappings::KWALIFIKATORY,
+        /*
+         * Zmienne, do których da się dopisać alias (Sesja 5). Pusta lista przy
+         * kliencie bez templatu — wtedy nie ma czego kontynuować i akcja się
+         * nie pokazuje, zamiast pokazywać pusty `<select>`.
+         */
+        'cele'       => \CoachAnalyze\TemplateDiff::celeKontynuacji(
+            \CoachAnalyze\ReportTemplates::decodeConfig(
+                (\CoachAnalyze\ReportTemplates::current($clubId) ?? [])['config'] ?? null
+            )
+        ),
         'notice'     => Session::flash('notice'),
         'error'      => Session::flash('error'),
     ]);
@@ -3868,6 +3898,9 @@ function saveTemplateDiff(int $importId, int $userId): void
             'display_label' => $_POST['label'][$skrot] ?? '',
             'color'         => $_POST['color'][$skrot] ?? null,
             'sections'      => (array) ($_POST['vsections'][$skrot] ?? []),
+            // Cel kontynuacji — surowa nazwa zmiennej, której ten tag jest
+            // nową nazwą. Puste przy każdej innej decyzji.
+            'alias_of'      => (string) ($_POST['alias_of'][$skrot] ?? ''),
         ];
     }
 
@@ -3903,6 +3936,20 @@ function saveTemplateDiff(int $importId, int $userId): void
                  * tag zniknąłby z analizy bez pytania.
                  */
                 \CoachAnalyze\IgnoredTags::remove($clubId, $typ, $nazwa, $userId);
+                break;
+
+            case \CoachAnalyze\TemplateDiff::KONTYNUACJA:
+                /*
+                 * Kontynuacja to nie jest „dodaj" ani „zignoruj": tag WCHODZI
+                 * do analizy, tylko pod nazwą zmiennej, którą klub już ma.
+                 * Ślad na liście zignorowanych byłby więc sprzeczny z decyzją
+                 * — z tego samego powodu co przy DODAJ.
+                 */
+                \CoachAnalyze\IgnoredTags::remove($clubId, $typ, $nazwa, $userId);
+                \CoachAnalyze\TagCatalog::setAlias(
+                    $clubId, $typ, $nazwa,
+                    (string) ($pola[$klucz]['alias_of'] ?? '') ?: null
+                );
                 break;
         }
     }
@@ -3976,7 +4023,200 @@ function showTemplateHistory(int $id): void
         'crumb'   => View::t('tpl.history.crumb'),
         'wersje'  => \CoachAnalyze\ReportTemplates::history($id),
         'biezaca' => \CoachAnalyze\ReportTemplates::currentVersion($id),
+        'csrf'    => Session::csrfToken(),
+        'notice'  => Session::flash('notice'),
+        'error'   => Session::flash('error'),
     ]);
+}
+
+// ------------------------------------------- uklad raportu (Sesja 5 pivotu)
+
+/**
+ * Ekran „Układ raportu": kolejność, szerokość i tytuły kafli.
+ *
+ * BEZ SKRYPTU. Przyciski góra/dół zamiast przeciągania — panel ma jeden
+ * zatwierdzony plik JavaScript i jest to wyjątek na chmurki powiadomień
+ * (CLAUDE.md §9). Drag&drop znaczyłby drugi plik i osobne uzgodnienie.
+ *
+ * PODGLĄD TO ZWYKŁY BUILD RAPORTU, nie druga ścieżka renderu: ekran odsyła do
+ * przeliczenia meczu pod aktualny templat. Osobny podgląd znaczyłby drugie
+ * miejsce, w którym powstaje HTML, i dwie okazje, żeby się rozjechały.
+ */
+function showReportLayout(int $id): void
+{
+    $club = resolveTenant($id);
+    if ($club === null) {
+        tenantNotFound();
+        return;
+    }
+
+    $templat = \CoachAnalyze\ReportTemplates::current($id);
+    $config = $templat !== null
+        ? \CoachAnalyze\ReportTemplates::decodeConfig($templat['config'])
+        : [];
+
+    // Stan roboczy wygrywa z bazą: operator przestawił kafle, kliknął „w dół"
+    // i ma zobaczyć swój układ, a nie ten sprzed pierwszego kliknięcia.
+    $sekcje = \CoachAnalyze\ReportLayout::draft($id)
+        ?? \CoachAnalyze\ReportLayout::zConfigu($config);
+
+    View::page('report_layout', [
+        'title'    => View::t('uklad.title'),
+        'active'   => 'clubs',
+        'club'     => $club,
+        'crumb'    => View::t('uklad.crumb'),
+        'sekcje'   => $sekcje,
+        'widgety'  => \CoachAnalyze\ReportLayout::WIDGETY,
+        'rozmiary' => \CoachAnalyze\ReportLayout::ROZMIARY,
+        // Kafle spoza układu — lista do dodania. Pusta, gdy wszystkie są w środku.
+        'dostepne' => array_values(array_diff(
+            array_keys(\CoachAnalyze\ReportLayout::WIDGETY),
+            \CoachAnalyze\ReportLayout::widgety($sekcje)
+        )),
+        'wersja'   => $templat !== null ? (int) $templat['version'] : 0,
+        'roboczy'  => \CoachAnalyze\ReportLayout::draft($id) !== null,
+        'progi'    => (array) ($config['thresholds'] ?? []),
+        'klucze_progow' => \CoachAnalyze\Configurator::PROGI,
+        'csrf'     => Session::csrfToken(),
+        'notice'   => Session::flash('notice'),
+        'error'    => Session::flash('error'),
+    ]);
+}
+
+/**
+ * Akcje ekranu układu. Jedno wejście, bo wszystkie idą z jednego formularza.
+ *
+ * ROZMIARY I TYTUŁY WCZYTUJEMY PRZY KAŻDEJ AKCJI, nie tylko przy zapisie:
+ * operator zmienia szerokość kafelka, klika „w dół" i ma prawo oczekiwać, że
+ * szerokość zostanie. Formularz bez skryptu nie zapisuje się sam.
+ */
+function handleReportLayout(int $id, int $userId): void
+{
+    $club = resolveTenant($id);
+    if ($club === null) {
+        tenantNotFound();
+        return;
+    }
+
+    $templat = \CoachAnalyze\ReportTemplates::current($id);
+    $config = $templat !== null
+        ? \CoachAnalyze\ReportTemplates::decodeConfig($templat['config'])
+        : null;
+
+    if ($config === null) {
+        // Bez templatu nie ma czego układać — klub najpierw przechodzi
+        // konfigurator, bo raport bez zmiennych nie ma treści.
+        Session::flash('error', View::t('uklad.err.brak_templatu'));
+        redirect('/klub/' . $id . '/konfigurator');
+    }
+
+    $sekcje = \CoachAnalyze\ReportLayout::draft($id)
+        ?? \CoachAnalyze\ReportLayout::zConfigu($config);
+
+    $sekcje = \CoachAnalyze\ReportLayout::zFormularza(
+        $sekcje,
+        (array) ($_POST['rozmiar'] ?? []),
+        (array) ($_POST['tytul'] ?? [])
+    );
+
+    $akcja = (string) ($_POST['akcja'] ?? '');
+
+    if (preg_match('/^(gora|dol|usun):(\d+)$/', $akcja, $m) === 1) {
+        $indeks = (int) $m[2];
+        $sekcje = match ($m[1]) {
+            'gora' => \CoachAnalyze\ReportLayout::przesun($sekcje, $indeks, -1),
+            'dol'  => \CoachAnalyze\ReportLayout::przesun($sekcje, $indeks, 1),
+            'usun' => \CoachAnalyze\ReportLayout::usun($sekcje, $indeks),
+        };
+        \CoachAnalyze\ReportLayout::saveDraft($id, $sekcje);
+        redirect('/klub/' . $id . '/uklad');
+    }
+
+    if ($akcja === 'dodaj') {
+        $sekcje = \CoachAnalyze\ReportLayout::dodaj(
+            $sekcje,
+            (string) ($_POST['nowy_kafel'] ?? ''),
+            (string) ($_POST['nowy_rozmiar'] ?? \CoachAnalyze\ReportLayout::ROZMIAR_DOMYSLNY)
+        );
+        \CoachAnalyze\ReportLayout::saveDraft($id, $sekcje);
+        redirect('/klub/' . $id . '/uklad');
+    }
+
+    if ($akcja === 'porzuc') {
+        \CoachAnalyze\ReportLayout::clearDraft();
+        Session::flash('notice', View::t('uklad.porzucono'));
+        redirect('/klub/' . $id . '/uklad');
+    }
+
+    // ZAPIS = NOWA WERSJA TEMPLATU. Append-only jak wszędzie indziej: raporty
+    // wygenerowane na poprzednim układzie zostają ważne i dalej się otwierają,
+    // a numer wersji mówi, że są starsze niż templat klubu.
+    $bledy = \CoachAnalyze\ReportLayout::bledy($sekcje);
+    if ($bledy !== []) {
+        \CoachAnalyze\ReportLayout::saveDraft($id, $sekcje);
+        Session::flash('error', implode(' ', array_map(
+            static fn(string $k): string => View::t($k), $bledy
+        )));
+        redirect('/klub/' . $id . '/uklad');
+    }
+
+    $nowy = \CoachAnalyze\Configurator::config(
+        array_values((array) ($config['variables'] ?? [])),
+        array_values((array) ($config['sections_enabled'] ?? \CoachAnalyze\Configurator::SEKCJE)),
+        array_values((array) ($config['team_us_rule']['markers'] ?? ['NASZA', 'MASZA'])),
+        $sekcje,
+        (array) ($_POST['prog'] ?? $config['thresholds'] ?? [])
+    );
+
+    $bledyConfigu = \CoachAnalyze\Configurator::bledyConfigu($nowy);
+    if ($bledyConfigu !== []) {
+        \CoachAnalyze\ReportLayout::saveDraft($id, $sekcje);
+        Session::flash('error', implode(' ', array_map(
+            static fn(string $k): string => View::t($k), $bledyConfigu
+        )));
+        redirect('/klub/' . $id . '/uklad');
+    }
+
+    $wersja = \CoachAnalyze\ReportTemplates::saveNewVersion($id, $nowy, $userId);
+    \CoachAnalyze\ReportLayout::clearDraft();
+
+    Session::flash('notice', View::t('uklad.zapisano', $wersja));
+    redirect('/klub/' . $id . '/uklad');
+}
+
+/**
+ * Klon wcześniejszej wersji templatu jako NOWA wersja.
+ *
+ * PO CO: wersje są append-only, więc „wróć do układu sprzed trzech zmian" nie
+ * może być cofnięciem — cofnięcie kasowałoby historię, a raporty klienta stoją
+ * na konkretnych numerach wersji. Klon robi z dawnego configu NAJNOWSZY,
+ * zostawiając wszystko, co było, na swoim miejscu.
+ */
+function cloneTemplateVersion(int $id, int $wersja, int $userId): void
+{
+    $club = resolveTenant($id);
+    if ($club === null) {
+        tenantNotFound();
+        return;
+    }
+
+    $zrodlo = \CoachAnalyze\ReportTemplates::version($id, $wersja);
+    if ($zrodlo === null) {
+        Session::flash('error', View::t('tpl.clone.err_missing'));
+        redirect('/klub/' . $id . '/templaty');
+    }
+
+    $config = \CoachAnalyze\ReportTemplates::decodeConfig($zrodlo['config']);
+    if (($config['variables'] ?? null) === null) {
+        Session::flash('error', View::t('tpl.clone.err_shape'));
+        redirect('/klub/' . $id . '/templaty');
+    }
+
+    $nowa = \CoachAnalyze\ReportTemplates::saveNewVersion($id, $config, $userId);
+    \CoachAnalyze\ReportLayout::clearDraft();
+
+    Session::flash('notice', View::t('tpl.clone.done', $wersja, $nowa));
+    redirect('/klub/' . $id . '/templaty');
 }
 
 /** Porzucenie stanu roboczego. Import i mecz ZOSTAJĄ — skasowane byłyby utratą danych. */

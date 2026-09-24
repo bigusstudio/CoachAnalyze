@@ -697,6 +697,78 @@ return [
     'sekcja.duels'     => 'Pojedynki, straty, odbiory',
     'sekcja.noteam'    => 'Bez przypisania drużyny',
 
+    // --- kafle raportu (Sesja 5 pivotu „viewer") ---
+    //
+    // NAZWY KAFLI, NIE NAZWY SEKCJI DLA ZMIENNYCH. `sekcja.*` wyżej odpowiada
+    // na pytanie „w których sekcjach pokazać tę zmienną", `kafel.*` na pytanie
+    // „z czego składa się raport". Częściowo te same identyfikatory, dwie różne
+    // listy — patrz ReportLayout::WIDGETY.
+    'kafel.przeglad'  => 'Przegląd',
+    'kafel.makro'     => 'Tabela makro',
+    'kafel.bilans'    => 'Bilans drużyn',
+    'kafel.mapy'      => 'Mapy współczynników',
+    'kafel.donuty'    => 'Skuteczność w udziałach',
+    'kafel.okazje'    => 'Najlepsze okazje',
+    'kafel.tl_sbz'    => 'Oś czasu — SBZ',
+    'kafel.tl_iii'    => 'Oś czasu — III strefa',
+    'kafel.tl_bilans' => 'Oś czasu — bilans',
+    'kafel.duels'     => 'Pojedynki, straty, odbiory',
+    'kafel.zawodnicy' => 'Zawodnicy',
+    'kafel.siatka'    => 'Siatka ilości',
+    'kafel.noteam'    => 'Bez przypisania drużyny',
+
+    // --- ekran „Układ raportu" (Sesja 5 pivotu) ---
+    'uklad.title' => 'Układ raportu',
+    'uklad.crumb' => 'Układ raportu',
+    'uklad.intro' => 'Kolejność kafli, ich szerokość i tytuły. Zapis tworzy nową wersję templatu — raporty wygenerowane wcześniej zostają bez zmian.',
+    'uklad.sekcje' => 'Kafle raportu',
+    'uklad.roboczy' => 'Masz niezapisane zmiany układu. Zapisz je albo porzuć.',
+    'uklad.rozmiar' => 'Szerokość',
+    'uklad.rozmiar.1' => 'Cała szerokość',
+    'uklad.rozmiar.1_2' => 'Połowa',
+    'uklad.rozmiar.1_3' => 'Jedna trzecia',
+    'uklad.tytul' => 'Tytuł kafelka',
+    'uklad.tytul.domyslny' => 'domyślny z szablonu',
+    'uklad.gora' => 'W górę',
+    'uklad.dol' => 'W dół',
+    'uklad.usun' => 'Usuń z raportu',
+    'uklad.pusto' => 'Układ jest pusty — dodaj przynajmniej jeden kafelek.',
+    'uklad.dodaj' => 'Dodaj kafelek',
+    'uklad.dodaj.submit' => 'Dodaj',
+    'uklad.kafel' => 'Kafelek',
+    'uklad.wymaga_zawodnikow' => 'wymaga wypełnionej kolumny zawodnika w eksporcie',
+    'uklad.progi' => 'Progi faktów Przeglądu',
+    'uklad.progi.hint' => 'Wartości w procentach. Puste pole znaczy „użyj progu globalnego" — nie zero.',
+    'uklad.progi.globalny' => 'globalny',
+    'uklad.zapisz' => 'Zapisz jako nową wersję',
+    'uklad.zapisz.hint' => 'Powstanie wersja %d templatu.',
+    'uklad.porzuc' => 'Porzuć zmiany',
+    'uklad.porzucono' => 'Zmiany układu porzucone.',
+    'uklad.zapisano' => 'Układ zapisany jako wersja %d templatu.',
+    'uklad.podglad' => 'Podgląd to zwykły raport — przelicz mecze klubu pod aktualny templat:',
+    'uklad.podglad.link' => 'Przelicz raporty klubu',
+    'uklad.err.pusty' => 'Układ musi zawierać przynajmniej jeden kafelek.',
+    'uklad.err.za_duzo' => 'Za dużo kafli w układzie.',
+    'uklad.err.rozmiar' => 'Nieznana szerokość kafelka.',
+    'uklad.err.nieznany_kafel' => 'Układ zawiera kafelek nieznany silnikowi.',
+    'uklad.err.powtorzony_kafel' => 'Ten sam kafelek nie może wystąpić dwa razy.',
+    'uklad.err.brak_templatu' => 'Klub nie ma jeszcze templatu — najpierw przejdź konfigurator.',
+
+    'prog.pressing'   => 'Pressing skuteczny (%)',
+    'prog.sbz_strzal' => 'Wejścia w SBZ ze strzałem (%)',
+    'prog.reakcja'    => 'Straty z reakcją (%)',
+    'prog.duel_def'   => '1x1 w defensywie wygrane (%)',
+    'prog.p3'         => 'Udane wejścia w III strefę (%)',
+
+    'tpl.clone.done' => 'Wersja %d skopiowana jako nowa wersja %d templatu.',
+    'tpl.clone.err_missing' => 'Nie ma takiej wersji templatu.',
+    'tpl.clone.err_shape' => 'Ta wersja templatu nie daje się odczytać.',
+    'tpl.clone.submit' => 'Klonuj jako nową wersję',
+
+    'diff.act.alias' => 'To kontynuacja istniejącej zmiennej',
+    'diff.act.alias.target' => 'Kontynuacja zmiennej',
+    'diff.act.alias.pick' => '— wybierz zmienną —',
+
     // --- biblioteka meczów (Etap 4c) ---
     'matches.title'       => 'Mecze',
     'matches.club'        => 'Klub',

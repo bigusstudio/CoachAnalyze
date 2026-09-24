@@ -3,6 +3,77 @@
 Format: [wersja silnika] — data — opis.
 Każda zmiana, która modyfikuje wyjście silnika, MUSI mieć tu wpis wraz z powodem.
 
+## [0.15.0] — 2026-09-24 · sesja 5 pivotu „viewer"
+### Kreator sekcji: układ raportu z templatu, aliasy zmiennych
+
+**ZMIANA WYJŚCIA — WYŁĄCZNIE W GENERACJI v21 I WYŁĄCZNIE Z TEMPLATEM.**
+Bez templatu wyjście jest bajt w bajt takie jak dotąd; test złoty nietknięty.
+
+- **Schemat configu templatu 2** (`ReportTemplates::SCHEMA_VERSION`). Dokłada
+  `sections` (układ raportu) i `thresholds` (progi Przeglądu); **nie usuwa
+  żadnego pola**. Templaty schematu 1 leżą dalej w bazie i dają ten sam raport:
+  silnik czyta numer schematu i przy jedynce nie szuka układu.
+- **`report_template.sections_layout()`** — układ jako płaska lista
+  `{widget, span, title}`. Sekcja z kilkoma kaflami spłaszcza się: DOM v21 jest
+  płaski, a zagnieżdżanie sekcji dałoby podwójne nagłówki i odstępy przy zerowym
+  zysku. `title` nadpisuje nagłówek wyłącznie pierwszego kafelka.
+- **`render.uklad_sekcji()`** przestawia sekcje w gotowym HTML-u, wpisuje
+  szerokość w `style` i podmienia `<h2>`. **Układ z samych pełnych kafli NIE
+  włącza siatki** — `display: grid` zmienia podział stron przy druku, a wynik
+  byłby ten sam.
+- **Sekcje przy schemacie 2 czyta się Z UKŁADU, nie z `sections_enabled`.**
+  Dwie listy mówiące o tej samej rzeczy rozjeżdżają się przy pierwszej edycji,
+  która ruszy jedną z nich. `sections_enabled` zostaje, ale znaczy co innego:
+  do których sekcji operator przypisał ZMIENNE (`tags_by_section`).
+- **Aliasy zmiennych w słowniku szablonu** (`__VARS_TEMPLATU__`). Klub zmienia
+  nazwę taga między sezonami (`SBZ PODAJĄCY` → `ZDOBYCIE SBZ`); bez aliasu raport
+  pokazuje dwie serie zamiast jednej i nic tego nie sygnalizuje. Wartości z pliku
+  szablonu są DOMYŚLNE, templat je nadpisuje **per klucz** — klub, który nazwał
+  jedną zmienną, nie traci aliasów pozostałych.
+  **`display_label` dochodzi przy tej okazji do raportu v21** także dla templatów
+  schematu 1: pole istniało od dawna i było ignorowane przez szablon.
+- **Nazwa zmiennej nie domyka bloku skryptu.** `<`, `>` i `&` idą jako `\uXXXX`:
+  nazwa pochodzi z bazy, a raport wisi pod publicznym adresem (CLAUDE.md §5).
+- **`slideDefs()` składany z sekcji obecnych w dokumencie**, a nie z listy
+  wpisanej na sztywno. Numer slajdu bierze się z pozycji w raporcie, więc
+  kolejność slajdów idzie za układem, który ustawił trener.
+- **Kafle renderuje rejestr, nie wywołania rozsypane po skrypcie.** Sekcja
+  wyłączona w templacie nie istnieje w DOM-ie, a `wrap.innerHTML` na `null`
+  wywracało CAŁY blok skryptu — razem z nagłówkiem i mapami, czyli sekcjami,
+  które z wyłączoną nie miały nic wspólnego. Dopóki wycinaliśmy pojedynczą
+  sekcję bez danych, nikt na to nie trafił; kreator układu czyni wycinanie
+  stanem normalnym.
+- **Pasek nawigacji i kotwice** idą za układem (składane z `[data-widget]`).
+
+## Aplikacja — 2026-09-24 · sesja 5 pivotu „viewer"
+### Ekran „Układ raportu", klonowanie wersji, kontynuacja zmiennej
+
+- **Migracja `016`** (addytywna): `tag_catalog.alias_of` — zapis decyzji „ten tag
+  jest kontynuacją tamtej zmiennej". **Katalog niczego nie scala:** wiersz starego
+  tagu zostaje ze swoimi licznikami, bo katalog jest historią tagowania, a nie
+  zdjęciem stanu bieżącego.
+- **`ReportLayout`** — rejestr kafli po stronie PHP, odwzorowanie
+  `coverage.ALL_SECTIONS` i `WIDGETS` z szablonu. **To nie to samo, co
+  `Configurator::SEKCJE`:** tamto pyta o zmienną („pokaż STRZAŁ na osi czasu"),
+  to o stronę („najpierw Przegląd, potem donuty obok okazji").
+- **Ekran `/klub/{id}/uklad`** — kolejność (przyciski góra/dół), szerokość
+  (1, 1/2, 1/3), tytuł kafelka, progi faktów. **Bez skryptu:** panel ma jeden
+  zatwierdzony plik JavaScript i jest to wyjątek na chmurki (CLAUDE.md §9),
+  więc przeciąganie wymagałoby osobnego uzgodnienia. Stan roboczy w sesji —
+  przesunięcie nie podbija wersji templatu.
+- **Zapis = nowa wersja templatu**, jak wszędzie indziej. **Klonowanie
+  wcześniejszej wersji** zamiast cofania: cofnięcie kasowałoby historię, na
+  której stoją raporty klienta.
+- **Progi spoza 0-100 i nazwy spoza zestawu nie zapisują się** — te liczby idą
+  wprost do literału JS w raporcie pod publicznym adresem. Puste pole znaczy
+  „użyj progu globalnego", nie zero.
+- **Ekran różnic importu: „to kontynuacja zmiennej X"** (tylko dla tagów i tylko
+  gdy klub ma zmienne). Dopisuje alias do istniejącej zmiennej zamiast tworzyć
+  nową; wskazanie na zmienną, której nie ma, jest pomijane. Podbija wersję
+  templatu, bo zmienia definicję raportu.
+- **Układ i progi przenoszą się przez rewizję mapowań** — klub, który poukładał
+  kafle, nie traci ich przy pierwszym nowym tagu w eksporcie.
+
 ## [0.14.1] — 2026-09-24 · sesja 4b pivotu „viewer"
 ### Widgety v21: rejestr, kafle z magazynu v2, progi faktów z pliku
 

@@ -68,11 +68,53 @@ final class TagCatalog
         return $dotkniete;
     }
 
+    /**
+     * Zapis decyzji „ten tag jest kontynuacją tamtej zmiennej" (migracja 016).
+     *
+     * WIERSZ MOŻE JESZCZE NIE ISTNIEĆ: tag pojawił się w eksporcie, ale katalog
+     * zapełnia się dopiero po przetworzeniu importu. Zakładamy go wtedy z zerowymi
+     * licznikami — decyzja człowieka jest faktem niezależnym od tego, czy zadanie
+     * w kolejce zdążyło się wykonać.
+     *
+     * NICZEGO NIE SCALAMY. Wiersz tagu źródłowego zostaje ze swoimi licznikami:
+     * katalog jest HISTORIĄ tagowania, nie zdjęciem stanu bieżącego. Scalanie
+     * przy liczeniu robi szablon raportu, po `variables[].aliases` z templatu.
+     */
+    public static function setAlias(int $clubId, string $kind, string $name, ?string $aliasOf): void
+    {
+        $nazwa = trim($name);
+        if ($clubId <= 0 || $nazwa === '') {
+            return;
+        }
+        $cel = $aliasOf === null ? null : trim($aliasOf);
+        $cel = ($cel === '' || $cel === $nazwa) ? null : $cel;
+
+        $istnieje = Db::one(
+            'SELECT id FROM tag_catalog WHERE club_id = :c AND kind = :k AND name = :n',
+            ['c' => $clubId, 'k' => $kind, 'n' => $nazwa]
+        );
+
+        if ($istnieje === null) {
+            Db::run(
+                'INSERT INTO tag_catalog (club_id, kind, name, seen_matches, seen_events,
+                                          alias_of, updated_at)
+                 VALUES (:c, :k, :n, 0, 0, :a, :now)',
+                ['c' => $clubId, 'k' => $kind, 'n' => $nazwa, 'a' => $cel, 'now' => Stats::now()]
+            );
+            return;
+        }
+
+        Db::run(
+            'UPDATE tag_catalog SET alias_of = :a, updated_at = :now WHERE id = :id',
+            ['a' => $cel, 'now' => Stats::now(), 'id' => (int) $istnieje['id']]
+        );
+    }
+
     /** Katalog klubu do ekranów. Tagi przed etykietami, alfabetycznie. */
     public static function forClub(int $clubId): array
     {
         return Db::all(
-            "SELECT kind, name, color, seen_matches, seen_events, updated_at
+            "SELECT kind, name, color, seen_matches, seen_events, alias_of, updated_at
                FROM tag_catalog
               WHERE club_id = :c
               ORDER BY CASE kind WHEN 'tag' THEN 0 ELSE 1 END, name",
