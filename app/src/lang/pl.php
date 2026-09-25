@@ -821,6 +821,20 @@ return [
 
     'kalendarz.bez_daty' => 'Meczów bez daty: %d. Nie trafiają do kalendarza — datę uzupełnia się w meta meczu.',
 
+    // --- import bez tarcia (Sesja 8 pivotu „viewer") ---
+    'cov.auto.title' => 'Nowe zmienne dodane automatycznie',
+    'cov.auto.hint' => 'Tagi i etykiety, których templat jeszcze nie znał, weszły do raportu jako zmienne (wersja templatu %d). Nazwa wyświetlana to surowa nazwa z eksportu — możesz ją zmienić.',
+    'cov.auto.edit' => 'Popraw nazwy, aliasy albo zignoruj',
+    'cov.auto.edit.hint' => 'Zmiana nazwy, „to kontynuacja zmiennej X" albo „nie pytaj o ten tag".',
+    'cov.team.auto' => 'klub założony automatycznie z nazwy w eksporcie',
+    'cov.team.auto.edit' => 'uzupełnij skrót i herb',
+
+    'diff.auto.hint' => 'Import dopisał je do templatu sam (wersja %d) — nie musisz niczego zatwierdzać, żeby zobaczyć raport. Poniżej możesz poprawić decyzję.',
+    'diff.auto.configurator' => 'Otwórz konfigurator zmiennych',
+    'diff.act.keep_auto' => 'Zostaw jak jest',
+    'diff.act.drop_auto' => 'Nie analizuj tego tagu (usuń z templatu)',
+    'rev.stan.auto' => 'dodana automatycznie',
+
     // --- biblioteka meczów (Etap 4c) ---
     'matches.title'       => 'Mecze',
     'matches.club'        => 'Klub',

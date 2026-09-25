@@ -446,7 +446,20 @@ def _pozycje_slownika(zliczone, klucz):
     a lista zmieniająca kolejność między przebiegami dawałaby fałszywe różnice.
     """
     return [
-        {klucz: nazwa, "count": dane["count"], "samples": dane["samples"]}
+        {
+            klucz: nazwa,
+            "count": dane["count"],
+            # ILE ZDARZEŃ MA POZYCJĘ I ILE MA xG (sesja 8).
+            #
+            # Po to, żeby warstwa PHP mogła zakładać zmienne AUTOMATYCZNIE i od
+            # razu wiedziała, do których sekcji je wpisać: tag bez współrzędnych
+            # nie ma czego pokazać na mapie, a tag z xG ma co pokazać w kafelku
+            # okazji. Liczenie tego w PHP znaczyłoby drugi parser eksportu
+            # i wszystkie jedenaście pułapek formatu LiveTag od nowa.
+            "with_pos": dane["with_pos"],
+            "with_xg": dane["with_xg"],
+            "samples": dane["samples"],
+        }
         for nazwa, dane in sorted(zliczone.items(), key=lambda p: (-p[1]["count"], p[0]))
     ]
 
@@ -477,21 +490,27 @@ def build_dictionary(frame, probka=3):
     tagi = {}
     etykiety = {}
 
+    def _dolicz(zbior, nazwa, e):
+        poz = zbior.setdefault(nazwa, {"count": 0, "with_pos": 0, "with_xg": 0, "samples": []})
+        poz["count"] += 1
+        # POZYCJA WYMAGA OBU WSPÓŁRZĘDNYCH. Samo `x` bez `y` nie stawia punktu
+        # na boisku, a policzone jako „z pozycją" obiecywałoby mapę, która i tak
+        # wyszłaby pusta (pułapka 3).
+        if e.get("x") is not None and e.get("y") is not None:
+            poz["with_pos"] += 1
+        if e.get("xg") is not None:
+            poz["with_xg"] += 1
+        if len(poz["samples"]) < probka:
+            poz["samples"].append(_probka_zdarzenia(e))
+
     for e in events:
         tag = e.get("tag")
         if tag:
-            poz = tagi.setdefault(tag, {"count": 0, "samples": []})
-            poz["count"] += 1
-            if len(poz["samples"]) < probka:
-                poz["samples"].append(_probka_zdarzenia(e))
+            _dolicz(tagi, tag, e)
 
         for etykieta in (e.get("labels") or []):
-            if not etykieta:
-                continue
-            poz = etykiety.setdefault(etykieta, {"count": 0, "samples": []})
-            poz["count"] += 1
-            if len(poz["samples"]) < probka:
-                poz["samples"].append(_probka_zdarzenia(e))
+            if etykieta:
+                _dolicz(etykiety, etykieta, e)
 
     # ZAWODNICY (sesja 6). Osobny blok, bo nazwisko nie jest ani tagiem, ani
     # etykietą: to KOLUMNA eksportu, równoległa do zdarzeń (`frame["players"]`).

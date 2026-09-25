@@ -66,6 +66,16 @@ final class TemplateDiff
     public const STAN_NA_STALE = 'na_stale';
 
     /**
+     * Pozycja DODANA AUTOMATYCZNIE przy tym imporcie (Sesja 8).
+     *
+     * Jest już zmienną templatu, więc nie pyta „dodać?" — pyta, czy zostawić
+     * ją tak, jak weszła. Operator może ją zignorować albo oznaczyć jako
+     * kontynuację innej zmiennej; jedno i drugie USUWA ją z templatu, bo
+     * inaczej decyzja nie miałaby skutku.
+     */
+    public const STAN_AUTO = 'auto';
+
+    /**
      * Porównanie słownika importu z templatem i listą zignorowanych.
      *
      * DOPASOWANIE PRZEZ RÓWNOŚĆ PEŁNEJ NAZWY, nigdy przez zawieranie —
@@ -150,12 +160,29 @@ final class TemplateDiff
      * @param array{nowe: list<array<string,mixed>>, ignorowane: list<array<string,mixed>>} $diff
      * @return list<array<string,mixed>>  pozycje z dodanym kluczem `stan`
      */
-    public static function pozycjeRewizji(array $diff, bool $diffDone): array
+    public static function pozycjeRewizji(array $diff, bool $diffDone, array $auto = []): array
     {
         $out = [];
 
         foreach ((array) ($diff['nowe'] ?? []) as $poz) {
             $poz['stan'] = $diffDone ? self::STAN_POMINIETA : self::STAN_NOWA;
+            $out[] = $poz;
+        }
+
+        /*
+         * ZMIENNE DODANE AUTOMATYCZNIE (Sesja 8). Są już w templacie, więc
+         * `policz()` ich tu nie przyniesie — a to o nie operator najczęściej
+         * przychodzi: żeby zignorować śmieciowy tag albo oznaczyć go jako
+         * kontynuację zmiennej, którą klub nazywał wcześniej inaczej.
+         *
+         * Ekran bez nich mówiłby „nie ma czego poprawiać" dokładnie wtedy,
+         * gdy import właśnie coś dołożył.
+         */
+        foreach ($auto as $poz) {
+            if (!is_array($poz) || ($poz['name'] ?? '') === '') {
+                continue;
+            }
+            $poz['stan'] = self::STAN_AUTO;
             $out[] = $poz;
         }
 
@@ -165,6 +192,29 @@ final class TemplateDiff
         }
 
         return $out;
+    }
+
+    /**
+     * Pozycje słownika importu dla nazw dodanych automatycznie.
+     *
+     * WYŁĄCZNIE POZYCJE ZE SŁOWNIKA EKSPORTU. Nazwa, której w słowniku nie ma,
+     * NIE trafia na listę — i to jest celowe: artefakt sprzed silnika ze
+     * słownikiem (0.10.0) nie niesie ani liczb wystąpień, ani próbek, więc
+     * wiersz z samą nazwą udawałby, że coś o niej wiemy. Ekran mówi wtedy
+     * wprost „nie ma zapisanego słownika" i proponuje przeliczenie pokrycia.
+     *
+     * @param list<string> $nazwy
+     * @param array<string,mixed> $meta `coverage_json` importu
+     * @return list<array<string,mixed>>
+     */
+    public static function pozycjeAuto(array $nazwy, array $meta): array
+    {
+        $szukane = array_flip(array_map('strval', $nazwy));
+
+        return array_values(array_filter(
+            self::pozycjeSlownika($meta),
+            static fn(array $poz): bool => isset($szukane[(string) $poz['name']])
+        ));
     }
 
     /**
@@ -277,6 +327,16 @@ final class TemplateDiff
         // więc nie zależą od numeracji nowych i nie mogą jej popsuć.
         $zmienne = self::dopiszAliasy($zmienne, $nowe, $decyzje, $pola);
 
+        /*
+         * USUNIĘCIE ZMIENNEJ, KTÓRA WESZŁA AUTOMATYCZNIE (Sesja 8).
+         *
+         * „Nie analizuj tego tagu" i „to kontynuacja zmiennej X" muszą ją
+         * z templatu ZABRAĆ. Bez tego wpis w `club_ignored_tags` albo alias
+         * byłby decyzją bez skutku: zmienna dalej stałaby w raporcie, a tag
+         * liczyłby się dwa razy — raz pod swoją nazwą, raz pod nazwą główną.
+         */
+        $zmienne = self::usunZdecydowane($zmienne, $nowe, $decyzje);
+
         foreach ($nowe as $poz) {
             $klucz = self::klucz((string) $poz['type'], (string) $poz['name']);
             if (($decyzje[$klucz] ?? '') !== self::DODAJ) {
@@ -328,6 +388,40 @@ final class TemplateDiff
             ReportLayout::zConfigu($config),
             (array) ($config['thresholds'] ?? [])
         );
+    }
+
+    /**
+     * Zmienne wyrzucone z templatu decyzją „zignoruj" albo „kontynuacja".
+     *
+     * Dopasowanie po SUROWEJ NAZWIE i typie, przez równość — ta sama reguła,
+     * co wszędzie indziej (pułapka 7).
+     *
+     * @param list<array<string,mixed>> $zmienne
+     * @param list<array<string,mixed>> $nowe
+     * @param array<string,string> $decyzje
+     * @return list<array<string,mixed>>
+     */
+    public static function usunZdecydowane(array $zmienne, array $nowe, array $decyzje): array
+    {
+        $doUsuniecia = [];
+        foreach ($nowe as $poz) {
+            $typ = (string) $poz['type'];
+            $nazwa = (string) $poz['name'];
+            $decyzja = $decyzje[self::klucz($typ, $nazwa)] ?? '';
+            if ($decyzja === self::NA_STALE || $decyzja === self::KONTYNUACJA) {
+                $doUsuniecia[$typ . '|' . $nazwa] = true;
+            }
+        }
+
+        if ($doUsuniecia === []) {
+            return $zmienne;
+        }
+
+        return array_values(array_filter($zmienne, static function ($z) use ($doUsuniecia): bool {
+            $typ = (string) (($z['source'] ?? [])['type'] ?? '');
+            $raw = (string) (($z['source'] ?? [])['raw'] ?? '');
+            return !isset($doUsuniecia[$typ . '|' . $raw]);
+        }));
     }
 
     /**
@@ -420,6 +514,26 @@ final class TemplateDiff
     {
         foreach ($decyzje as $decyzja) {
             if ($decyzja === self::DODAJ || $decyzja === self::KONTYNUACJA) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Czy decyzje w ogóle RUSZAJĄ templat — dopisując albo zabierając.
+     *
+     * Od sesji 8 „zignoruj na stałe" bywa zmianą templatu: zmienna mogła wejść
+     * automatycznie przy imporcie, a zignorowanie musi ją stamtąd zabrać.
+     * Dotąd ta decyzja nie dotykała templatu w ogóle, bo tag nigdy do niego
+     * nie wchodził bez kliknięcia.
+     *
+     * @param array<string,string> $decyzje
+     */
+    public static function czyZmieniaTemplat(array $decyzje): bool
+    {
+        foreach ($decyzje as $decyzja) {
+            if (in_array($decyzja, [self::DODAJ, self::KONTYNUACJA, self::NA_STALE], true)) {
                 return true;
             }
         }

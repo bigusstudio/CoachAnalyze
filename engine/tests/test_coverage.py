@@ -328,3 +328,35 @@ def test_slownik_niesie_zawodnikow_z_kolumny(write_csv):
         {"player": "Kowalski Jan", "count": 2},
         {"player": "Nowak Piotr", "count": 1},
     ]
+
+
+def test_slownik_niesie_pozycje_i_xg(write_csv, row):
+    """`with_pos` i `with_xg` zasilają AUTO-ZMIENNE przy imporcie (sesja 8).
+
+    Warstwa PHP zakłada zmienną dla każdego nowego tagu i musi od razu wiedzieć,
+    do których sekcji ją wpisać: tag bez współrzędnych nie ma czego pokazać na
+    mapie. Policzenie tego w PHP znaczyłoby drugi parser eksportu.
+
+    POZYCJA WYMAGA OBU WSPÓŁRZĘDNYCH — samo `x` nie stawia punktu na boisku.
+    """
+    from coachanalyze.sources.livetag import parse
+
+    slownik = coverage.build_dictionary(parse.prep_frame(write_csv([
+        row("STRZAŁ", team="A", x="80", y="30", comment="X 0,45", labels="CELNY"),
+        row("STRZAŁ", team="A", x="70", y="", labels="CELNY"),
+        row("STRATA", team="A", labels="REAKCJA"),
+    ])))
+
+    po_nazwie = {p["tag"]: p for p in slownik["tags"]}
+    assert po_nazwie["STRZAŁ"]["count"] == 2
+    assert po_nazwie["STRZAŁ"]["with_pos"] == 1, "drugi strzał ma x bez y"
+    assert po_nazwie["STRZAŁ"]["with_xg"] == 1
+    assert po_nazwie["STRATA"] == {
+        "tag": "STRATA", "count": 1, "with_pos": 0, "with_xg": 0,
+        "samples": po_nazwie["STRATA"]["samples"],
+    }
+
+    # Etykieta dziedziczy liczniki po zdarzeniu, na którym stoi.
+    po_etykiecie = {p["label"]: p for p in slownik["labels"]}
+    assert po_etykiecie["CELNY"]["count"] == 2
+    assert po_etykiecie["CELNY"]["with_pos"] == 1

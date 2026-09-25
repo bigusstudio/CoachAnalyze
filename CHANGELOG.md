@@ -3,6 +3,80 @@
 Format: [wersja silnika] — data — opis.
 Każda zmiana, która modyfikuje wyjście silnika, MUSI mieć tu wpis wraz z powodem.
 
+## Aplikacja — 2026-09-25 · sesja 8 „Import bez tarcia"
+### Zmienne i rywal zakładane automatycznie, ekran różnic bez bramki
+
+**POWÓD: import zatrzymywał się dwa razy i oba razy pytał o rozstrzygnięte.**
+Nowy tag odsyłał na ekran różnic („dodać do templatu?"), nieznana nazwa drużyny
+na formularz klubu („załóż klub?"). Odpowiedź brzmiała niemal zawsze tak samo,
+bo zasada pivotu mówi: **zmienna to surowa nazwa tagu, a użytkownik nie musi
+niczego konfigurować, żeby zobaczyć raport**. Ekran pytający o coś wiadomego
+uczy klikać „dalej" bez czytania — i przestaje chronić także wtedy, gdy ma co
+powiedzieć.
+
+- **`app/src/AutoImport.php` — co dzieje się samo po inspekcji.** Wołane
+  z `run_job.php` zaraz po `Imports::saveInspection()`, w bloku `try/catch`:
+  nieudany automat nie może zepsuć importu, który sam w sobie się powiódł.
+- **Zmienne z eksportu wchodzą do templatu bez pytania.** `display_label` to
+  SUROWA nazwa z pliku (analityk szuka w raporcie tego, co wpisał w LiveTag),
+  `canon` zostaje pusty (zgadnięte pojęcie zmieniłoby liczby), barwa z palety
+  eksportu, a przy białej — z kolejki `AutoImport::BARWY`.
+  **Sekcje z danych, nie z nazwy:** tag ze współrzędnymi trafia na mapy, tag bez
+  nich tylko do bilansu i osi, etykieta wyłącznie do bilansu. Puste boisko
+  wygląda jak zero zdarzeń (pułapka 3), więc sekcja „na wszelki wypadek" kłamie.
+- **Wersja automatyczna NIE unieważnia raportów.** Znacznik `auto` siedzi
+  w konfiguracji, a `ReportTemplates::isOutdated()` porównuje z ostatnią wersją
+  RĘCZNĄ. Bez tego każdy import zapalałby „do przeliczenia" przy wszystkich
+  raportach klubu — za zmianę, której nikt nie zamawiał.
+- **Klub bez templatu nie dostaje go tutaj.** Pierwszy templat powstaje
+  w konfiguratorze, świadomie: tam rozstrzygają się sekcje, barwy i markery
+  drużyny „naszej", czyli rzeczy, których z jednego eksportu wyprowadzić się
+  nie da.
+- **Ekran różnic przestał być bramką** — jest informacyjny i mówi, co powstało,
+  z odsyłaczem do konfiguratora. „Poza templatem klubu" znika, gdy jest puste.
+  Przy pozycji dodanej automatycznie nie ma już pytania „dodać?", jest
+  „Zostaw jak jest" i „Nie analizuj tego tagu (usuń z templatu)" — decyzja
+  „ignoruj" **zabiera zmienną z templatu**, inaczej byłaby decyzją bez skutku.
+- **Rywal z eksportu zakładany automatycznie** (`is_own_team = 0`, barwa
+  z kolejki, nazwa z pliku w `aliases_json`, znacznik `auto_import`
+  w `details`), `matches.club_away_id` podpięty. Dopasowanie przez **równość po
+  normalizacji** (wielkość liter, spacje, łączniki) — **nigdy przez fragment**:
+  „Pogoń" wewnątrz „Pogoń II" przypisałoby mecz rezerw pierwszej drużynie
+  i rozbiło porównania sezonowe bez śladu.
+  **Gdy żadna nazwa z eksportu nie trafia w tenanta, nie zakładamy niczego** —
+  nie wiemy wtedy, która drużyna jest „nasza", a rywal zrobiony z własnej
+  drużyny klubu to błąd niewidoczny aż do raportu z odwróconymi stronami.
+  Ekran pokrycia pokazuje wtedy „załóż klub" jak dotąd.
+- **„Zdarzeń poza analizą" liczone ze SŁOWNIKA EKSPORTU.** Dotąd szło
+  z `coverage.unanalysed`, czyli ze zdarzeń bez pojęcia kanonicznego — a pojęcie
+  jest w pivocie puste z założenia, więc klub z kompletem tagów w templacie
+  widział „poza analizą" komplet swoich zdarzeń. Nieprawda o raporcie, który je
+  pokazywał. Sumujemy teraz liczniki `meta.dictionary` dla tagów faktycznie
+  wypadających; brak słownika (artefakt sprzed 0.10.0) daje „nie wiadomo",
+  a nie zero.
+- **`UNMAPPED_TAGS` zdjęte z ekranu — ale tylko klubom Z templatem.** Klub bez
+  templatu idzie ścieżką kreatora mapowań, gdzie ta lista jest treścią pracy.
+  Ostrzeżenie zostaje w `meta.json` w obu przypadkach.
+- **Testy:** nowy przelot `app/tests/integracja/test_auto_import_http.php`
+  (41 asercji): sześć nowych tagów → sześć zmiennych, poza analizą 0, raport
+  generowany bez wejścia na `/diff`, nieznany rywal założony i podpięty, drugi
+  import tego samego rywala inną wielkością liter → ten sam klub.
+  `test_import_n1_http.php` rozszerzony o poprawianie decyzji w rewizji.
+
+## [0.16.2] — 2026-09-25 · sesja 8 „Import bez tarcia"
+### Słownik eksportu mówi, ile zdarzeń ma pozycję i ile ma xG
+
+**ZMIANA WYJŚCIA: `meta.json` → `dictionary`.** Każda pozycja tagu i etykiety
+dostała `with_pos` i `with_xg`; nic istniejącego nie zmieniło wartości, doszły
+dwa pola. **Test złoty nietknięty** — wzorce nie obejmują tego bloku.
+
+- Warstwa PHP zakłada zmienne automatycznie i musi wiedzieć, do których sekcji
+  je wpisać. Liczenie tego po stronie PHP znaczyłoby **drugi parser eksportu**
+  i wszystkie jedenaście pułapek formatu LiveTag od nowa (CLAUDE.md §3, §4).
+- `with_pos` wymaga OBU współrzędnych: samo `x` bez `y` nie stawia punktu na
+  boisku, a policzone jako „z pozycją" obiecywałoby mapę, która i tak wyszłaby
+  pusta (pułapka 3).
+
 ## Aplikacja — 2026-09-25 · blok „Menu sezonowe i produkcja"
 ### Menu sezonowe na danych, procedura wdrożenia, regeneracja
 

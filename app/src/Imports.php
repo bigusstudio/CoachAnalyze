@@ -214,6 +214,18 @@ final class Imports
                          * odróżnia te dwa stany.
                          */
                         'dictionary'      => $meta['dictionary'] ?? null,
+
+                        /*
+                         * PALETA TABLICY KODOWEJ (sesja 8). Ta sama klasa
+                         * pomyłki, co przy `dictionary` wyżej: blok leży
+                         * w `meta.json` na najwyższym poziomie, obok `coverage`.
+                         *
+                         * Do tej sesji przepadał przy zapisie, więc
+                         * `configuratorPalette()` zawsze zwracało pustą tablicę
+                         * i każda zmienna dostawała barwę z kolejki zapasowej —
+                         * także wtedy, gdy klub miał w pliku projektu własną.
+                         */
+                        'palette'         => $meta['palette'] ?? null,
                     ]
                 )),
                 'warn' => self::encode($meta['warnings'] ?? null),
@@ -314,7 +326,8 @@ final class Imports
             'warnings'             => self::explainWarnings(
                 array_values(self::decode($import['warnings_json'] ?? null)),
                 $meta,
-                self::mappingClubId($import)
+                self::mappingClubId($import),
+                self::maTemplat($import)
             ),
             'sections_available'   => array_values((array) ($sections['available'] ?? [])),
             'sections_unavailable' => array_values((array) ($sections['unavailable'] ?? [])),
@@ -426,6 +439,38 @@ final class Imports
         ]);
     }
 
+    /**
+     * Klub-tenant meczu tego importu — właściciel templatu.
+     *
+     * To NIE TO SAMO, co `mappingClubId()`: tamto szuka klubu „naszego" po
+     * nazwach z eksportu (profil mapowań), to czyta `matches.club_id`, czyli
+     * właściciela analizy (migracja 012). Przy scoutingu te dwie odpowiedzi się
+     * rozchodzą, a templat należy zawsze do drugiej.
+     *
+     * @param array<string,mixed> $import
+     */
+    public static function tenantId(array $import): ?int
+    {
+        $mecz = Matches::find((int) ($import['match_id'] ?? 0));
+        return $mecz !== null && $mecz['club_id'] !== null ? (int) $mecz['club_id'] : null;
+    }
+
+    /**
+     * `coverage_json` importu jako tablica.
+     *
+     * Kształt jest SPŁASZCZONY: klucze pokrycia leżą na wierzchu, obok
+     * `unmapped_tags`, `dictionary` i `palette` (patrz `saveInspection`).
+     * Metoda istnieje, żeby czytający nie musiał pamiętać o tym dekodowaniu
+     * ani o tym, że `decode()` jest prywatne.
+     *
+     * @param array<string,mixed> $import
+     * @return array<string,mixed>
+     */
+    public static function coverageMeta(array $import): array
+    {
+        return self::decode($import['coverage_json'] ?? null);
+    }
+
     /** Nazwy drużyn wykryte w danych, zapisane w raporcie pokrycia. */
     public static function detectedTeams(array $import): array
     {
@@ -515,8 +560,53 @@ final class Imports
      * @param array<string,mixed> $meta zdekodowany `coverage_json`
      * @return list<array<string,mixed>>
      */
-    private static function explainWarnings(array $warnings, array $meta, ?int $clubId): array
+    /** Czy klub-tenant tego importu ma templat raportu. */
+    private static function maTemplat(array $import): bool
     {
+        $tenantId = self::tenantId($import);
+        return $tenantId !== null && ReportTemplates::current($tenantId) !== null;
+    }
+
+    private static function explainWarnings(
+        array $warnings,
+        array $meta,
+        ?int $clubId,
+        bool $maTemplat = false
+    ): array {
+        /*
+         * ═══════════════════════════════════════════════════════════════════
+         * `UNMAPPED_TAGS` NIE IDZIE NA EKRAN (sesja 8).
+         *
+         * Ostrzeżenie mówi o POJĘCIACH KANONICZNYCH: „te tagi nie mają
+         * odpowiednika w modelu". Warstwa kanoniczna jest uśpiona
+         * (docs/STAN_PIVOTU.md §2.1), a raport liczy po surowej nazwie tagu —
+         * więc zdarzenia, o których ostrzega, SĄ w raporcie, w bilansie
+         * i na osiach czasu.
+         *
+         * Operator czytał to jako „część danych wyleciała" i albo szukał
+         * przyczyny, której nie ma, albo — po trzecim imporcie — przestawał
+         * czytać ostrzeżenia w ogóle. Ostrzeżenie o stanie normalnym jest
+         * gorsze niż jego brak, bo psuje wszystkie pozostałe.
+         *
+         * ZOSTAJE W `meta.json` i w `warnings_json`: warstwa kanoniczna kiedyś
+         * wróci (M4, porównania sezonowe), a wtedy ta informacja będzie
+         * potrzebna. Nie pokazujemy jej, nie kasujemy.
+         *
+         * WYŁĄCZNIE PRZY KLUBIE Z TEMPLATEM. Klub bez templatu chodzi dalej
+         * kreatorem mapowań, czyli po pojęciach kanonicznych — tam to samo
+         * ostrzeżenie mówi prawdę i jest jedynym miejscem, w którym nazwa
+         * nierozpoznanego tagu w ogóle pada (stare wpisy `coverage_json`
+         * sprzed naprawy nie mają `unmapped_tags`). Ukrycie go tam byłoby
+         * cichym wyrzuceniem danych.
+         * ═══════════════════════════════════════════════════════════════════
+         */
+        if ($maTemplat) {
+            $warnings = array_values(array_filter(
+                $warnings,
+                static fn($w) => (string) (is_array($w) ? ($w['code'] ?? '') : '') !== 'UNMAPPED_TAGS'
+            ));
+        }
+
         $nierozpoznane = [];
         foreach ((array) ($meta['unmapped_tags'] ?? []) as $poz) {
             $nazwa = is_array($poz) ? (string) ($poz['tag'] ?? $poz['name'] ?? '') : (string) $poz;
@@ -588,6 +678,54 @@ final class Imports
         $zdecydowane = $clubId !== null ? Mappings::decidedTags($clubId) : [];
         $pominiete   = $clubId !== null ? Mappings::ignoredTags($clubId) : [];
 
+        /*
+         * DWA MECHANIZMY IGNOROWANIA, JEDNA LISTA NA EKRANIE.
+         *
+         *   `Mappings::NIE_ANALIZUJ`  — kreator mapowań, klub BEZ templatu,
+         *   `club_ignored_tags`       — ekran różnic, klub Z templatem.
+         *
+         * Operator zna jedną odpowiedź („nie pytaj mnie o ten tag") i ma
+         * zobaczyć jedną listę. Rozdzielenie ich na ekranie znaczyłoby, że musi
+         * wiedzieć, którą drogą kiedyś kliknął, żeby znaleźć własną decyzję.
+         */
+        $tenantId = self::tenantId($import);
+        if ($tenantId !== null) {
+            foreach (array_keys(IgnoredTags::lookup($tenantId)[Suggester::TAG] ?? []) as $tag) {
+                $pominiete[] = (string) $tag;
+            }
+            $pominiete = array_values(array_unique($pominiete));
+            sort($pominiete);
+        }
+
+        /*
+         * ═══════════════════════════════════════════════════════════════════
+         * TAG ZE ZMIENNEJ TEMPLATU NIE JEST „POZA ANALIZĄ" (sesja 8).
+         *
+         * Zasada pivotu: zmienna to SUROWA NAZWA TAGU, a raport liczy po niej
+         * (docs/STAN_PIVOTU.md §2.1). Pojęcie kanoniczne jest opcjonalne
+         * i zwykle puste — warstwa kanoniczna jest uśpiona.
+         *
+         * `unmapped_tags` z `inspect` mówi WYŁĄCZNIE o pojęciach: `inspect` nie
+         * dostaje ani profilu, ani templatu (docs/KONTRAKT_CLI.md), więc zgłasza
+         * jako nierozpoznany każdy tag spoza domyślnego słownika silnika.
+         * Pokazywanie tego operatorowi jako „wyleciało z analizy" jest po prostu
+         * nieprawdą: te zdarzenia są w raporcie, w bilansie i na osiach.
+         *
+         * Od sesji 8 import zakłada zmienne sam, więc po imporcie poza analizą
+         * zostaje dokładnie to, co klub kazał zignorować — i nic więcej.
+         * ═══════════════════════════════════════════════════════════════════
+         */
+        $wTemplacie = [];
+        if ($tenantId !== null) {
+            $templat = ReportTemplates::current($tenantId);
+            if ($templat !== null) {
+                $obsluzone = Configurator::obsluzoneNazwy(
+                    ReportTemplates::decodeConfig($templat['config'])
+                );
+                $wTemplacie = $obsluzone[Suggester::TAG] ?? [];
+            }
+        }
+
         // Z listy „nierozpoznanych" WYPADAJA tagi, o ktorych juz zdecydowano.
         //
         // `inspect` nie dostaje profilu klubu (docs/KONTRAKT_CLI.md), wiec zglasza
@@ -598,15 +736,40 @@ final class Imports
         $nierozpoznane = array_values(array_filter(
             $nierozpoznane,
             static fn(string $tag) => !isset($zdecydowane[$tag])
+                && !isset($wTemplacie[Clubs::normalize($tag)])
         ));
 
-        // Liczba zdarzen: bierzemy ja z `meta`, jesli silnik ja podaje.
-        // NIE liczymy jej w PHP — parsowanie eksportu tutaj oznaczaloby drugi
-        // parser i wszystkie jedenascie pulapek formatu LiveTag od nowa.
-        // `coverage_json` JEST obiektem `coverage` — bez zagniezdzenia.
-        // Odczyt przez `$meta['coverage']['events']` zawsze dawal null i to ta
-        // sama pomylka, ktora wylaczyla caly kreator.
-        $ile = $meta['unanalysed'] ?? null;
+        /*
+         * ILE ZDARZEŃ FAKTYCZNIE ZOSTAJE POZA ANALIZĄ.
+         *
+         * `coverage.unanalysed` liczy zdarzenia BEZ POJĘCIA KANONICZNEGO —
+         * a od pivotu pojęcie jest opcjonalne i zwykle puste, więc ta liczba
+         * mówi o czymś innym, niż sugeruje nagłówek „poza analizą". Klub, który
+         * ma wszystko w templacie, widziałby tam komplet swoich zdarzeń.
+         *
+         * Sumujemy więc liczniki ze SŁOWNIKA EKSPORTU dla tagów, które
+         * faktycznie wypadły: nierozpoznanych po odfiltrowaniu i zignorowanych
+         * na stałe. NIE PARSUJEMY eksportu — `count` przychodzi gotowe
+         * z `meta.dictionary`, policzone przez silnik.
+         *
+         * Brak słownika (artefakt sprzed silnika 0.10.0) daje `null`, czyli
+         * „nie wiadomo", i ekran mówi to wprost zamiast pokazywać zero.
+         */
+        $slownik = [];
+        foreach ((array) (($meta['dictionary'] ?? [])['tags'] ?? []) as $poz) {
+            $nazwa = (string) ($poz['tag'] ?? $poz['name'] ?? '');
+            if ($nazwa !== '') {
+                $slownik[$nazwa] = (int) ($poz['count'] ?? 0);
+            }
+        }
+
+        $ile = null;
+        if ($slownik !== []) {
+            $ile = 0;
+            foreach (array_unique(array_merge($nierozpoznane, $pominiete)) as $tag) {
+                $ile += $slownik[(string) $tag] ?? 0;
+            }
+        }
 
         return [
             'count'        => $ile !== null ? (int) $ile : null,

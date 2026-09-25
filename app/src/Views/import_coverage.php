@@ -103,12 +103,28 @@ $liczby = [
               // albo poprawia, a alias zapamiętuje się na kolejne mecze. ?>
         <ul class="teams">
           <?php foreach ($teams as $detected): ?>
-            <?php $club = \CoachAnalyze\Clubs::matchByExportName((string) $detected); ?>
+            <?php
+              $club = \CoachAnalyze\Clubs::matchByExportName((string) $detected);
+              // Klub założony przez import niesie znacznik w `details` — operator
+              // ma zobaczyć, że nazwa przyszła z pliku i warto ją przejrzeć
+              // (skrót, herb, pełna nazwa), a nie odkryć to przy trzecim meczu.
+              $autoKlub = $club !== null && isset(
+                  \CoachAnalyze\Clubs::decodeDetails($club['details'] ?? null)[
+                      \CoachAnalyze\AutoImport::ZNACZNIK_AUTO
+                  ]
+              );
+            ?>
             <li class="teams__row">
               <span class="teams__name"><?= View::e((string) $detected) ?></span>
               <?php if ($club !== null): ?>
                 <span class="tag tag--done"><?= View::e(View::t('cov.team.matched')) ?></span>
                 <a class="link" href="/kluby/<?= (int) $club['id'] ?>"><?= View::e((string) $club['name']) ?></a>
+                <?php if ($autoKlub): ?>
+                  <span class="hint"><?= View::e(View::t('cov.team.auto')) ?></span>
+                  <a class="link" href="/kluby/<?= (int) $club['id'] ?>">
+                    <?= View::e(View::t('cov.team.auto.edit')) ?>
+                  </a>
+                <?php endif; ?>
               <?php else: ?>
                 <a class="link" href="/kluby/nowy?nazwa=<?= rawurlencode((string) $detected)
                     ?>&amp;powrot=<?= rawurlencode('/import/' . (int) $import['id']) ?>">
@@ -259,6 +275,30 @@ $liczby = [
     <?php endif; ?>
   <?php endif; ?>
 </section>
+
+<?php /*
+  ZMIENNE DODANE AUTOMATYCZNIE (sesja 8). Informacja, nie pytanie: zasada
+  pivotu mówi, że zmienna to surowa nazwa tagu, więc nowy tag nie wymaga
+  niczyjej zgody, żeby wejść do raportu. Operator dostaje listę i odsyłacz —
+  zmiana nazwy, alias („kontynuacja zmiennej") albo zignorowanie.
+*/ ?>
+<?php if (!empty($auto) && ($auto['added'] ?? []) !== []): ?>
+  <section class="panel">
+    <h2 class="h2"><?= View::e(View::t('cov.auto.title')) ?></h2>
+    <p class="hint"><?= View::e(View::t('cov.auto.hint', (int) $auto['version'])) ?></p>
+    <p class="tagi">
+      <?php foreach ($auto['added'] as $nazwa): ?>
+        <span class="tag-nazwa"><?= View::e((string) $nazwa) ?></span>
+      <?php endforeach; ?>
+    </p>
+    <p>
+      <a class="btn btn--ghost" href="/import/<?= (int) $import['id'] ?>/diff?rewizja=1">
+        <?= View::e(View::t('cov.auto.edit')) ?>
+      </a>
+      <span class="hint"><?= View::e(View::t('cov.auto.edit.hint')) ?></span>
+    </p>
+  </section>
+<?php endif; ?>
 
 <?php /*
   POZA TEMPLATEM KLUBU. Pozycje, o które operator został zapytany na ekranie

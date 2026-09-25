@@ -167,6 +167,171 @@ final class Configurator
         return $zmienne;
     }
 
+    // ══════════════════════════════════════════════════════════════════════
+    // AUTO-ZMIENNE (Sesja 8 pivotu „viewer")
+    //
+    // ZASADA PIVOTU: zmienna to SUROWA NAZWA TAGU, a użytkownik nie musi nic
+    // konfigurować, żeby zobaczyć raport. Do sesji 8 nowy tag zatrzymywał
+    // import na ekranie diffu i czekał na decyzję — a decyzja w 99 przypadkach
+    // brzmiała „dodaj". Ekran, który pyta o coś, co i tak zawsze kończy się
+    // tak samo, uczy klikać „dalej" bez czytania.
+    //
+    // Odtąd zmienne powstają SAME, a ekran diffu mówi, co powstało, i daje
+    // odsyłacz do poprawienia nazwy, dopisania aliasu albo zignorowania.
+    // ══════════════════════════════════════════════════════════════════════
+
+    /**
+     * Zmienne, które trzeba dopisać do templatu po tym imporcie.
+     *
+     * Pomijamy pozycję, która JUŻ JEST obsłużona — jako zmienna, jako alias
+     * istniejącej zmiennej albo jako tag zignorowany na stałe. Trzy różne
+     * decyzje, wszystkie oznaczające „nie zakładaj tego jeszcze raz".
+     *
+     * @param array<string,mixed> $meta        `coverage_json` importu (spłaszczony)
+     * @param array<string,mixed> $config      config aktualnego templatu albo []
+     * @param array{tag:array<string,bool>,label:array<string,bool>} $ignorowane
+     * @param array<string,mixed> $paleta      barwy z pliku projektu LiveTag
+     * @param list<string>        $barwyKlubu  kolejka barw zapasowych
+     * @return list<array<string,mixed>>
+     */
+    public static function autoZmienne(
+        array $meta,
+        array $config,
+        array $ignorowane = ['tag' => [], 'label' => []],
+        array $paleta = [],
+        array $barwyKlubu = []
+    ): array {
+        $slownik = is_array($meta['dictionary'] ?? null) ? $meta['dictionary'] : [];
+        $obsluzone = self::obsluzoneNazwy($config);
+
+        // Numerację ciągniemy od najwyższego istniejącego `id`, nie od count():
+        // usunięcie zmiennej w konfiguratorze zostawia dziurę, a powtórzony
+        // identyfikator złamałby walidację przy zapisie.
+        $nr = 0;
+        foreach ((array) ($config['variables'] ?? []) as $z) {
+            if (preg_match('/^v_(\d+)$/', (string) ($z['id'] ?? ''), $m) === 1) {
+                $nr = max($nr, (int) $m[1]);
+            }
+        }
+
+        $nowe = [];
+        $kolejka = 0;
+
+        foreach ([Suggester::TAG => 'tags', Suggester::ETYKIETA => 'labels'] as $typ => $klucz) {
+            foreach ((array) ($slownik[$klucz] ?? []) as $poz) {
+                $raw = trim((string) ($poz[$typ] ?? $poz['name'] ?? ''));
+                if ($raw === '') {
+                    continue;
+                }
+                if (isset($obsluzone[$typ][Clubs::normalize($raw)])) {
+                    continue;
+                }
+                if (!empty($ignorowane[$typ][$raw])) {
+                    continue;
+                }
+
+                $nowe[] = [
+                    'id'     => sprintf('v_%03d', ++$nr),
+                    'source' => ['type' => $typ, 'raw' => $raw],
+                    /*
+                     * POJĘCIE KANONICZNE ZOSTAJE PUSTE I TO JEST DECYZJA.
+                     *
+                     * Warstwa kanoniczna jest uśpiona (docs/STAN_PIVOTU.md §2.1),
+                     * a raport liczy po surowej nazwie tagu. Zgadnięte pojęcie
+                     * zmieniłoby liczby w porównaniach sezonowych bez niczyjej
+                     * wiedzy — a zgadywanie jest tu tanie i kuszące, bo
+                     * `HeuristicSuggester` odpowiedziałby na każdą nazwę.
+                     */
+                    'canon'  => null,
+                    /*
+                     * NAZWA WYŚWIETLANA = SUROWA NAZWA Z EKSPORTU.
+                     *
+                     * Konfigurator proponuje „Strzał" z „STRZAŁ" (`etykietaZNazwy`),
+                     * bo tam człowiek to widzi i poprawia. Tutaj nikt nie patrzy,
+                     * a analityk szuka w raporcie nazwy, którą sam wpisał
+                     * w LiveTag. Ładniejszy zapis, którego nikt nie zatwierdził,
+                     * każe zgadywać, czy to na pewno ten sam tag.
+                     */
+                    'display_label' => $raw,
+                    'color'   => self::barwa($typ, $raw, $paleta, $barwyKlubu, $kolejka++),
+                    'sections' => self::autoSekcje($typ, $poz),
+                    'visible' => true,
+                    'aliases' => [],
+                ];
+            }
+        }
+
+        return $nowe;
+    }
+
+    /**
+     * Sekcje nowej zmiennej wyprowadzone z DANYCH, nie zgadnięte z nazwy.
+     *
+     * Silnik podaje w słowniku `with_pos` i `with_xg` (0.16.2) — ile zdarzeń
+     * tego tagu ma współrzędne i ile ma xG. To wystarczy, żeby wiedzieć, gdzie
+     * zmienna ma co pokazać:
+     *
+     *   tag ze współrzędnymi   -> bilans, mapy, oś bilansu,
+     *   tag bez współrzędnych  -> bilans, oś bilansu (na mapie byłby pustym
+     *                             boiskiem, a puste boisko wygląda jak zero
+     *                             zdarzeń — pułapka 3),
+     *   etykieta               -> bilans; etykieta jest KWALIFIKATOREM zdarzenia,
+     *                             a nie zdarzeniem, więc nie ma czego rysować
+     *                             ani na mapie, ani na osi.
+     *
+     * @param array<string,mixed> $poz pozycja słownika
+     * @return list<string>
+     */
+    private static function autoSekcje(string $typ, array $poz): array
+    {
+        if ($typ !== Suggester::TAG) {
+            return ['bilans'];
+        }
+        return (int) ($poz['with_pos'] ?? 0) > 0
+            ? ['bilans', 'mapy', 'tl_bilans']
+            : ['bilans', 'tl_bilans'];
+    }
+
+    /**
+     * Nazwy, o których templat już wie: zmienne i ich aliasy.
+     *
+     * Klucze znormalizowane (`Clubs::normalize`), bo eksport potrafi zmienić
+     * wielkość liter między przejściami tagowania, a dwie zmienne różniące się
+     * wyłącznie nią to ta sama zmienna zapisana dwa razy.
+     *
+     * @param array<string,mixed> $config
+     * @return array{tag:array<string,bool>,label:array<string,bool>}
+     */
+    public static function obsluzoneNazwy(array $config): array
+    {
+        $out = [Suggester::TAG => [], Suggester::ETYKIETA => []];
+
+        foreach ((array) ($config['variables'] ?? []) as $z) {
+            if (!is_array($z)) {
+                continue;
+            }
+            $typ = (string) ($z['source']['type'] ?? Suggester::TAG);
+            if (!isset($out[$typ])) {
+                continue;
+            }
+            $raw = trim((string) ($z['source']['raw'] ?? ''));
+            if ($raw !== '') {
+                $out[$typ][Clubs::normalize($raw)] = true;
+            }
+            // ALIASY LICZĄ SIĘ JAK NAZWA GŁÓWNA. Operator oznaczył je jako
+            // „kontynuacja zmiennej" (Sesja 5) — założenie dla nich osobnej
+            // zmiennej rozbiłoby jedną serię na dwie, czyli cofnęło tę decyzję.
+            foreach ((array) ($z['aliases'] ?? []) as $alias) {
+                $alias = trim((string) $alias);
+                if ($alias !== '') {
+                    $out[$typ][Clubs::normalize($alias)] = true;
+                }
+            }
+        }
+
+        return $out;
+    }
+
     /**
      * Nazwa wyświetlana proponowana z nazwy surowej.
      *

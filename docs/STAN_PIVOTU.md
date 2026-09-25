@@ -117,7 +117,60 @@ zakazem. Kafelek mapy bez współrzędnych dostanie własny komunikat — punkt 
 Generyczny renderer, który miał obsłużyć takie zmienne po stronie szablonu
 (S5b, pkt 5), **nie powstał i nie jest potrzebny**: szablon rysuje po nazwie tagu.
 
-### 2.4 Czego NIE usypiamy
+### 2.4 Import bez tarcia — co jest ZAMIAST pytań (sesja 8, 2026-09-25)
+
+Usypianie ekranów konfiguracji zostawiło dziurę: import nowego meczu dalej
+zatrzymywał się dwa razy, tylko pytania były inne.
+
+| Zatrzymanie | Pytanie | Jedyna sensowna odpowiedź |
+|---|---|---|
+| Nowy tag w eksporcie | „dodać do templatu?" | tak — zmienna to surowa nazwa tagu |
+| Nieznana nazwa drużyny | „założyć klub?" | tak, z nazwą z pliku |
+
+**Ekran, który pyta o coś rozstrzygniętego z góry, uczy klikać „dalej" bez
+czytania — i przestaje chronić także wtedy, gdy naprawdę ma co powiedzieć.**
+Od sesji 8 obie rzeczy dzieją się same (`app/src/AutoImport.php`, wołane
+z `run_job.php` po inspekcji), a operator dostaje INFORMACJĘ i odsyłacz do
+poprawienia.
+
+**Zasada w jednym zdaniu: zmienna to surowa nazwa tagu, a użytkownik nie musi
+niczego konfigurować, żeby zobaczyć raport.**
+
+Co powstaje samo:
+
+- **zmienne** — `display_label` = surowa nazwa z eksportu, `canon` pusty,
+  barwa z palety eksportu albo z kolejki `AutoImport::BARWY`. Sekcje z DANYCH:
+  `dictionary[].with_pos > 0` → mapy, brak pozycji → bilans i oś, etykieta →
+  sam bilans. Nowa wersja templatu z `created_by NULL` i notką `auto: import #N`;
+- **rywal** — `is_own_team = 0`, nazwa z pliku w `aliases_json`, znacznik
+  `auto_import` w `details`, `matches.club_away_id` podpięty;
+- **przypisanie tenanta** — `matches.club_home_id` z nazwy rozpoznanej w pliku.
+
+Czego automat NIE robi, i to jest część projektu:
+
+| Nie robi | Dlaczego |
+|---|---|
+| Nie zakłada PIERWSZEGO templatu klubu | Sekcje, barwy i markery drużyny „naszej" nie dają się wyprowadzić z jednego eksportu; to rozstrzyga człowiek w konfiguratorze |
+| Nie zakłada rywala, gdy ŻADNA nazwa z eksportu nie trafia w tenanta | Nie wiadomo wtedy, która drużyna jest „nasza" — rywal zrobiony z własnej drużyny klubu jest błędem niewidocznym aż do raportu z odwróconymi stronami |
+| Nie dopasowuje klubów przez fragment nazwy | Równość po normalizacji, nigdy `substring`: „Pogoń" wewnątrz „Pogoń II" przypisałoby mecz rezerw pierwszej drużynie |
+| Nie zgaduje pojęcia kanonicznego | Zgadnięte pojęcie zmienia LICZBY, a nie tylko podpis |
+| Nie unieważnia istniejących raportów | Wersja automatyczna nosi znacznik `auto`; `isOutdated()` porównuje z ostatnią wersją RĘCZNĄ, inaczej każdy import zapalałby „do przeliczenia" przy całej bibliotece klubu |
+
+**Ekran różnic (`/import/{id}/diff`) przestał być bramką** — jest informacyjny,
+wchodzi się na niego z ekranu pokrycia, dobrowolnie. Przy pozycji dodanej
+automatycznie nie ma pytania „dodać?", są dwie odpowiedzi na to, co już jest:
+„Zostaw jak jest" i „Nie analizuj tego tagu (usuń z templatu)". Druga **zabiera
+zmienną z templatu** — wpis w `club_ignored_tags` bez tego byłby decyzją bez
+skutku.
+
+**„Zdarzeń poza analizą" liczy się ze słownika eksportu**, nie z `unanalysed`:
+ta druga liczba mówi o zdarzeniach bez pojęcia kanonicznego, czyli — w pivocie —
+o prawie wszystkich. Po imporcie poza analizą zostaje dokładnie to, co klub
+kazał zignorować.
+
+Przelot: `app/tests/integracja/test_auto_import_http.php`.
+
+### 2.5 Czego NIE usypiamy
 
 | Zostaje w pełni | Dlaczego |
 |---|---|

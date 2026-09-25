@@ -500,7 +500,18 @@ ca_test_db($baza);
 // OBA raporty są nieaktualne i akcja zbiorcza ma na czym pokazać, że działa.
 $konfigV4 = $konfigV3;
 $konfigV4['sections_enabled'][] = 'noteam';
-check('templat v4 zapisany', ReportTemplates::saveNewVersion(1, $konfigV4, 1) === 4);
+/*
+ * NUMER WERSJI NIE JEST TU PRZYPINANY (sesja 8). Import zakłada zmienne sam
+ * i podbija wersję automatycznie, więc numer zależy od tego, ile nowych tagów
+ * przyniósł eksport — a test ma sprawdzać przeliczanie, nie arytmetykę wersji.
+ * Bierzemy numer, który faktycznie powstał, i pilnujemy RELACJI między nimi.
+ */
+$przedV4 = ReportTemplates::currentVersion(1);
+$wersjaV4 = ReportTemplates::saveNewVersion(1, $konfigV4, 1);
+check('templat podbity ręcznie', $wersjaV4 === $przedV4 + 1,
+    'było ' . $przedV4 . ', jest ' . $wersjaV4);
+$wersjaRaportuB = (int) Db::one('SELECT template_version FROM reports WHERE id = :id',
+    ['id' => $m2['report']])['template_version'];
 
 $zbiorczy = http('GET', '/klub/1/przelicz');
 check('ekran zbiorczy widzi dwa nieaktualne raporty',
@@ -528,11 +539,13 @@ ca_test_db($baza);
 $raportA = Db::one('SELECT * FROM reports WHERE id = :id', ['id' => $m1['report']]);
 $raportB = Db::one('SELECT * FROM reports WHERE id = :id', ['id' => $m2['report']]);
 check('sprawny mecz PRZELICZONY mimo błędu drugiego',
-    (int) $raportA['template_version'] === 4,
-    'template_version: ' . var_export($raportA['template_version'], true));
+    (int) $raportA['template_version'] === $wersjaV4,
+    'template_version: ' . var_export($raportA['template_version'], true)
+    . ', oczekiwano ' . $wersjaV4);
 check('zepsuty mecz zachował poprzednią wersję i poprzedni raport',
-    (int) $raportB['template_version'] === 3,
-    'template_version: ' . var_export($raportB['template_version'], true));
+    (int) $raportB['template_version'] === $wersjaRaportuB,
+    'template_version: ' . var_export($raportB['template_version'], true)
+    . ', oczekiwano ' . $wersjaRaportuB);
 check('plik zepsutego raportu nadal istnieje', is_file((string) $raportB['html_path']));
 check('zbiorcze przeliczenie nie zostawiło plików tymczasowych',
     smieciPodmiany($magazyn) === []);

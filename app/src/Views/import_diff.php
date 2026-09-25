@@ -67,6 +67,32 @@ $znaczniki = [
 
 <p class="hint"><?= View::e(View::t($rewizja ? 'rev.lead' : 'diff.lead')) ?></p>
 
+<?php /*
+  ZMIENNE DODANE AUTOMATYCZNIE (sesja 8). Ten ekran przestał być bramką:
+  zasada pivotu mówi, że zmienna to surowa nazwa tagu, więc nowy tag wchodzi
+  do templatu sam, przy imporcie. Tutaj jest INFORMACJA, co powstało,
+  i miejsce na poprawkę — zmianę nazwy, alias albo zignorowanie.
+
+  Lista jest pusta, gdy import niczego nie dołożył (wszystko już było
+  w templacie) albo gdy operator wszedł tu z rewizji, żeby coś poprawić.
+*/ ?>
+<?php if (!empty($auto) && ($auto['added'] ?? []) !== []): ?>
+  <section class="panel">
+    <h2 class="h2"><?= View::e(View::t('cov.auto.title')) ?></h2>
+    <p class="hint"><?= View::e(View::t('diff.auto.hint', (int) $auto['version'])) ?></p>
+    <p class="tagi">
+      <?php foreach ($auto['added'] as $nazwa): ?>
+        <span class="tag-nazwa"><?= View::e((string) $nazwa) ?></span>
+      <?php endforeach; ?>
+    </p>
+    <p>
+      <a class="link" href="/klub/<?= (int) ($club['id'] ?? 0) ?>/konfigurator/slownik">
+        <?= View::e(View::t('diff.auto.configurator')) ?>
+      </a>
+    </p>
+  </section>
+<?php endif; ?>
+
 <?php if ($rewizja && $nowe === []): ?>
   <?php /*
     PUSTA REWIZJA TEŻ JEST ODPOWIEDZIĄ — i musi paść na ekranie.
@@ -151,15 +177,26 @@ $znaczniki = [
                  na stałe dostaje „cofnij" zamiast „zignoruj na stałe":
                  proponowanie jej tego, co już jest, byłoby akcją bez skutku. */ ?>
         <div class="zmienna__sekcje">
-          <label class="field--check">
-            <input type="radio" name="decyzja[<?= View::e($k) ?>]"
-                   value="<?= View::e(TemplateDiff::DODAJ) ?>">
-            <span><?= View::e(View::t('diff.act.add')) ?></span>
-          </label>
+          <?php /*
+            POZYCJA DODANA AUTOMATYCZNIE NIE PYTA „DODAĆ?" — ona już jest
+            w templacie (sesja 8). Pyta, czy zostawić ją tak, jak weszła.
+            Zostawienie akcji „dodaj" obok zmiennej, która istnieje, kazałoby
+            zgadywać, co zrobi kliknięcie.
+          */ ?>
+          <?php if ($stan !== TemplateDiff::STAN_AUTO): ?>
+            <label class="field--check">
+              <input type="radio" name="decyzja[<?= View::e($k) ?>]"
+                     value="<?= View::e(TemplateDiff::DODAJ) ?>">
+              <span><?= View::e(View::t('diff.act.add')) ?></span>
+            </label>
+          <?php endif; ?>
           <label class="field--check">
             <input type="radio" name="decyzja[<?= View::e($k) ?>]"
                    value="<?= View::e(TemplateDiff::POMIN) ?>" checked>
-            <span><?= View::e(View::t($rewizja ? 'rev.act.keep' : 'diff.act.skip')) ?></span>
+            <span><?= View::e(View::t(
+              $stan === TemplateDiff::STAN_AUTO ? 'diff.act.keep_auto'
+                : ($rewizja ? 'rev.act.keep' : 'diff.act.skip')
+            )) ?></span>
           </label>
           <?php /*
             KONTYNUACJA ZMIENNEJ — wyłącznie dla TAGÓW i wyłącznie wtedy, gdy
@@ -167,6 +204,14 @@ $znaczniki = [
             nie ma czego kontynuować, a pusty `<select>` obok zaznaczalnej
             opcji byłby zaproszeniem do zapisania decyzji bez treści.
           */ ?>
+          <?php if ($stan === TemplateDiff::STAN_AUTO): ?>
+            <label class="field--check">
+              <input type="radio" name="decyzja[<?= View::e($k) ?>]"
+                     value="<?= View::e(TemplateDiff::NA_STALE) ?>">
+              <span><?= View::e(View::t('diff.act.drop_auto')) ?></span>
+            </label>
+          <?php endif; ?>
+
           <?php if ($cele !== [] && (string) $poz['type'] === Suggester::TAG): ?>
             <label class="field--check">
               <input type="radio" name="decyzja[<?= View::e($k) ?>]"

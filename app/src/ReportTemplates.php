@@ -61,6 +61,29 @@ final class ReportTemplates
         );
     }
 
+    /**
+     * Klucz w `config`, po którym poznajemy wersję ZAŁOŻONĄ PRZEZ SYSTEM.
+     *
+     * ═══════════════════════════════════════════════════════════════════════
+     * PO CO ODRÓŻNIAĆ WERSJĘ AUTOMATYCZNĄ OD RĘCZNEJ (Sesja 8).
+     *
+     * Numer wersji templatu jest znacznikiem „raporty starsze niż to są
+     * nieaktualne" (Sesja 7). Od sesji 8 import zakłada zmienne SAM, więc każdy
+     * import podbijałby wersję — i każdy import unieważniałby wszystkie
+     * dotychczasowe raporty klubu, każąc je przeliczyć bez żadnego powodu.
+     *
+     * Wersja automatyczna DOKŁADA zmienne, których wcześniej nie było. Raport
+     * sprzed niej liczył dokładnie to, co miał policzyć; nowe zmienne dotyczą
+     * tagów, których w tamtym meczu nie było albo których nikt nie oglądał.
+     * Nie ma czego przeliczać.
+     *
+     * Flaga siedzi w `config`, a nie w kolumnie, bo `config` jest naszym
+     * własnym polem i nie wymaga migracji. `created_by` zostaje `NULL`, tak jak
+     * przy każdym zapisie systemowym.
+     * ═══════════════════════════════════════════════════════════════════════
+     */
+    public const KLUCZ_AUTO = 'auto';
+
     /** Numer aktualnej wersji albo 0, gdy klub nie ma jeszcze templatu. */
     public static function currentVersion(int $clubId): int
     {
@@ -113,8 +136,18 @@ final class ReportTemplates
      *
      * @param array<string,mixed> $config
      */
-    public static function saveNewVersion(int $clubId, array $config, int $userId): int
-    {
+    public static function saveNewVersion(
+        int $clubId,
+        array $config,
+        ?int $userId,
+        ?string $notkaAuto = null
+    ): int {
+        // WERSJA AUTOMATYCZNA NIESIE NOTKĘ W `config`. Bez niej nie da się po
+        // fakcie powiedzieć, skąd wzięła się zmienna, której nikt nie dodawał.
+        if ($notkaAuto !== null) {
+            $config[self::KLUCZ_AUTO] = ['note' => $notkaAuto, 'at' => Stats::now()];
+        }
+
         $json = self::encodeConfig($config);
 
         for ($attempt = 0; $attempt < 3; $attempt++) {
@@ -138,7 +171,11 @@ final class ReportTemplates
                 throw $e;
             }
 
-            Audit::log('template.saved', $userId, 'club', $clubId, ['version' => $version]);
+            Audit::log(
+                $notkaAuto !== null ? 'template.auto' : 'template.saved',
+                $userId, 'club', $clubId,
+                ['version' => $version] + ($notkaAuto !== null ? ['note' => $notkaAuto] : [])
+            );
             return $version;
         }
 
@@ -153,11 +190,112 @@ final class ReportTemplates
      */
     public static function isOutdated(int $clubId, ?int $reportVersion): bool
     {
-        $current = self::currentVersion($clubId);
+        // PORÓWNUJEMY Z NAJNOWSZĄ WERSJĄ RĘCZNĄ, nie z MAX(version).
+        //
+        // Wersje automatyczne (import zakłada zmienne sam, Sesja 8) dokładają
+        // to, czego wcześniej nie było — raport sprzed nich policzył dokładnie
+        // to, co miał policzyć. Gdyby liczyły się do przeterminowania, każdy
+        // import zapalałby „do przeliczenia" przy wszystkich raportach klubu.
+        $current = self::currentManualVersion($clubId);
         if ($current === 0) {
             return false;
         }
         return $reportVersion === null || $reportVersion < $current;
+    }
+
+    /**
+     * Najwyższa wersja ZAŁOŻONA PRZEZ CZŁOWIEKA albo 0.
+     *
+     * Czytamy `config` wiersz po wierszu, bo flaga siedzi w JSON-ie, a funkcje
+     * JSON-owe SQL-a różnią się między MariaDB a SQLite (testy chodzą na
+     * drugim). Ta sama decyzja co w `Rebuilds::batchProgress`: zawężamy
+     * zapytaniem, rozstrzygamy w PHP.
+     *
+     * Wersji klubu są jednostki, nie tysiące — pełny odczyt jest tu tańszy niż
+     * gałąź na sterowniku bazy.
+     */
+    public static function currentManualVersion(int $clubId): int
+    {
+        $wiersze = Db::all(
+            'SELECT version, config FROM club_report_templates
+              WHERE club_id = :club ORDER BY version DESC',
+            ['club' => $clubId]
+        );
+
+        foreach ($wiersze as $w) {
+            if (!self::isAuto(self::decodeConfig($w['config']))) {
+                return (int) $w['version'];
+            }
+        }
+        return 0;
+    }
+
+    /**
+     * Zmienne dopisane automatycznie przy TYM imporcie, albo `null`.
+     *
+     * WYPROWADZAMY Z HISTORII, nie z osobnej tabeli: wersja automatyczna niesie
+     * notkę `auto: import #N`, a różnica wobec wersji poprzedniej mówi, co
+     * dokładnie doszło. Druga tabela z tą samą informacją rozjechałaby się
+     * z templatem przy pierwszym ręcznym zapisie.
+     *
+     * @return array{version:int, added:list<string>}|null
+     */
+    public static function autoForImport(int $clubId, int $importId): ?array
+    {
+        $wiersze = Db::all(
+            'SELECT version, config FROM club_report_templates
+              WHERE club_id = :club ORDER BY version DESC',
+            ['club' => $clubId]
+        );
+
+        $szukana = 'auto: import #' . $importId;
+
+        foreach ($wiersze as $i => $w) {
+            $config = self::decodeConfig($w['config']);
+            if (self::autoNote($config) !== $szukana) {
+                continue;
+            }
+
+            // Wersja bezpośrednio poprzednia — lista jest malejąca, więc leży
+            // pod kolejnym indeksem. Brak poprzedniej znaczy, że ta wersja jest
+            // pierwsza: wtedy „dodane" to po prostu wszystkie zmienne.
+            $poprzedni = isset($wiersze[$i + 1])
+                ? self::decodeConfig($wiersze[$i + 1]['config'])
+                : [];
+
+            $byly = [];
+            foreach ((array) ($poprzedni['variables'] ?? []) as $z) {
+                $raw = (string) (($z['source'] ?? [])['raw'] ?? '');
+                if ($raw !== '') {
+                    $byly[$raw] = true;
+                }
+            }
+
+            $dodane = [];
+            foreach ((array) ($config['variables'] ?? []) as $z) {
+                $raw = (string) (($z['source'] ?? [])['raw'] ?? '');
+                if ($raw !== '' && !isset($byly[$raw])) {
+                    $dodane[] = $raw;
+                }
+            }
+
+            return ['version' => (int) $w['version'], 'added' => $dodane];
+        }
+
+        return null;
+    }
+
+    /** Czy ten config powstał automatycznie przy imporcie. */
+    public static function isAuto(array $config): bool
+    {
+        return isset($config[self::KLUCZ_AUTO]) && is_array($config[self::KLUCZ_AUTO]);
+    }
+
+    /** Notka wersji automatycznej albo `null` — do historii templatów. */
+    public static function autoNote(array $config): ?string
+    {
+        $auto = $config[self::KLUCZ_AUTO] ?? null;
+        return is_array($auto) && ($auto['note'] ?? '') !== '' ? (string) $auto['note'] : null;
     }
 
     /**

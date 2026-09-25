@@ -236,26 +236,40 @@ http('POST', '/import/' . $importId . '/meta', ['form' => [
     'csrf' => csrfZ($meta['body']), 'nowy_rywal' => 'GKS Rewizyjny', 'played_at' => '2026-09-07',
 ]]);
 
-// Diff: PRESSING WYSOKI pomijamy jednorazowo, DOŚRODKOWANIE na stałe.
-$diff = http('GET', '/import/' . $importId . '/diff');
-check('ekran nowych tagów odpowiada', $diff['status'] === 200);
-
+/*
+ * OD SESJI 8 ZMIENNE POWSTAJĄ SAME przy imporcie, więc ekran różnic nie pyta
+ * „dodać?" — pyta, czy zostawić. PRESSING WYSOKI zostawiamy jak weszło,
+ * DOŚRODKOWANIE każemy wyrzucić z templatu i nie pytać o nie więcej.
+ */
 $kluczPress = TemplateDiff::kluczHtml('tag', 'PRESSING WYSOKI');
 $kluczDosr  = TemplateDiff::kluczHtml('tag', 'DOŚRODKOWANIE');
 
-preg_match_all('/name="decyzja\[([a-f0-9]+)\]"/', $diff['body'], $mm);
-$decyzje = [];
-foreach (array_unique($mm[1]) as $k) { $decyzje[$k] = TemplateDiff::POMIN; }
-$decyzje[$kluczDosr] = TemplateDiff::NA_STALE;
+ca_test_db($baza);
+check('ekran nowych tagów odpowiada',
+    http('GET', '/import/' . $importId . '/diff')['status'] === 200);
+check('import dopisał zmienne SAM', ReportTemplates::currentVersion(1) === 2,
+    'wersja: ' . ReportTemplates::currentVersion(1));
 
-http('POST', '/import/' . $importId . '/diff', ['form' => [
-    'csrf' => csrfZ($diff['body']), 'decyzja' => $decyzje,
+$diff = http('GET', '/import/' . $importId . '/diff?rewizja=1');
+http('POST', '/import/' . $importId . '/diff?rewizja=1', ['form' => [
+    'csrf' => csrfZ($diff['body']),
+    'decyzja' => [
+        $kluczPress => TemplateDiff::POMIN,
+        $kluczDosr  => TemplateDiff::NA_STALE,
+    ],
 ]]);
 
 ca_test_db($baza);
-check('templat bez zmian — nic nie dopisano', ReportTemplates::currentVersion(1) === 1);
+check('„zostaw jak jest" niczego nie rusza, „nie analizuj" podbija wersję',
+    ReportTemplates::currentVersion(1) === 3,
+    'wersja: ' . ReportTemplates::currentVersion(1));
 check('DOŚRODKOWANIE zignorowane na stałe',
     !empty(IgnoredTags::lookup(1)['tag']['DOŚRODKOWANIE']));
+check('DOŚRODKOWANIE zniknęło z templatu',
+    !in_array('DOŚRODKOWANIE', array_column(array_column(
+        ReportTemplates::decodeConfig(ReportTemplates::current(1)['config'])['variables'],
+        'source'), 'raw'), true),
+    'wpis w club_ignored_tags bez usunięcia zmiennej byłby decyzją bez skutku');
 
 // ============================================================ B. pokrycie daje wyjście
 echo "\n== B. ekran pokrycia daje drogę wyjścia, nie tylko informację ==\n";
@@ -266,13 +280,14 @@ check('jest przycisk „Zmień mapowanie"', str_contains($pokrycie['body'], 'Zmi
 check('przycisk prowadzi do rewizji na tym imporcie',
     str_contains($pokrycie['body'], '/import/' . $importId . '/diff?rewizja=1'));
 
-check('chip pominiętego taga jest klikalny',
-    str_contains($pokrycie['body'], 'tag=' . $kluczPress),
+check('chip zignorowanego na stałe jest klikalny',
+    str_contains($pokrycie['body'], 'tag=' . $kluczDosr),
     'chip ma prowadzić wprost do tej pozycji, nie do listy');
-check('chip zignorowanego na stałe też',
-    str_contains($pokrycie['body'], 'tag=' . $kluczDosr));
 check('chip prowadzi do kotwicy pozycji',
-    str_contains($pokrycie['body'], '#poz-' . $kluczPress));
+    str_contains($pokrycie['body'], '#poz-' . $kluczDosr));
+check('tag ZOSTAWIONY w templacie NIE jest „poza templatem"',
+    !str_contains($pokrycie['body'], 'tag=' . $kluczPress),
+    'jest zmienną i liczy się w raporcie — wymienianie go tutaj byłoby nieprawdą');
 
 /*
  * SEKCJE NIEDOSTĘPNE Z BRAKU DANYCH NIE DOSTAJĄ AKCJI — nie ma tam czego
@@ -293,9 +308,10 @@ $rew = http('GET', '/import/' . $importId . '/diff?rewizja=1&tag=' . $kluczPress
 check('rewizja odpowiada', $rew['status'] === 200, 'status ' . $rew['status']);
 check('tytuł mówi o rewizji', str_contains($rew['body'], 'Rewizja mapowania'));
 
-check('pozycja pominięta jednorazowo jest na liście',
+check('pozycja dodana automatycznie jest na liście',
     str_contains($rew['body'], 'PRESSING WYSOKI')
-    && str_contains($rew['body'], 'name="decyzja[' . $kluczPress . ']"'));
+    && str_contains($rew['body'], 'name="decyzja[' . $kluczPress . ']"'),
+    'to o nie operator przychodzi: zignorować albo oznaczyć jako kontynuację');
 check('pozycja zignorowana NA STAŁE też jest na liście',
     str_contains($rew['body'], 'DOŚRODKOWANIE')
     && str_contains($rew['body'], 'name="decyzja[' . $kluczDosr . ']"'),
@@ -303,7 +319,8 @@ check('pozycja zignorowana NA STAŁE też jest na liście',
 
 check('widać obecny stan pozycji',
     str_contains($rew['body'], 'zignorowana na stałe')
-    && str_contains($rew['body'], 'pominięta w tym imporcie'));
+    && str_contains($rew['body'], 'dodana automatycznie'),
+    'stan pozycji rozstrzyga o tym, co wolno z nią zrobić');
 // Licznik stoi w główce pozycji, zaraz za nazwą i typem źródła.
 check('widać licznik zdarzeń',
     preg_match('/PRESSING WYSOKI.{0,400}wystąpień:\s*3/su', $rew['body']) === 1,
@@ -326,8 +343,9 @@ $csrfR = csrfZ($rew['body']);
 preg_match_all('/name="decyzja\[([a-f0-9]+)\]"/', $rew['body'], $mr);
 $dec = [];
 foreach (array_unique($mr[1]) as $k) { $dec[$k] = TemplateDiff::POMIN; }
-$dec[$kluczPress] = TemplateDiff::DODAJ;
-$dec[$kluczDosr]  = TemplateDiff::COFNIJ;
+// PRESSING WYSOKI jest już zmienną (import dopisał go sam) — zostawiamy.
+// DOŚRODKOWANIE cofamy z „na stałe", żeby wróciło do pytania.
+$dec[$kluczDosr] = TemplateDiff::COFNIJ;
 
 $zapis = http('POST', '/import/' . $importId . '/diff?rewizja=1', ['form' => [
     'csrf'      => $csrfR,
@@ -339,14 +357,21 @@ check('zapis rewizji wraca na pokrycie',
     $zapis['status'] === 302 && $zapis['location'] === '/import/' . $importId,
     $zapis['status'] . ' → ' . (string) $zapis['location']);
 
+
 ca_test_db($baza);
-check('powstała DOKŁADNIE JEDNA nowa wersja templatu',
-    ReportTemplates::currentVersion(1) === 2,
+/*
+ * COFNIĘCIE „NA STAŁE" NIE JEST ZMIANĄ TEMPLATU — przywraca pytanie, a nie
+ * dopisuje zmienną. Wersja różniąca się od poprzedniej wyłącznie numerem
+ * unieważniłaby wszystkie raporty klubu bez żadnego powodu (Sesja 7).
+ */
+check('cofnięcie „na stałe" NIE podbija wersji templatu',
+    ReportTemplates::currentVersion(1) === 3,
     'wersja: ' . ReportTemplates::currentVersion(1));
 
 $config2 = ReportTemplates::decodeConfig(ReportTemplates::current(1)['config']);
 $nazwy = array_column(array_column($config2['variables'], 'source'), 'raw');
-check('dopisany tag jest w templacie v2', in_array('PRESSING WYSOKI', $nazwy, true));
+check('tag dopisany automatycznie został w templacie',
+    in_array('PRESSING WYSOKI', $nazwy, true));
 check('zmienne z v1 zostały',
     in_array('STRZAŁ', $nazwy, true) && in_array('STRATA', $nazwy, true));
 check('cofnięte „na stałe" NIE jest w templacie', !in_array('DOŚRODKOWANIE', $nazwy, true),
@@ -364,13 +389,15 @@ check('podział jest odświeżony — PRESSING WYSOKI już nie jest poza templat
     'wszedł do templatu, więc znika z sekcji „poza templatem"');
 check('cofnięty tag wrócił do pytania',
     str_contains($poRewizji['body'], 'DOŚRODKOWANIE'));
-check('jest podpowiedź o ponownym wygenerowaniu',
-    str_contains($poRewizji['body'], 'Wygeneruj ponownie')
-    || str_contains($poRewizji['body'], 'wygeneruj go ponownie'),
-    'raport nadal stoi na poprzedniej wersji templatu');
-check('podpowiedź podaje numer nowej wersji',
-    preg_match('/wersję 2|wersj[ęe]\s*2/u', $poRewizji['body']) === 1
-    || str_contains($poRewizji['body'], 'wersję 2'));
+/*
+ * PODPOWIEDŹ O PRZELICZENIU pojawia się, gdy rewizja PODBIŁA wersję templatu.
+ * Tutaj nie podbiła (cofnięcie „na stałe" to decyzja o pytaniu, nie o raporcie),
+ * więc rady o czymś, co się nie zmieniło, ma NIE BYĆ — rada bez powodu uczy
+ * ignorować rady.
+ */
+check('bez zmiany templatu nie ma podpowiedzi o przeliczeniu',
+    !str_contains($poRewizji['body'], 'wygeneruj go ponownie'),
+    'wersja templatu się nie zmieniła');
 
 // ============================================================ F. pętla domknięta
 echo "\n== F. Generuj ponownie: zdarzenia dopisanego taga w raporcie ==\n";
@@ -385,13 +412,13 @@ ca_test_db($baza);
 $raport = Db::one('SELECT * FROM reports WHERE match_id = :m ORDER BY id DESC LIMIT 1',
     ['m' => $matchId]);
 check('raport powstał', $raport !== null);
-check('STEMPEL: raport stoi na templacie v2',
-    $raport !== null && (int) $raport['template_version'] === 2,
+check('STEMPEL: raport stoi na templacie v3',
+    $raport !== null && (int) $raport['template_version'] === 3,
     'template_version: ' . var_export($raport['template_version'] ?? null, true));
 
 $html = is_file((string) $raport['html_path']) ? (string) file_get_contents((string) $raport['html_path']) : '';
 check('plik raportu powstał', $html !== '');
-check('stopka niesie wersję templatu', str_contains($html, 'templat v2'));
+check('stopka niesie wersję templatu', str_contains($html, 'templat v3'));
 
 /*
  * SEDNO CAŁEJ PĘTLI: zdarzenia taga, który przed rewizją wypadał z analizy,
@@ -429,14 +456,19 @@ http('POST', '/import/' . $g1 . '/meta', ['form' => [
     'played_at' => '2026-10-05',
 ]]);
 
-// Wszystkie nowe pozycje idą „na stałe" — po zapisie `nowe` jest puste,
-// `ignorowane` pełne, `diff_done_at` ustawione. Dokładnie stan z produkcji.
-$diffG1 = http('GET', '/import/' . $g1 . '/diff');
+/*
+ * Wszystkie pozycje idą „na stałe" — po zapisie `nowe` jest puste, `ignorowane`
+ * pełne, `diff_done_at` ustawione. Dokładnie stan z produkcji.
+ *
+ * Od sesji 8 idziemy przez REWIZJĘ: zwykły ekran różnic nie ma już o co pytać,
+ * bo zmienne dopisał import. Pozycje do decyzji są te dopisane automatycznie.
+ */
+$diffG1 = http('GET', '/import/' . $g1 . '/diff?rewizja=1');
 if ($diffG1['status'] === 200) {
     preg_match_all('/name="decyzja\[([a-f0-9]+)\]"/', $diffG1['body'], $mg);
     $decG1 = [];
     foreach (array_unique($mg[1]) as $k) { $decG1[$k] = TemplateDiff::NA_STALE; }
-    http('POST', '/import/' . $g1 . '/diff', ['form' => [
+    http('POST', '/import/' . $g1 . '/diff?rewizja=1', ['form' => [
         'csrf' => csrfZ($diffG1['body']), 'decyzja' => $decG1,
     ]]);
 }

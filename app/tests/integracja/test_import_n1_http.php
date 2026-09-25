@@ -264,75 +264,118 @@ check('wynik zapisany w DWÓCH kolumnach',
     (int) $mecz['score_us'] === 2 && (int) $mecz['score_them'] === 1);
 check('sezon wykryty z daty', $mecz['season_id'] !== null);
 
-// ---------------------------------------------------------------- diff
-echo "\n== krok 2: diff słownika ==\n";
+// ---------------------------------------------------------------- auto-zmienne
+echo "\n== krok 2: zmienne dodane automatycznie (sesja 8) ==\n";
 
-$diff = http('GET', '/import/' . $importId . '/diff');
-check('ekran diffu odpowiada', $diff['status'] === 200, 'status ' . $diff['status']);
-check('nowe tagi są wymienione',
-    str_contains($diff['body'], 'PRESSING WYSOKI')
-    && str_contains($diff['body'], 'SBZ PODAJĄCY')
-    && str_contains($diff['body'], 'DOŚRODKOWANIE'));
-// Trzy nowe tagi (PRESSING WYSOKI, SBZ PODAJĄCY, DOŚRODKOWANIE) i cztery nowe
-// etykiety (CELNY, SKUTECZNY, STRZAŁ, CELNE) — razem siedem pozycji, po trzy
-// przyciski wyboru na każdą. Tagi STRZAŁ i STRATA są w templacie i NIE pytamy o nie.
-check('tagi ZNANE templatowi nie zajmują miejsca na ekranie',
-    !preg_match('/name="decyzja\[' . \CoachAnalyze\TemplateDiff::kluczHtml('tag', 'STRZAŁ') . '\]"/', $diff['body'])
-    && !preg_match('/name="decyzja\[' . \CoachAnalyze\TemplateDiff::kluczHtml('tag', 'STRATA') . '\]"/', $diff['body']),
-    'STRZAŁ i STRATA są w templacie — mapują się cicho');
-check('widać licznik pozycji znanych', str_contains($diff['body'], 'Znanych templatowi'));
-check('są trzy akcje per pozycja',
-    str_contains($diff['body'], 'Dodaj do templatu')
-    && str_contains($diff['body'], 'Pomiń w tym imporcie')
-    && str_contains($diff['body'], 'Zignoruj na stałe'));
-
-$csrfD = csrfZ($diff['body']);
-preg_match_all('/name="decyzja\[([a-f0-9]+)\]"/', $diff['body'], $mm);
-$klucze = array_values(array_unique($mm[1]));
-check('formularz niesie klucze wszystkich nowych pozycji', count($klucze) === 7,
-    'trzy tagi + cztery etykiety, znaleziono: ' . count($klucze));
-
-// Mapujemy skrót -> nazwa, żeby decyzje trafiły we właściwe pozycje.
-$skrotDo = [];
-foreach (['tag' => ['PRESSING WYSOKI', 'SBZ PODAJĄCY', 'DOŚRODKOWANIE'],
-          'label' => ['SKUTECZNY', 'STRZAŁ', 'CELNE']] as $typ => $nazwy) {
-    foreach ($nazwy as $n) {
-        $skrotDo[$n] = \CoachAnalyze\TemplateDiff::kluczHtml($typ, $n);
-    }
-}
-
-$decyzje = [];
-$canon = [];
-$sekcje = [];
-foreach ($klucze as $k) {
-    $decyzje[$k] = \CoachAnalyze\TemplateDiff::POMIN;
-}
-$decyzje[$skrotDo['PRESSING WYSOKI']] = \CoachAnalyze\TemplateDiff::DODAJ;
-$canon[$skrotDo['PRESSING WYSOKI']] = 'press';
-$sekcje[$skrotDo['PRESSING WYSOKI']] = ['bilans', 'tl_bilans'];
-$decyzje[$skrotDo['DOŚRODKOWANIE']] = \CoachAnalyze\TemplateDiff::NA_STALE;
-
-$zapisDiff = http('POST', '/import/' . $importId . '/diff', ['form' => [
-    'csrf' => $csrfD, 'decyzja' => $decyzje, 'canon' => $canon, 'vsections' => $sekcje,
-]]);
-check('zatwierdzenie diffu wraca na pokrycie',
-    $zapisDiff['status'] === 302 && $zapisDiff['location'] === '/import/' . $importId,
-    $zapisDiff['status'] . ' → ' . (string) $zapisDiff['location']);
-
+/*
+ * ═══════════════════════════════════════════════════════════════════════════
+ * EKRAN RÓŻNIC PRZESTAŁ BYĆ BRAMKĄ.
+ *
+ * Do sesji 8 import zatrzymywał się tutaj i czekał na decyzję o każdym nowym
+ * tagu. Decyzja brzmiała „dodaj" w niemal każdym przypadku, bo zasada pivotu
+ * mówi: zmienna to SUROWA NAZWA TAGU. Ekran pytający o coś rozstrzygniętego
+ * z góry uczy klikać „dalej" bez czytania.
+ *
+ * Odtąd zmienne powstają same, przy inspekcji, a ten ekran mówi, co powstało.
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
 ca_test_db($baza);
-check('powstała DOKŁADNIE JEDNA nowa wersja templatu',
+check('import dopisał zmienne SAM — powstała wersja 2 templatu',
     ReportTemplates::currentVersion(1) === 2,
     'wersja: ' . ReportTemplates::currentVersion(1));
 
-$config2 = ReportTemplates::decodeConfig(ReportTemplates::current(1)['config']);
-$nazwy = array_column(array_column($config2['variables'], 'source'), 'raw');
-check('dopisany tag jest w templacie v2', in_array('PRESSING WYSOKI', $nazwy, true));
-check('pominięty NIE jest w templacie', !in_array('SBZ PODAJĄCY', $nazwy, true));
-check('zignorowany na stałe NIE jest w templacie', !in_array('DOŚRODKOWANIE', $nazwy, true));
-check('zmienne z v1 zostały', in_array('STRZAŁ', $nazwy, true) && in_array('STRATA', $nazwy, true));
+$configAuto = ReportTemplates::decodeConfig(ReportTemplates::current(1)['config']);
+$nazwyAuto = array_column(array_column($configAuto['variables'], 'source'), 'raw');
 
+foreach (['PRESSING WYSOKI', 'SBZ PODAJĄCY', 'DOŚRODKOWANIE'] as $tag) {
+    check("tag {$tag} jest w templacie bez kliknięcia", in_array($tag, $nazwyAuto, true));
+}
+check('etykiety też dostały zmienne',
+    in_array('SKUTECZNY', $nazwyAuto, true) && in_array('CELNE', $nazwyAuto, true));
+check('zmienne z v1 zostały', in_array('STRZAŁ', $nazwyAuto, true)
+    && in_array('STRATA', $nazwyAuto, true));
+
+// NAZWA WYŚWIETLANA = SUROWA NAZWA. Analityk szuka w raporcie tego, co sam
+// wpisał w LiveTag; ładniejszy zapis, którego nikt nie zatwierdził, każe
+// zgadywać, czy to na pewno ten sam tag.
+$poRaw = [];
+foreach ($configAuto['variables'] as $z) {
+    $poRaw[(string) $z['source']['raw']] = $z;
+}
+check('nazwa wyświetlana to surowa nazwa z eksportu',
+    (string) $poRaw['PRESSING WYSOKI']['display_label'] === 'PRESSING WYSOKI');
+check('pojęcie kanoniczne zostaje puste',
+    $poRaw['PRESSING WYSOKI']['canon'] === null,
+    'warstwa kanoniczna jest uśpiona — zgadnięte pojęcie zmieniłoby liczby');
+
+/*
+ * SEKCJE Z DANYCH, NIE ZGADNIĘTE Z NAZWY. Silnik podaje w słowniku `with_pos`,
+ * więc tag ze współrzędnymi trafia na mapy, a tag bez nich nie — puste boisko
+ * wygląda jak zero zdarzeń (pułapka 3).
+ */
+check('tag ze współrzędnymi trafia na mapy',
+    in_array('mapy', (array) $poRaw['SBZ PODAJĄCY']['sections'], true),
+    'sekcje: ' . implode(',', (array) $poRaw['SBZ PODAJĄCY']['sections']));
+check('etykieta trafia WYŁĄCZNIE do bilansu',
+    (array) $poRaw['SKUTECZNY']['sections'] === ['bilans'],
+    'etykieta jest kwalifikatorem zdarzenia, nie zdarzeniem');
+
+/*
+ * WERSJA AUTOMATYCZNA NIE UNIEWAŻNIA RAPORTÓW. Numer wersji jest znacznikiem
+ * „raporty starsze są nieaktualne"; gdyby liczyła się do przeterminowania,
+ * każdy import zapalałby „do przeliczenia" przy wszystkich raportach klubu.
+ */
+check('wersja automatyczna NIE czyni raportów nieaktualnymi',
+    ReportTemplates::isOutdated(1, 1) === false,
+    'raport na v1 policzył dokładnie to, co miał policzyć');
+check('najnowsza wersja RĘCZNA to nadal v1',
+    ReportTemplates::currentManualVersion(1) === 1);
+
+$diff = http('GET', '/import/' . $importId . '/diff');
+check('ekran różnic odpowiada i NIE blokuje', $diff['status'] === 200,
+    'status ' . $diff['status']);
+check('ekran różnic wymienia zmienne dodane automatycznie',
+    str_contains($diff['body'], 'Nowe zmienne dodane automatycznie')
+    && str_contains($diff['body'], 'PRESSING WYSOKI'));
+
+// ---------------------------------------------------------------- poprawka
+echo "\n== krok 2b: poprawka decyzji w rewizji ==\n";
+
+/*
+ * „NIE ANALIZUJ TEGO TAGU" MUSI ZABRAĆ ZMIENNĄ Z TEMPLATU. Bez tego wpis
+ * w `club_ignored_tags` byłby decyzją bez skutku: zmienna dalej stałaby
+ * w raporcie i liczyła zdarzenia, o których operator powiedział „nie".
+ */
+$rewizja = http('GET', '/import/' . $importId . '/diff?rewizja=1');
+check('rewizja pokazuje zmienne dodane automatycznie',
+    str_contains($rewizja['body'], 'dodana automatycznie'));
+check('pozycja automatyczna nie pyta „dodać?"',
+    !str_contains($rewizja['body'], 'Dodaj do templatu'),
+    'zmienna już jest w templacie — pytanie kazałoby zgadywać, co zrobi klik');
+
+$kluczDosrodkowanie = \CoachAnalyze\TemplateDiff::kluczHtml('tag', 'DOŚRODKOWANIE');
+$zapisDiff = http('POST', '/import/' . $importId . '/diff?rewizja=1', ['form' => [
+    'csrf' => csrfZ($rewizja['body']),
+    'decyzja' => [$kluczDosrodkowanie => \CoachAnalyze\TemplateDiff::NA_STALE],
+]]);
+check('zapis rewizji przekierowuje', $zapisDiff['status'] === 302,
+    $zapisDiff['status'] . ' → ' . (string) $zapisDiff['location']);
+
+ca_test_db($baza);
+check('powstała wersja 3 — usunięcie zmiennej to zmiana templatu',
+    ReportTemplates::currentVersion(1) === 3,
+    'wersja: ' . ReportTemplates::currentVersion(1));
+
+$config3 = ReportTemplates::decodeConfig(ReportTemplates::current(1)['config']);
+$nazwy3 = array_column(array_column($config3['variables'], 'source'), 'raw');
+check('zignorowany tag ZNIKNĄŁ z templatu', !in_array('DOŚRODKOWANIE', $nazwy3, true));
+check('reszta zmiennych została', in_array('PRESSING WYSOKI', $nazwy3, true)
+    && in_array('SBZ PODAJĄCY', $nazwy3, true));
 check('„zignoruj na stałe" trafiło do club_ignored_tags',
     !empty(\CoachAnalyze\IgnoredTags::lookup(1)['tag']['DOŚRODKOWANIE']));
+check('ta wersja JEST ręczna — unieważnia starsze raporty',
+    ReportTemplates::currentManualVersion(1) === 3,
+    'decyzję podjął człowiek, więc raport sprzed niej liczy co innego');
 
 // ---------------------------------------------------------------- pokrycie
 echo "\n== krok 3: pokrycie templat × eksport PRZED generowaniem ==\n";
@@ -363,13 +406,13 @@ check('cron wygenerował raport', cron() === 0);
 ca_test_db($baza);
 $raport = Db::one('SELECT * FROM reports ORDER BY id DESC LIMIT 1');
 check('raport zapisany', $raport !== null);
-check('STEMPEL: raport niesie wersję templatu v2',
-    $raport !== null && (int) $raport['template_version'] === 2,
+check('STEMPEL: raport niesie wersję templatu v3',
+    $raport !== null && (int) $raport['template_version'] === 3,
     'template_version: ' . var_export($raport['template_version'] ?? null, true));
 
 $html = is_file((string) $raport['html_path']) ? (string) file_get_contents((string) $raport['html_path']) : '';
 check('plik raportu powstał', $html !== '');
-check('stopka niesie wersję templatu', str_contains($html, 'templat v2'));
+check('stopka niesie wersję templatu', str_contains($html, 'templat v3'));
 
 /*
  * WYBÓR RYWALA MUSI PRZEŻYĆ GENEROWANIE.
@@ -399,7 +442,7 @@ echo "\n== krok 5: badge wersji w bibliotece klubu ==\n";
 $biblioteka = http('GET', '/klub/1/raporty');
 check('biblioteka klubu odpowiada', $biblioteka['status'] === 200);
 check('badge wersji templatu widoczny przy raporcie',
-    str_contains($biblioteka['body'], 'templat v2'),
+    str_contains($biblioteka['body'], 'templat v3'),
     'przygotowanie pod „Przelicz" z Sesji 7');
 
 // ---------------------------------------------------------------- ponowny import
@@ -424,16 +467,25 @@ http('POST', '/import/' . $import3 . '/meta', ['form' => [
     'is_home' => '0',
 ]]);
 
-$diff3 = http('GET', '/import/' . $import3 . '/diff');
-check('diff nadal pyta o pominięte w poprzednim imporcie',
-    str_contains($diff3['body'], 'SBZ PODAJĄCY'),
-    '„pomiń w tym imporcie" nie jest decyzją na stałe');
-check('diff NIE pyta o zignorowane na stałe',
-    !preg_match('/name="decyzja\[' . \CoachAnalyze\TemplateDiff::kluczHtml('tag', 'DOŚRODKOWANIE') . '\]"/', $diff3['body']),
-    'to była decyzja „nie pytaj więcej"');
-check('diff NIE pyta o tag dopisany do templatu',
-    !preg_match('/name="decyzja\[' . \CoachAnalyze\TemplateDiff::kluczHtml('tag', 'PRESSING WYSOKI') . '\]"/', $diff3['body']),
-    'jest już w templacie, mapuje się cicho');
+ca_test_db($baza);
+check('drugi import NIE zakłada zmiennych po raz drugi',
+    ReportTemplates::currentVersion(1) === 3,
+    'wszystko z tego eksportu jest już w templacie albo zignorowane — wersja '
+    . 'różniąca się wyłącznie numerem unieważniłaby raporty bez powodu');
+
+$config4 = ReportTemplates::decodeConfig(ReportTemplates::current(1)['config']);
+$nazwy4 = array_column(array_column($config4['variables'], 'source'), 'raw');
+check('tag zignorowany na stałe NIE wraca do templatu',
+    !in_array('DOŚRODKOWANIE', $nazwy4, true),
+    'to była decyzja „nie pytaj więcej" i ma przeżyć kolejny import');
+
+$pokrycie3 = http('GET', '/import/' . $import3);
+check('kolejny import idzie prosto na pokrycie, bez bramki',
+    $pokrycie3['status'] === 200,
+    $pokrycie3['status'] . ' → ' . (string) $pokrycie3['location']);
+check('zignorowany na stałe jest wyliczony z nazwy',
+    str_contains($pokrycie3['body'], 'DOŚRODKOWANIE'),
+    'zero cichego wyrzucania danych');
 
 echo "\n=== OK: {$ok}, BŁĘDÓW: {$fail} ===\n";
 exit($fail === 0 ? 0 : 1);

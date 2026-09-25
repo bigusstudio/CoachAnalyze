@@ -1485,15 +1485,22 @@ function showCoverage(int $importId): void
             redirect('/import/' . $importId . '/meta');
         }
 
-        // Na diff odsyłamy TYLKO gdy operator jeszcze go nie widział. Pozycje
-        // „pominięte w tym imporcie" nic nie zapisują, więc bez tego warunku
-        // byłyby nowe przy każdym wejściu i pętla nie miałaby wyjścia.
-        if (empty($import['diff_done_at'])) {
-            $diff = configuratorDiff($import, $clubId);
-            if ($diff['nowe'] !== []) {
-                redirect('/import/' . $importId . '/diff');
-            }
-        }
+        /*
+         * ═══════════════════════════════════════════════════════════════════
+         * EKRAN RÓŻNIC NIE ZATRZYMUJE JUŻ IMPORTU (sesja 8).
+         *
+         * Do tej sesji nowy tag odsyłał operatora na `/diff` i czekał na
+         * decyzję. Decyzja brzmiała „dodaj" w niemal każdym przypadku, bo
+         * zasada pivotu mówi: zmienna to surowa nazwa tagu. Ekran pytający
+         * o coś rozstrzygniętego z góry uczy klikać „dalej" bez czytania —
+         * i przestaje chronić także wtedy, gdy ma co powiedzieć.
+         *
+         * Zmienne zakłada teraz import (`AutoImport`), a `/diff` został
+         * ekranem INFORMACYJNYM: mówi, co powstało, i daje odsyłacz do zmiany
+         * nazwy, dopisania aliasu albo zignorowania. Wejście jest z ekranu
+         * pokrycia, dobrowolne.
+         * ═══════════════════════════════════════════════════════════════════
+         */
     } elseif (Imports::needsMapping($import)) {
         redirect('/import/' . $importId . '/mapowanie');
     }
@@ -1512,6 +1519,12 @@ function showCoverage(int $importId): void
         // operator został zapytany. ZERO CICHEGO WYRZUCANIA DANYCH: raport
         // pokrycia, który ich nie wymienia, sugeruje kompletność, której nie ma.
         'pozaTemplatem'       => $maTemplat ? configuratorDiff($import, $clubId) : null,
+        // Zmienne dopisane automatycznie przy TYM imporcie (sesja 8).
+        // `null` znaczy „nic nie doszło" — ekran wtedy milczy, zamiast
+        // pokazywać pusty nagłówek.
+        'auto'                => $maTemplat
+            ? \CoachAnalyze\ReportTemplates::autoForImport($clubId, $importId)
+            : null,
         'meczMeta'            => $mecz,
         // Wersja templatu podbita właśnie w rewizji — ekran podpowiada wtedy
         // przy „Generuj ponownie", że raport policzy się po nowemu (Sesja 7).
@@ -3862,8 +3875,19 @@ function showTemplateDiff(int $importId): void
      */
     $rewizja = isset($_GET['rewizja']);
 
+    $autoWersja = $clubId !== null
+        ? \CoachAnalyze\ReportTemplates::autoForImport($clubId, $importId)
+        : null;
+    $pozycjeAuto = $autoWersja !== null
+        ? \CoachAnalyze\TemplateDiff::pozycjeAuto(
+            (array) $autoWersja['added'], \CoachAnalyze\Imports::coverageMeta($import)
+        )
+        : [];
+
     $pozycje = $rewizja
-        ? \CoachAnalyze\TemplateDiff::pozycjeRewizji($diff, !empty($import['diff_done_at']))
+        ? \CoachAnalyze\TemplateDiff::pozycjeRewizji(
+            $diff, !empty($import['diff_done_at']), $pozycjeAuto
+        )
         : $diff['nowe'];
 
     /*
@@ -3878,7 +3902,13 @@ function showTemplateDiff(int $importId): void
      * PRZYSZEDŁ SAM sprawdzić, co wypada z analizy, i pusta odpowiedź też jest
      * odpowiedzią. Musi ją dostać na ekranie, a nie w postaci przekierowania.
      */
-    if ($pozycje === [] && !$rewizja) {
+    /*
+     * OD SESJI 8 EKRAN MA CO POKAZAĆ TAKŻE BEZ NOWYCH POZYCJI: zmienne dodane
+     * automatycznie są informacją, po którą operator przychodzi. Odsyłamy
+     * z powrotem tylko wtedy, gdy naprawdę nie ma ani jednego zdania do
+     * powiedzenia — ekran pytający o nic uczy klikać „dalej" bez czytania.
+     */
+    if ($pozycje === [] && !$rewizja && $autoWersja === null) {
         redirect('/import/' . $importId);
     }
 
@@ -3919,6 +3949,9 @@ function showTemplateDiff(int $importId): void
          * kliencie bez templatu — wtedy nie ma czego kontynuować i akcja się
          * nie pokazuje, zamiast pokazywać pusty `<select>`.
          */
+        // Zmienne dopisane automatycznie przy tym imporcie — ekran różnic jest
+        // od sesji 8 informacyjny, a nie bramką (patrz `AutoImport`).
+        'auto'       => $autoWersja,
         'cele'       => \CoachAnalyze\TemplateDiff::celeKontynuacji(
             \CoachAnalyze\ReportTemplates::decodeConfig(
                 (\CoachAnalyze\ReportTemplates::current($clubId) ?? [])['config'] ?? null
@@ -3979,8 +4012,22 @@ function saveTemplateDiff(int $importId, int $userId): void
     // Ten sam zapis obsługuje zwykły diff i rewizję — różni je wyłącznie zbiór
     // pozycji, o które wolno decydować.
     $rewizja = isset($_GET['rewizja']);
+
+    // Zmienne dodane automatycznie przy tym imporcie są pozycjami rewizji
+    // (sesja 8) — inaczej decyzja „nie analizuj" nie miałaby czego dotyczyć.
+    // Zbiór MUSI być ten sam, co przy wyświetleniu, bo z niego powstaje mapa
+    // kluczy niżej.
+    $autoWersja = \CoachAnalyze\ReportTemplates::autoForImport($clubId, $importId);
+    $pozycjeAuto = $autoWersja !== null
+        ? \CoachAnalyze\TemplateDiff::pozycjeAuto(
+            (array) $autoWersja['added'], \CoachAnalyze\Imports::coverageMeta($import)
+        )
+        : [];
+
     $pozycje = $rewizja
-        ? \CoachAnalyze\TemplateDiff::pozycjeRewizji($diff, !empty($import['diff_done_at']))
+        ? \CoachAnalyze\TemplateDiff::pozycjeRewizji(
+            $diff, !empty($import['diff_done_at']), $pozycjeAuto
+        )
         : $diff['nowe'];
 
     /*
@@ -4061,7 +4108,7 @@ function saveTemplateDiff(int $importId, int $userId): void
     }
 
     $wersja = null;
-    if (\CoachAnalyze\TemplateDiff::czyDopisuje($decyzje)) {
+    if (\CoachAnalyze\TemplateDiff::czyZmieniaTemplat($decyzje)) {
         $templat = \CoachAnalyze\ReportTemplates::current($clubId);
         $config = $templat !== null
             ? \CoachAnalyze\ReportTemplates::decodeConfig($templat['config'])
@@ -4077,7 +4124,21 @@ function saveTemplateDiff(int $importId, int $userId): void
             redirect('/import/' . $importId . '/diff' . ($rewizja ? '?rewizja=1' : ''));
         }
 
-        $wersja = \CoachAnalyze\ReportTemplates::saveNewVersion($clubId, $nowy, $userId);
+        /*
+         * WERSJA POWSTAJE, GDY COŚ SIĘ FAKTYCZNIE ZMIENIŁO.
+         *
+         * Od sesji 8 decyzje bywają bezskutkowe: „zignoruj" tag, którego
+         * w templacie nie ma, albo „kontynuacja" wskazująca na zmienną, której
+         * nie ma. Wersja różniąca się od poprzedniej wyłącznie numerem
+         * unieważniłaby wszystkie raporty klubu bez żadnego powodu (Sesja 7).
+         */
+        $bezZmiany = $templat !== null
+            && \CoachAnalyze\ReportTemplates::encodeConfig($nowy)
+               === \CoachAnalyze\ReportTemplates::encodeConfig($config);
+
+        if (!$bezZmiany) {
+            $wersja = \CoachAnalyze\ReportTemplates::saveNewVersion($clubId, $nowy, $userId);
+        }
     }
 
     // Znacznik PO zapisie decyzji: od teraz pokrycie nie odsyła tu z powrotem,

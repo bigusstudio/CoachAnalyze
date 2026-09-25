@@ -25,6 +25,7 @@ declare(strict_types=1);
  */
 
 use CoachAnalyze\Audit;
+use CoachAnalyze\AutoImport;
 use CoachAnalyze\Clubs;
 use CoachAnalyze\Config;
 use CoachAnalyze\Db;
@@ -236,6 +237,33 @@ function wykonajInspekcje(int $jobId, int $importId, array $import): void
     }
 
     Imports::saveInspection($importId, (array) $wynik['meta']);
+
+    /*
+     * IMPORT BEZ TARCIA (sesja 8). Po inspekcji dzieją się dwie rzeczy, które
+     * dotąd wymagały kliknięcia: nierozpoznany rywal dostaje klub, a nowe tagi
+     * dostają zmienne w templacie. Obie odpowiedzi brzmiały niemal zawsze tak
+     * samo, a ekran pytający o rozstrzygnięte z góry uczy klikać „dalej".
+     *
+     * NIEPOWODZENIE TEGO KROKU NIE PRZEWRACA IMPORTU. Raport pokrycia jest już
+     * zapisany i to jest wynik zadania; auto-zmienne są wygodą, nie warunkiem.
+     * Błąd idzie do logu, a operator zobaczy nowe tagi na ekranie diffu — czyli
+     * dokładnie tak, jak działo się to przed tą sesją.
+     */
+    try {
+        $auto = AutoImport::poInspekcji($importId);
+        if ($auto['club'] !== null || $auto['variables'] !== []) {
+            error_log(sprintf(
+                'auto-import %d: klub=%s, zmiennych=%d, wersja templatu=%s',
+                $importId,
+                $auto['club'] !== null ? (string) $auto['club']['name'] : '—',
+                count($auto['variables']),
+                $auto['version'] !== null ? (string) $auto['version'] : '—'
+            ));
+        }
+    } catch (\Throwable $e) {
+        error_log("auto-import {$importId}: " . $e->getMessage());
+    }
+
     zakoncz($jobId, 0, null);
     Audit::log('inspect.done', null, 'import', $importId, ['job_id' => $jobId]);
 }
