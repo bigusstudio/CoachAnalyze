@@ -74,8 +74,9 @@ def test_eksport_bez_pozycji_nie_daje_odpowiedzi():
     frame = ramka(strzaly("NASI", [None, None, None]))
     wynik = direction.wykryj(frame, tag_rules=TAGI, lookup=LOOKUP)
 
-    assert wynik == {"us": None, "them": None, "confidence": "none",
-                     "evidence": wynik["evidence"], "conflicts": []}
+    assert wynik["us"] is None and wynik["them"] is None
+    assert wynik["confidence"] == "none"
+    assert wynik["conflicts"] == [] and wynik["warnings"] == []
 
 
 def test_probka_mniejsza_niz_trzy_nie_rozstrzyga():
@@ -215,20 +216,19 @@ def test_bez_tenant_club_id_zostaje_domyslne_us():
     assert render.tenant_side(None) == "us"
 
 
-def test_podpis_kierunku_idzie_za_odbiciem():
-    """Nagłówek podpisuje to, CO WIDAĆ NA MAPIE, a nie surowy eksport."""
-    kier = {"us": "left", "them": "right"}
-    po_odbiciu = render.direction_slots(kier, mirrored=True, labels={"HOME": "A", "AWAY": "B"})
+def test_baner_pojawia_sie_tylko_przy_zmianie_stron():
+    """Pusto znaczy pusto, nie „wszystko w porządku".
 
-    assert po_odbiciu["__KIERUNEK_HOME__"] == "atakuje w prawo ▶ · "
-    assert po_odbiciu["__KIERUNEK_AWAY__"] == " · ◀ atakuje w lewo"
-    assert po_odbiciu["__KIERUNEK_OPIS__"] == "A atakuje bramkę po prawej, B po lewej."
+    Baner wyświetlany zawsze przestaje być czytany po trzecim raporcie, więc
+    raport bez ostrzeżenia ma wyglądać dokładnie tak, jak wyglądał.
+    """
+    assert render.baner_slot(None)["__BANER__"] == ""
+    assert render.baner_slot([])["__BANER__"] == ""
+    assert render.baner_slot(["KIERUNEK_NIEPEWNY"])["__BANER__"] == ""
 
-
-def test_nieznany_kierunek_nie_podpisuje_niczego():
-    """Pusto, nie „nieznany" i nie konwencja zastępcza (CLAUDE.md §8)."""
-    puste = render.direction_slots(None, labels={"HOME": "A", "AWAY": "B"})
-    assert set(puste.values()) == {""}
+    z_banerem = render.baner_slot([direction.KOD_ZMIANA_POLOWY])["__BANER__"]
+    assert "bez normalizacji stron" in z_banerem
+    assert 'class="baner"' in z_banerem
 
 
 # ===========================================================================
@@ -277,7 +277,12 @@ def test_build_odbija_gdy_tenant_atakuje_w_lewo(write_csv, row, tmp_path, capsys
     assert sorted(w["y"] for w in nasze) == [30.0, 34.0, 38.0]
 
 
-def test_naglowek_v21_podpisuje_kierunek_z_danych(write_csv, row, tmp_path, capsys):
+def test_naglowek_v21_nie_podpisuje_kierunku(write_csv, row, tmp_path, capsys):
+    """Po normalizacji stron podpis byłby ZAWSZE taki sam, czyli szumem (sesja 7).
+
+    Mapy są sprowadzane do jednego układu, więc tenant atakuje w prawo w każdym
+    raporcie. Ślad został jeden — mała strzałka w legendzie map.
+    """
     html = tmp_path / "r.html"
     main([
         "build", "--csv", _csv_atak_w_lewo(write_csv, row), "--config", _config(tmp_path),
@@ -287,10 +292,10 @@ def test_naglowek_v21_podpisuje_kierunek_z_danych(write_csv, row, tmp_path, caps
     capsys.readouterr()
     tresc = html.read_text(encoding="utf-8")
 
-    # Po odbiciu tenant atakuje w prawo — i tak ma być podpisany lewy slot.
-    assert "atakuje w prawo ▶ · " in tresc
-    assert "NASI atakuje bramkę po prawej, RYWAL po lewej." in tresc
+    assert "atakuje w prawo" not in tresc
+    assert "atakuje w lewo" not in tresc
     assert "__KIERUNEK" not in tresc
+    assert tresc.count("▶ kierunek ataku") == 1, "jeden ślad, w legendzie map"
 
 
 def test_bez_pozycji_naglowek_milczy_i_nie_ma_ostrzezenia(write_csv, row, tmp_path, capsys):
@@ -305,8 +310,9 @@ def test_bez_pozycji_naglowek_milczy_i_nie_ma_ostrzezenia(write_csv, row, tmp_pa
     assert meta["direction"]["confidence"] == "none"
     assert meta["mirrored"] is False
     assert [w for w in meta["warnings"] if w["code"] == "KIERUNEK_NIEPEWNY"] == []
-    # Znacznik wypełniony pustką, nie zostawiony w pliku.
-    assert "__KIERUNEK" not in html.read_text(encoding="utf-8")
+    # Baner wypełniony pustką, nie zostawiony w pliku.
+    tresc = html.read_text(encoding="utf-8")
+    assert "__BANER__" not in tresc and 'class="baner"' not in tresc
 
 
 def test_sprzecznosc_daje_ostrzezenie_w_meta(write_csv, row, tmp_path, capsys):
@@ -352,3 +358,127 @@ def test_v17_bez_templatu_i_bez_tenanta_nie_zmienia_wyjscia(write_csv, row, tmp_
     tresc = html.read_text(encoding="utf-8")
     assert "__KIERUNEK" not in tresc
     assert "atakuje w prawo" not in tresc
+
+
+# ===========================================================================
+# ZMIANA STRON PO PRZERWIE (sesja 7)
+
+
+def _mecz_ze_zmiana_stron():
+    """Drużyny zamieniają połowy boiska po przerwie — eksport bez normalizacji."""
+    return ramka(
+        strzaly("NASI", [88.0, 92.0, 95.0], half=1)
+        + strzaly("NASI", [12.0, 9.0, 15.0], half=2)
+        + strzaly("RYWAL", [14.0, 11.0, 18.0], half=1)
+        + strzaly("RYWAL", [90.0, 93.0, 87.0], half=2)
+    )
+
+
+def test_zmiana_stron_jest_wykrywana():
+    wynik = direction.wykryj(_mecz_ze_zmiana_stron(), tag_rules=TAGI, lookup=LOOKUP)
+
+    assert wynik["warnings"] == [direction.KOD_ZMIANA_POLOWY]
+    assert wynik["halves"]["us"] == {"1": "right", "2": "left"}
+    assert wynik["halves"]["them"] == {"1": "left", "2": "right"}
+
+
+def test_mecz_znormalizowany_nie_zglasza_zmiany_stron():
+    """Tak wyglądają wszystkie eksporty, które widzieliśmy (pułapka 2)."""
+    frame = ramka(
+        strzaly("NASI", [88.0, 92.0, 95.0], half=1)
+        + strzaly("NASI", [90.0, 91.0, 93.0], half=2)
+        + strzaly("RYWAL", [14.0, 11.0, 18.0], half=1)
+        + strzaly("RYWAL", [12.0, 9.0, 15.0], half=2)
+    )
+    wynik = direction.wykryj(frame, tag_rules=TAGI, lookup=LOOKUP)
+
+    assert wynik["warnings"] == []
+
+
+def test_polowa_bez_strzalow_nie_zglasza_zmiany():
+    """Brak odpowiedzi to nie jest odpowiedź przeciwna.
+
+    Ostrzeżenie o stanie, którego nie dało się sprawdzić, uczy ignorować
+    ostrzeżenia (CLAUDE.md §8 w duchu).
+    """
+    frame = ramka(strzaly("NASI", [88.0, 92.0, 95.0], half=1))
+    wynik = direction.wykryj(frame, tag_rules=TAGI, lookup=LOOKUP)
+
+    assert wynik["warnings"] == []
+    assert wynik["halves"]["us"]["2"] is None
+
+
+def test_zmiana_stron_daje_ostrzezenie_i_baner(write_csv, row, tmp_path, capsys):
+    wiersze = []
+    for i, (team, x, b) in enumerate(
+        [("NASI", "88", 60), ("NASI", "92", 120), ("NASI", "95", 180),
+         ("NASI", "12", 3000), ("NASI", "9", 3100), ("NASI", "15", 3200),
+         ("RYWAL", "14", 240), ("RYWAL", "11", 300), ("RYWAL", "18", 360),
+         ("RYWAL", "90", 3300), ("RYWAL", "93", 3400), ("RYWAL", "87", 3500)]
+    ):
+        wiersze.append(row("STRZAŁ", begin=b, team=team, x=x, y="34"))
+
+    html = tmp_path / "r.html"
+    main(["build", "--csv", write_csv(wiersze), "--config", _config(tmp_path),
+          "--html-template", "v21", "--out-html", str(html),
+          "--out-meta", str(tmp_path / "meta.json")])
+    meta = json.loads(capsys.readouterr().out)
+
+    kody = [w["code"] for w in meta["warnings"]]
+    assert direction.KOD_ZMIANA_POLOWY in kody
+    assert "odwrócone" in next(w for w in meta["warnings"]
+                               if w["code"] == direction.KOD_ZMIANA_POLOWY)["msg"]
+
+    tresc = html.read_text(encoding="utf-8")
+    assert "bez normalizacji stron" in tresc
+    assert 'class="baner"' in tresc
+
+    # ODBICIA PER POŁOWA NIE ROBIMY — zgłaszamy i zostawiamy decyzję.
+    assert meta["mirrored"] is False
+
+
+def test_aliasy_domyslne_daja_dostepna_os_sbz(write_csv, row, tmp_path, capsys):
+    """USTERKA Z ODBIORU NA SERWERZE (eksport JDRZ), sesja 7.
+
+    Eksport taguje wejścia w SBZ jako `SBZ PODAJĄCY`. Szablon znał ten alias
+    i liczył 11:20 w Przeglądzie; silnik go nie znał, więc pokrycie widziało
+    zero wejść i wycinało całą oś SBZ z powodem „Eksport nie zawiera zdarzeń
+    zdobycia SBZ". Jeden raport, dwie odpowiedzi na to samo pytanie.
+
+    BEZ TEMPLATU — to jest sedno: klub JDRZ templatu nie ma.
+    """
+    csv_path = write_csv([
+        row("SBZ PODAJĄCY", begin=60, team="NASI", x="70", y="34", tx="90", ty="34"),
+        row("SBZ PODAJĄCY", begin=120, team="NASI", x="72", y="30", tx="92", ty="30"),
+        row("III STREFA PODAJĄCY/OTRZYMUJĄCY", begin=180, team="NASI", x="70", y="34",
+            tx="40", ty="34"),
+        row("STRZAŁ", begin=240, team="NASI", x="88", y="34", labels="CELNY"),
+        row("STRZAŁ", begin=300, team="NASI", x="92", y="30", labels="NIECELNY"),
+        row("STRZAŁ", begin=360, team="NASI", x="95", y="38", labels="CELNY"),
+    ])
+    main(["build", "--csv", csv_path, "--config", _config(tmp_path),
+          "--html-template", "v21", "--out-html", str(tmp_path / "r.html"),
+          "--out-meta", str(tmp_path / "meta.json")])
+    meta = json.loads(capsys.readouterr().out)
+
+    assert "tl_sbz" in meta["sections_available"]
+    assert meta["coverage"]["sbz"] == 2, "alias liczy się razem z nazwą główną"
+    assert meta["coverage"]["third"] == 1
+    # Tag pod aliasem NIE jest „nierozpoznany": ma pojęcie swojej nazwy głównej.
+    assert meta["unmapped_tags"] == []
+
+
+def test_alias_nie_jest_tagiem_podobnym():
+    """`SBZ OTRZYMUJĄCY` to OSOBNE zdarzenie, nie alias `ZDOBYCIE SBZ`.
+
+    Policzone razem podwoiłoby wejścia w SBZ — tagowane są na dwóch różnych
+    zawodnikach tej samej akcji. Dopasowanie idzie przez równość całej nazwy
+    (pułapka 7), więc `SBZ PODAJĄCY` nie łapie się też wewnątrz
+    `SBZ PODAJĄCY/OTRZYMUJĄCY`.
+    """
+    from coachanalyze import aliasy
+
+    odwr = aliasy.odwrotne()
+    assert odwr["SBZ PODAJĄCY"] == "ZDOBYCIE SBZ"
+    assert "SBZ OTRZYMUJĄCY" not in odwr
+    assert "SBZ PODAJĄCY/OTRZYMUJĄCY" not in odwr

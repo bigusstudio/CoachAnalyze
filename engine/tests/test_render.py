@@ -93,7 +93,11 @@ def test_render_nie_zmienia_niczego_poza_placeholderami(generacja):
     # KIERUNEK PODANY JAWNIE, a nie wykryty z `RAMKA`: znaczniki grupy `kierunek`
     # przy nieznanym kierunku są PUSTYMI napisami, a pustego napisu nie da się
     # odwrócić z powrotem w znacznik — test przestałby cokolwiek sprawdzać.
-    kierunek = {"us": "right", "them": "left", "confidence": "high"}
+    # OSTRZEŻENIE WŁĄCZONE CELOWO: bez niego `__BANER__` jest pustym napisem,
+    # a pustego napisu nie da się odwrócić z powrotem w znacznik — `replace("")`
+    # wstawiłby go między każde dwa znaki dokumentu.
+    kierunek = {"us": "right", "them": "left", "confidence": "high",
+                "warnings": ["KIERUNEK_ZMIANA_POLOWY"]}
     # TEMPLAT Z NIEPUSTYM NADPISANIEM SŁOWNIKA. Pusty dałby literał `{}`, a tego
     # napisu w szablonie jest mnóstwo — odwracanie podmieniłoby pierwszy lepszy
     # `{}` na znacznik i test sprawdzałby własną pomyłkę, nie render.
@@ -122,10 +126,7 @@ def test_render_nie_zmienia_niczego_poza_placeholderami(generacja):
 
     slots, _ = render.team_slots(RAMKA, config["teams"])
     slots.update(render.match_slots(config))
-    slots.update(render.direction_slots(
-        kierunek,
-        labels={slot: slots["__TEAM_{}_LABEL__".format(slot)] for _s, slot in render.TEAM_SLOTS},
-    ))
+    slots.update(render.baner_slot(kierunek.get("warnings")))
     slots.update(render.progi_slot())
     slots.update(render.vars_slot(templat))
     slots.update(render.roster_slot(config))

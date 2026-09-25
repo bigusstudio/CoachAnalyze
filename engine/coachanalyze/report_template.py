@@ -173,8 +173,15 @@ def tags_by_section(template):
         raw = zrodlo.get("raw")
         if not raw:
             continue
+        # ALIASY LICZĄ SIĘ RAZEM Z NAZWĄ GŁÓWNĄ (sesja 7). Bez tego templat,
+        # w którym operator oznaczył `SBZ PODAJĄCY` jako kontynuację zmiennej
+        # `ZDOBYCIE SBZ`, dawał sekcję niedostępną przy eksporcie, w którym
+        # występuje WYŁĄCZNIE alias — czyli dokładnie w tym, dla którego
+        # operator tę decyzję podjął.
+        nazwy = {str(raw)}
+        nazwy.update(str(a) for a in (zmienna.get("aliases") or ()) if str(a).strip())
         for sekcja in zmienna.get("sections") or ():
-            mapa.setdefault(str(sekcja), set()).add(str(raw))
+            mapa.setdefault(str(sekcja), set()).update(nazwy)
     return mapa
 
 

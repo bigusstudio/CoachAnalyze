@@ -19,6 +19,11 @@ z CLAUDE.md), więc drużyny NIE zmieniają w nich stron po przerwie — i nie w
 ich lustrzyć „bo połowa druga".
 ═══════════════════════════════════════════════════════════════════════════════
 
+ODBICIA NIE ROBIMY PRZY ZMIANIE STRON. Gdy drużyny zmieniają połowy po przerwie,
+mecz nie ma JEDNEGO kierunku, do którego dałoby się go sprowadzić — a odbicie
+oparte na medianie mieszającej dwa przeciwne rozkłady przestawiłoby mapy bez
+żadnego powodu. Zgłaszamy `KIERUNEK_ZMIANA_POLOWY` i zostawiamy plik, jaki jest.
+
 Odbicie (`odbij_ramke`) to JEDYNE miejsce w silniku, w którym wolno tknąć
 współrzędne. Pułapka 2 zakazuje lustrzenia „z góry"; tutaj odbicie jest
 wyprowadzone z danych i odnotowane w `meta.mirrored`, więc da się je sprawdzić
@@ -65,6 +70,9 @@ NAZWY_DOMYSLNE = {
 
 PRZECIWNY = {"right": "left", "left": "right"}
 
+# Kod ostrzeżenia o eksporcie, w którym drużyny ZMIENIAJĄ STRONY po przerwie.
+KOD_ZMIANA_POLOWY = "KIERUNEK_ZMIANA_POLOWY"
+
 
 def tagi_dla_pojec(tag_rules):
     """{pojęcie: {surowe nazwy tagów}} z rozwiązanego profilu mapowań.
@@ -102,6 +110,55 @@ def _strona_ze_zwrotu(mediana_dx):
     if mediana_dx is None or mediana_dx == 0:
         return None
     return "right" if mediana_dx > 0 else "left"
+
+
+def _kierunek_polowy(events, tagi, lookup, side, half):
+    """Kierunek jednej drużyny w jednej połowie — WYŁĄCZNIE ze strzałów.
+
+    Bez miar kontrolnych i bez przeciwieństwa drugiej drużyny: to jest test
+    na ZMIANĘ STRON, a nie kolejne źródło kierunku meczu. Odpowiedź ma być albo
+    twarda, albo żadna — inaczej ostrzeżenie zapalałoby się od pojedynczego
+    strzału z własnej połowy w słabiej otagowanej połowie meczu.
+    """
+    x = [
+        e.get("x") for e in events
+        if strona_druzyny(e.get("team"), lookup) == side
+        and e.get("tag") in tagi[POJECIE_STRZAL]
+        and int(e.get("half") or 1) == half
+    ]
+    return _strona_z_pozycji(_mediana(x))
+
+
+def _zmiana_stron(events, tagi, lookup):
+    """(czy zmiana stron, {strona: {połowa: kierunek}}).
+
+    ═══════════════════════════════════════════════════════════════════════════
+    ZGŁASZAMY, NIE NAPRAWIAMY.
+
+    Współrzędne w eksporcie LiveTag są znormalizowane kierunkowo (pułapka 2)
+    i tak wyglądały wszystkie eksporty, które widzieliśmy — kierunek liczy się
+    raz na mecz. Gdyby jednak trafił się plik bez normalizacji, mapy II połowy
+    byłyby odbite względem I, a liczby dalej poprawne (pozycja nie jest im do
+    niczego potrzebna).
+
+    Odbicia per połowa NIE ROBIMY automatycznie. Pułapka 2 zakazuje lustrzenia
+    „bo połowa druga", a odbicie oparte na medianie kilku strzałów w jednej
+    połowie jest dokładnie tym: regułą, która przy słabo otagowanej połowie
+    odwróci mapę bez powodu. Mówimy więc, co widać, i zostawiamy decyzję.
+    ═══════════════════════════════════════════════════════════════════════════
+    """
+    polowy = {}
+    zmiana = False
+    for side in ("us", "them"):
+        wynik = {
+            str(half): _kierunek_polowy(events, tagi, lookup, side, half)
+            for half in (1, 2)
+        }
+        polowy[side] = wynik
+        pierwsza, druga = wynik["1"], wynik["2"]
+        if pierwsza is not None and druga is not None and pierwsza != druga:
+            zmiana = True
+    return zmiana, polowy
 
 
 def _dowody_strony(events, tagi, lookup, side):
@@ -181,7 +238,7 @@ def wykryj(frame, tag_rules=None, lookup=None):
     Zwraca kształt idący wprost do `meta.direction`:
 
         {"us": "right"|"left"|None, "them": …, "confidence": "high"|"low"|"none",
-         "evidence": {"us": {...}, "them": {...}}, "conflicts": [...]}
+         "evidence": {...}, "conflicts": [...], "halves": {...}, "warnings": [...]}
 
     `confidence`:
       - `high`  — kierunek ze strzałów, kontrole milczą albo potwierdzają,
@@ -224,9 +281,14 @@ def wykryj(frame, tag_rules=None, lookup=None):
         if kier[side] is None and kier[druga] is not None:
             kier[side] = PRZECIWNY[kier[druga]]
 
+    zmiana, polowy = _zmiana_stron(events, tagi, lookup)
+
     if kier["us"] is None:
         pewnosc = "none"
-    elif sprzecznosci or zrodla["us"] != "shots":
+    elif zmiana or sprzecznosci or zrodla["us"] != "shots":
+        # ZMIANA STRON ODBIERA WIARĘ CAŁEMU MECZOWI, nie tylko drugiej połowie:
+        # mediana liczona przez obie połowy miesza dwa przeciwne rozkłady
+        # i ląduje koło środka boiska, więc odpowiedź jest wtedy rzutem monetą.
         pewnosc = "low"
     else:
         pewnosc = "high"
@@ -237,6 +299,12 @@ def wykryj(frame, tag_rules=None, lookup=None):
         "confidence": pewnosc,
         "evidence": dowody,
         "conflicts": sprzecznosci,
+        # Kierunek KAŻDEJ DRUŻYNY W KAŻDEJ POŁOWIE, liczony osobno ze strzałów.
+        # Służy jednej rzeczy: wykryciu eksportu bez normalizacji stron.
+        "halves": polowy,
+        # Kody ostrzeżeń, które z tego wynikają. Lista, a nie flaga: kolejne
+        # obserwacje o kierunku będą miały gdzie dojść bez zmiany kształtu.
+        "warnings": [KOD_ZMIANA_POLOWY] if zmiana else [],
     }
 
 

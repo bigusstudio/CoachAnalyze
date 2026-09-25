@@ -3,6 +3,47 @@
 Format: [wersja silnika] — data — opis.
 Każda zmiana, która modyfikuje wyjście silnika, MUSI mieć tu wpis wraz z powodem.
 
+## [0.16.1] — 2026-09-25 · blok „Menu sezonowe i produkcja"
+### Aliasy domyślne, kierunek per połowa, nagłówek bez podpisu kierunku
+
+**ZMIANA WYJŚCIA — WYŁĄCZNIE W GENERACJI v21** (nagłówek, legenda map, baner).
+Liczby pokrycia zmieniają się dla eksportów, które tagują pod aliasem — i to
+jest cała poprawka. Test złoty nietknięty: eksporty referencyjne aliasów nie
+używają.
+
+- **Jeden słownik aliasów: `engine/coachanalyze/config/aliasy.json`.**
+  USTERKA Z ODBIORU NA SERWERZE (eksport JDRZ): szablon v21 znał alias
+  `SBZ PODAJĄCY` i liczył w Przeglądzie **11:20**, a silnik go nie znał, więc
+  pokrycie widziało zero wejść w SBZ i wycinało całą oś SBZ z powodem „Eksport
+  nie zawiera zdarzeń zdobycia SBZ". Jeden raport, dwie odpowiedzi na to samo
+  pytanie, obie wyglądające sensownie.
+  Plik czytają teraz `canon.resolve_profile` (alias dostaje pojęcie nazwy
+  głównej), `coverage` (przez profil) i `render.vars_slot` (wstrzyknięcie do
+  `VARS` szablonu jako wartości domyślne). **Templat klubu nadpisuje.**
+  Aliasy zniknęły z `VARS` w szablonie — dwa źródła prawdy były przyczyną.
+- **`tags_by_section` liczy aliasy razem z nazwą główną.** Templat, w którym
+  operator oznaczył tag jako kontynuację zmiennej (sesja 5), dawał sekcję
+  niedostępną przy eksporcie zawierającym wyłącznie alias — czyli dokładnie
+  w tym, dla którego tę decyzję podjął.
+- **Nagłówek v21 nie podpisuje już kierunku ataku.** Po normalizacji stron
+  podpis był napisem ZAWSZE takim samym („atakuje w prawo ▶ · POGOŃ" przy obu
+  drużynach), czyli szumem zajmującym miejsce. Znaczniki `__KIERUNEK_*__`
+  usunięte; ślad został **jeden**: mała strzałka i „kierunek ataku" w legendzie
+  map. `meta.direction` zostaje jako diagnostyka.
+- **Kierunek liczony także PER POŁOWA** (`direction.halves`), wyłącznie ze
+  strzałów. Kierunki przeciwne w połowach dają ostrzeżenie
+  **`KIERUNEK_ZMIANA_POLOWY`** i baner nad raportem: „eksport bez normalizacji
+  stron, mapy II połowy mogą być odwrócone". Liczby, osie czasu i bilans są
+  poprawne — pozycja nie jest im potrzebna.
+- **Odbicia przy zmianie stron NIE WYKONUJEMY — ani per połowa, ani w ogóle.**
+  Per połowa byłoby lustrzeniem „bo połowa druga", którego zakazuje pułapka 2.
+  Całego meczu też nie: taki mecz nie ma jednego kierunku, bo mediana miesza dwa
+  przeciwne rozkłady i ląduje koło środka boiska — odbicie oparte na takiej
+  liczbie przestawiłoby mapy rzutem monety. Zgłaszamy i zostawiamy plik.
+  `confidence` spada wtedy do `low`.
+- **Nowy znacznik `__BANER__`** (grupa `baner`). Pusty napis, gdy nie ma co
+  powiedzieć: baner wyświetlany zawsze przestaje być czytany po trzecim raporcie.
+
 ## [0.16.0] — 2026-09-24 · sesja 6 pivotu „viewer"
 ### Meta meczu i skład z minutami
 

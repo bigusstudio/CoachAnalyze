@@ -12,6 +12,7 @@ na treści etykiety — to jedyne realne źródło cichych błędów w liczbach.
 
 import json
 
+from . import aliasy
 from . import report_template as tpl
 from . import xg as xg_mod
 
@@ -140,9 +141,25 @@ def build_team_lookup(teams, markers=None):
 
 
 def resolve_profile(mapping_profile=None):
-    """Profil domyślny + reguły klubu. Reguła klubu nadpisuje domyślną po kluczu."""
+    """Profil domyślny + aliasy domyślne + reguły klubu.
+
+    ALIASY WCHODZĄ PRZED REGUŁAMI KLUBU i po regułach domyślnych: alias to inna
+    nazwa TEJ SAMEJ zmiennej, więc dostaje pojęcie swojej nazwy głównej. Bez tego
+    eksport, który taguje `SBZ PODAJĄCY`, miał zero wejść w SBZ w pokryciu,
+    podczas gdy szablon (który alias znał) liczył je normalnie — jedna liczba,
+    dwie odpowiedzi w jednym raporcie (patrz `aliasy.py`).
+
+    Alias, którego nazwa główna nie ma reguły, jest pomijany: przypisanie mu
+    `concept: None` udawałoby decyzję człowieka „to zmienna niestandardowa"
+    (`tags_without_concept`), a nikt takiej decyzji nie podjął.
+    """
     tags = dict(DEFAULT_TAG_RULES)
     labels = dict(DEFAULT_LABEL_RULES)
+
+    for alias, nazwa_glowna in aliasy.odwrotne().items():
+        regula = tags.get(nazwa_glowna)
+        if regula is not None and alias not in tags:
+            tags[alias] = dict(regula)
 
     for rule in (mapping_profile or {}).get("rules") or []:
         match = rule.get("match") or {}

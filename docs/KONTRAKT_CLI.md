@@ -93,7 +93,7 @@ Znaczniki **tylko w generacji v21**, opcjonalne całą grupą (v17 nie ma żadne
 |---|---|---|
 | `__TEAM_*_COLOR_L__` · `__TEAM_*_DIM_L__` | `motyw_jasny` | Barwa klubu dla `data-theme="light"` — `color_light` albo przyciemnienie `color` |
 | `__SEZON__` · `__KOLEJKA__` · `__DATA_MECZU__` | `meta_meczu` | Meta meczu z `config.match`; brak wartości = pusty napis |
-| `__KIERUNEK_HOME__` · `__KIERUNEK_AWAY__` · `__KIERUNEK_OPIS__` | `kierunek` | Podpis kierunku ataku z `meta.direction` **po ewentualnym odbiciu**; kierunek nieznany = pusty napis |
+| `__BANER__` | `baner` | Pasek nad raportem. Dziś jeden przypadek: `KIERUNEK_ZMIANA_POLOWY`. Brak powodu = pusty napis |
 | `__PROGI__` | `progi` | Progi faktów Przeglądu jako literał obiektu JS — patrz niżej |
 | `__VARS_TEMPLATU__` | `vars_templatu` | Nadpisania słownika zmiennych szablonu (`display`, `aliases`) — patrz niżej |
 
@@ -164,9 +164,36 @@ z dwóch przeciwnych stron boiska.
 ```
 
 `confidence`: `high` — kierunek ze strzałów, kontrole milczą albo potwierdzają;
-`low` — sprzeczność miar albo kierunek z miary kontrolnej, dodatkowo ostrzeżenie
-**`KIERUNEK_NIEPEWNY`**; `none` — danych nie ma i **nie zgadujemy**. Brak
-kierunku ostrzeżeniem NIE jest: eksport bez pozycji to stan normalny (pułapka 3).
+`low` — sprzeczność miar, kierunek z miary kontrolnej albo wykryta zmiana stron,
+dodatkowo ostrzeżenie **`KIERUNEK_NIEPEWNY`**; `none` — danych nie ma i **nie
+zgadujemy**. Brak kierunku ostrzeżeniem NIE jest: eksport bez pozycji to stan
+normalny (pułapka 3).
+
+**Nagłówek NIE podpisuje kierunku** (od 0.16.1). Po normalizacji tenant atakuje
+w prawo w każdym raporcie, więc podpis był napisem zawsze takim samym — czyli
+szumem. Ślad został jeden: mała strzałka i „kierunek ataku" w legendzie map.
+`meta.direction` zostaje jako diagnostyka.
+
+#### Zmiana stron po przerwie (`direction.halves`)
+
+`direction.halves` niesie kierunek **każdej drużyny w każdej połowie**, liczony
+osobno i wyłącznie ze strzałów:
+
+```json
+"halves": { "us": {"1": "right", "2": "left"}, "them": {"1": "left", "2": "right"} }
+```
+
+Gdy którakolwiek drużyna ma w połowach kierunki przeciwne, `direction.warnings`
+niesie **`KIERUNEK_ZMIANA_POLOWY`**, `meta.warnings` dostaje wpis, a raport —
+baner nad nagłówkiem. Znaczy to, że eksport **nie jest znormalizowany
+kierunkowo** (pułapka 2 zakłada, że jest) i mapy II połowy mogą być odwrócone;
+liczby, osie czasu i bilans są poprawne, bo pozycja nie jest im potrzebna.
+
+**Odbicia NIE wykonujemy — ani per połowa, ani w ogóle.** Per połowa byłoby
+dokładnie tym, czego zakazuje pułapka 2: lustrzeniem „bo połowa druga", opartym
+na medianie kilku strzałów. Całego meczu też nie odbijamy, bo taki mecz nie ma
+jednego kierunku — mediana miesza dwa przeciwne rozkłady i ląduje koło środka
+boiska. Zgłaszamy i zostawiamy plik, jaki jest.
 
 #### Sekcje raportu: dwie listy
 
@@ -232,6 +259,23 @@ samą szerokość i ląduje zaraz za pierwszym.
 
 **Układ z samych pełnych kafli nie włącza siatki.** Wynik byłby ten sam,
 a `display: grid` zmienia zachowanie podziału stron przy druku (PDF i slajdy).
+
+#### Aliasy domyślne (`engine/coachanalyze/config/aliasy.json`)
+
+`{nazwa główna: [aliasy]}` — inne nazwy TEJ SAMEJ zmiennej w eksportach LiveTag.
+Jeden plik czytają: `canon.resolve_profile` (alias dostaje pojęcie nazwy
+głównej), `coverage` (przez profil — dostępność sekcji i liczniki) oraz
+`render.vars_slot` (wstrzyknięcie do `VARS` szablonu jako wartości **domyślne**).
+
+Do 0.16.1 ta lista była **wyłącznie w szablonie v21**. Skutek widać było na
+eksporcie JDRZ: raport liczył wejścia w SBZ po aliasie `SBZ PODAJĄCY` (11:20),
+a pokrycie wycinało całą oś SBZ z powodem „Eksport nie zawiera zdarzeń zdobycia
+SBZ". Jedna liczba, dwa źródła prawdy, dwie odpowiedzi w jednym pliku HTML.
+
+Alias to **ta sama zmienna pod inną nazwą**, a nie tag podobny:
+`SBZ OTRZYMUJĄCY` aliasem nie jest — to osobne zdarzenie, tagowane na drugim
+zawodniku, i policzone razem podwoiłoby wejścia w SBZ. Dopasowanie idzie przez
+**równość całej nazwy** (pułapka 7).
 
 #### Aliasy zmiennych (`__VARS_TEMPLATU__`)
 

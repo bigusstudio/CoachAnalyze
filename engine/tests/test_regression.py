@@ -23,7 +23,7 @@ import re
 
 import pytest
 
-from coachanalyze import canon, coverage, render
+from coachanalyze import canon, direction, coverage, render
 from coachanalyze.sources.livetag import parse
 
 GOLDEN = pathlib.Path(__file__).parent / "golden"
@@ -509,6 +509,28 @@ def test_bramka_s5_render_z_templatem_ma_te_same_sekcje(case):
         )
 
     assert raport["unresolved_placeholders"] == []
+
+
+@pytest.mark.parametrize("case", load_cases(), ids=lambda c: c["id"])
+def test_eksporty_referencyjne_sa_znormalizowane_kierunkowo(case):
+    """Pułapka 2: współrzędne w eksporcie LiveTag są znormalizowane kierunkowo.
+
+    Ostrzeżenie o zmianie stron (sesja 7) ma się NIE zapalać na plikach, które
+    znamy — inaczej byłoby ostrzeżeniem o stanie normalnym, a takie uczą
+    ignorować wszystkie pozostałe.
+    """
+    frame = parse.prep_frame(str(wymagaj_csv(case)))
+    lookup = canon.build_team_lookup(case["noname_teams"])
+    kierunek = direction.wykryj(
+        frame, tag_rules=canon.resolve_profile(None)["tags"], lookup=lookup
+    )
+
+    assert kierunek["warnings"] == [], (
+        "eksport referencyjny nie zmienia stron po przerwie: " + repr(kierunek["halves"])
+    )
+    # Obie drużyny rozstrzygnięte i po przeciwnych stronach — to jest stan,
+    # w którym normalizacja map ma sens.
+    assert {kierunek["us"], kierunek["them"]} == {"left", "right"}
 
 
 def test_bramka_s5_mapowanie_sekcji_pokrywa_wszystkie():

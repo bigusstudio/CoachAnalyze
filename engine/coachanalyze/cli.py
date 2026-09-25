@@ -129,7 +129,15 @@ def ustal_kierunek(frame, config, templat):
 
     kierunek = direction_mod.wykryj(frame, tag_rules=profil["tags"], lookup=lookup)
     strona_tenanta = render.tenant_side(config)
-    odbic = kierunek.get(strona_tenanta) == "left"
+
+    # ZMIANA STRON PO PRZERWIE WSTRZYMUJE ODBICIE. Mecz, w ktorym druzyny
+    # zamienily polowy, nie ma JEDNEGO kierunku — mediana liczona przez obie
+    # polowy miesza dwa przeciwne rozklady i laduje kolo srodka boiska. Odbicie
+    # oparte na takiej liczbie przestawiloby mapy bez powodu; mowimy wiec, co
+    # widac (KIERUNEK_ZMIANA_POLOWY plus baner nad raportem) i zostawiamy plik,
+    # jaki jest.
+    bez_normalizacji = direction_mod.KOD_ZMIANA_POLOWY in (kierunek.get("warnings") or ())
+    odbic = kierunek.get(strona_tenanta) == "left" and not bez_normalizacji
     return kierunek, (direction_mod.odbij_ramke(frame) if odbic else frame), odbic
 
 

@@ -97,9 +97,14 @@ TEAM_SLOTS = (("us", "HOME"), ("them", "AWAY"))
 # i obie muszą mówić to samo.
 PRZECIWNA_STRONA = {"right": "left", "left": "right"}
 
-# Podpis kierunku ataku w nagłówku v21. Strzałka po STRONIE ZEWNĘTRZNEJ kolumny:
-# lewa kolumna zaczyna od strzałki, prawa nią kończy.
-KIERUNEK_TEKST = {"left": "◀ atakuje w lewo", "right": "atakuje w prawo ▶"}
+# Baner nad raportem. Treść po polsku, bo szablon jest samowystarczalnym plikiem
+# i nie ma skąd wziąć tłumaczeń — tak samo jak nazwy zapasowe drużyn niżej.
+BANER_ZMIANA_POLOWY = (
+    "<b>Eksport bez normalizacji stron.</b> W tym pliku drużyny zmieniają połowy "
+    "boiska po przerwie, a mapy pokazują obie połowy w jednym układzie — mapy "
+    "II połowy mogą być odwrócone. Liczby, osie czasu i bilans są poprawne: "
+    "pozycja nie jest im do niczego potrzebna."
+)
 
 # Barwy zapasowe, gdy konfiguracja ich nie niesie. Prezentacja, nie dane — raport bez
 # jakiejkolwiek barwy jest nieczytelny, a wykres bez danych zostaje pusty tak czy tak.
@@ -169,12 +174,14 @@ SLOT_GROUPS = {
     # z korektą i podmianę w ustalonej kolejności — znacznik został przemianowany
     # w szablonie i cały ten mechanizm zniknął.
     "meta_meczu": ("__SEZON__", "__KOLEJKA__", "__DATA_MECZU__"),
-    # Kierunek ataku w nagłówku i w podpisie map (v21, sesja 4a).
+    # Baner nad raportem (v21, sesja 7). Pusty napis, gdy nie ma co powiedzieć.
     #
-    # DO 4a SZABLON MIAŁ TO WPISANE NA SZTYWNO („◀ atakuje w lewo") i po zmianie
-    # stron z §7.7 a byłoby to po prostu nieprawdą: lewy slot należy teraz do
-    # tenanta, a tenant na mapach atakuje w prawo. Podpis idzie więc z danych.
-    "kierunek": ("__KIERUNEK_HOME__", "__KIERUNEK_AWAY__", "__KIERUNEK_OPIS__"),
+    # ZASTĄPIŁ GRUPĘ `kierunek` z sesji 4a. Tamta wpisywała w nagłówek „atakuje
+    # w prawo ▶ · POGOŃ" przy obu drużynach — i po normalizacji stron był to
+    # napis ZAWSZE TAKI SAM, czyli szum: mapy są sprowadzane do jednego układu,
+    # więc tenant atakuje w prawo w każdym raporcie. Ślad po kierunku został
+    # jeden, w legendzie map, i jest wpisany w szablon.
+    "baner": ("__BANER__",),
     # Progi faktów sekcji Przegląd (v21, sesja 4b). Jeden znacznik, cały obiekt.
     "progi": ("__PROGI__",),
     # Nadpisania słownika zmiennych z templatu klubu (v21, sesja 5).
@@ -453,14 +460,21 @@ def report_template_layout(template=None):
 
 
 def vars_slot(template=None):
-    """`{'__VARS_TEMPLATU__': '{…}'}` — nadpisania słownika `VARS` szablonu.
+    """`{'__VARS_TEMPLATU__': '{…}'}` — słownik zmiennych dla szablonu.
 
-    Pusty obiekt przy braku templatu: szablon robi wtedy `Object.assign` z niczym
-    i zostaje przy własnym słowniku. Znacznik ma być wypełniony ZAWSZE, bo
-    niewypełniony zostawiłby w pliku `__VARS_TEMPLATU__` i wywrócił skrypt.
+    ALIASY DOMYŚLNE + NADPISANIA TEMPLATU, scalone per klucz (`aliasy.py`).
+    Do sesji 7 aliasy domyślne siedziały wyłącznie w szablonie, a silnik ich nie
+    znał — raport liczył wejścia w SBZ, a pokrycie wycinało oś SBZ jako pustą.
+    Teraz lista jest w jednym pliku i czytają ją obaj.
+
+    Znacznik ma być wypełniony ZAWSZE, bo niewypełniony zostawiłby w pliku
+    `__VARS_TEMPLATU__` i wywrócił skrypt.
     """
+    from . import aliasy
     from . import report_template as tpl
-    return {"__VARS_TEMPLATU__": _literal_js(tpl.variable_overrides(template))}
+    return {"__VARS_TEMPLATU__": _literal_js(
+        aliasy.scal_z_templatem(tpl.variable_overrides(template))
+    )}
 
 
 def crest_data_uri(path):
@@ -532,55 +546,18 @@ def kolejnosc_slotow(tenant="us"):
     return ((tenant, "HOME"), (druga, "AWAY"))
 
 
-def kierunek_wyswietlany(direction, mirrored=False):
-    """{'us': …, 'them': …} — kierunek ataku TAKI, JAKI WIDAĆ NA MAPACH.
+def baner_slot(ostrzezenia=None):
+    """`{'__BANER__': '…'}` — pasek nad raportem albo pusty napis.
 
-    `direction` niesie kierunek ODCZYTANY Z DANYCH, czyli sprzed odbicia.
-    Gdy ramka została odbita, na mapach obie drużyny atakują w drugą stronę —
-    i to ten kierunek ma podpisywać nagłówek, bo czytelnik patrzy na mapę,
-    a nie na surowy eksport.
-
-    Rozdzielenie jest celowe: `meta.direction` zostaje zapisem tego, CO BYŁO
-    W DANYCH (da się po nim sprawdzić odbicie), a podpis mówi, CO WIDAĆ.
+    PUSTO ZNACZY PUSTO, nie „wszystko w porządku": raport bez banera wygląda
+    dokładnie tak, jak wyglądał, a pasek pojawia się wyłącznie wtedy, gdy jest
+    co powiedzieć o CAŁYM pliku. Baner wyświetlany zawsze przestaje być czytany
+    po trzecim raporcie.
     """
-    surowy = {side: (direction or {}).get(side) for side, _slot in TEAM_SLOTS}
-    if not mirrored:
-        return surowy
-    return {side: PRZECIWNA_STRONA.get(k) for side, k in surowy.items()}
-
-
-def direction_slots(direction, mirrored=False, tenant="us", labels=None):
-    """Znaczniki grupy `kierunek` dla szablonu v21.
-
-    Kierunek NIEZNANY daje PUSTE NAPISY, nie „nieznany" ani konwencję zastępczą
-    (CLAUDE.md §8). Separator jedzie w wartości, więc pusty znacznik nie zostawia
-    w nagłówku wiszącej kropki.
-    """
-    kier = kierunek_wyswietlany(direction, mirrored)
-    kolejnosc = kolejnosc_slotow(tenant)
-    slots = {}
-
-    for side, slot in kolejnosc:
-        tekst = KIERUNEK_TEKST.get(kier.get(side))
-        if not tekst:
-            slots["__KIERUNEK_{}__".format(slot)] = ""
-        elif slot == "HOME":
-            slots["__KIERUNEK_HOME__"] = tekst + " · "
-        else:
-            slots["__KIERUNEK_AWAY__"] = " · " + tekst
-
-    # Zdanie pod mapami — po której stronie stoi czyja bramka. Składane z nazw
-    # już zabezpieczonych (`labels`), żeby nie było drugiej ścieżki ucieczki.
-    opis = ""
-    strona_home = kier.get(kolejnosc[0][0])
-    if strona_home in PRZECIWNA_STRONA and labels:
-        bramka = {"right": ("po prawej", "po lewej"), "left": ("po lewej", "po prawej")}
-        h, a = bramka[strona_home]
-        opis = "{} atakuje bramkę {}, {} {}.".format(
-            labels.get("HOME", ""), h, labels.get("AWAY", ""), a
-        )
-    slots["__KIERUNEK_OPIS__"] = opis
-    return slots
+    kody = set(ostrzezenia or ())
+    if "KIERUNEK_ZMIANA_POLOWY" not in kody:
+        return {"__BANER__": ""}
+    return {"__BANER__": '<div class="baner" role="alert">{}</div>'.format(BANER_ZMIANA_POLOWY)}
 
 
 def team_slots(frame, teams=None, tenant="us"):
@@ -1217,12 +1194,7 @@ def render(frame, palette=None, metrics=None, canon_result=None, config=None,
     )
     slots, teams_defaulted = team_slots(frame, teams, tenant=tenant)
     slots.update(match_slots(config))
-    # Podpis kierunku dostaje nazwy JUŻ PO UCIECZCE — jedna ścieżka zabezpieczania
-    # nazwy klubu, nie druga obok niej.
-    slots.update(direction_slots(
-        direction, mirrored=mirrored, tenant=tenant,
-        labels={slot: slots["__TEAM_{}_LABEL__".format(slot)] for _side, slot in sloty},
-    ))
+    slots.update(baner_slot((direction or {}).get("warnings")))
     slots.update(progi_slot(report_template))
     slots.update(vars_slot(report_template))
     slots.update(roster_slot(config, pokaz=pokaz_zawodnikow))

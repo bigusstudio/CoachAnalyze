@@ -8,6 +8,7 @@ Zmiana kluczy tutaj wymaga zmiany dokumentu w tym samym commicie.
 
 from . import __version__
 from . import report_template as tpl
+from .direction import KOD_ZMIANA_POLOWY
 
 # Sekcje raportu. Kolejność jest kolejnością prezentacji.
 #
@@ -294,6 +295,21 @@ def build_warnings(frame, canon_result, has_json=False, palette=None, direction=
     """Ostrzeżenia z licznikiem wystąpień. Kolejność stała — wyjście ma być powtarzalne."""
     report = canon_result["report"]
     warnings = []
+
+    # ZMIANA STRON PO PRZERWIE IDZIE PIERWSZA: dotyczy CAŁEGO pliku i tego,
+    # czy mapom II połowy można wierzyć. Niepewny kierunek jest przy niej
+    # drobiazgiem.
+    if KOD_ZMIANA_POLOWY in ((direction or {}).get("warnings") or ()):
+        warnings.append({
+            "code": KOD_ZMIANA_POLOWY,
+            "msg": (
+                "Drużyny zmieniają strony boiska po przerwie — ten eksport nie "
+                "jest znormalizowany kierunkowo. Mapy II połowy mogą być odwrócone; "
+                "liczby, osie czasu i bilans są poprawne. Odbicia NIE wykonujemy "
+                "automatycznie — patrz `meta.direction.halves`"
+            ),
+            "count": 1,
+        })
 
     kierunek = ostrzezenie_kierunku(direction)
     if kierunek is not None:

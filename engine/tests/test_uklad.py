@@ -80,8 +80,10 @@ def test_schemat_1_z_etykieta_zmienia_JEDYNIE_slownik(write_csv, row):
     bez, _ = render.render(frame, template_path=V21)
     ze_starym, _ = render.render(frame, template_path=V21, report_template=templat())
 
-    assert bez.replace('Object.entries({})',
-                       'Object.entries({"STRZAŁ":{"display":"Strzał"}})') == ze_starym
+    # Aliasy domyślne są w obu (sesja 7) — różnicą jest wyłącznie wpis `STRZAŁ`.
+    dodane = '"STRZAŁ":{"display":"Strzał"},'
+    assert dodane in ze_starym and dodane not in bez
+    assert ze_starym.replace(dodane, "", 1) == bez
 
 
 # ===========================================================================

@@ -542,12 +542,23 @@ ponowne policzenie median.
 Odbijamy **obie drużyny razem** — lustrzenie jednej rozjechałoby mecz na dwa
 układy współrzędnych. `y` zostaje nietknięte: zamieniamy strony boiska, nie skrzydła.
 
-**Podpis w nagłówku idzie za MAPĄ, nie za surowym eksportem.** `meta.direction`
-zapisuje kierunek sprzed odbicia (bo po nim da się odbicie sprawdzić i cofnąć),
-ale znaczniki `__KIERUNEK_*__` niosą kierunek **po** odbiciu — czytelnik patrzy
-na mapę, a nie na plik. Praktyczny skutek: przy znanym kierunku podpis mówi
-zawsze „tenant atakuje w prawo", a różnicę widać wtedy, gdy kierunku NIE DA SIĘ
-ustalić — wtedy podpis milczy, zamiast twierdzić cokolwiek.
+**PODPIS W NAGŁÓWKU ZNIKNĄŁ W SESJI 7 (silnik 0.16.1).** W sesji 4a nagłówek
+dostał znaczniki `__KIERUNEK_*__` z podpisem „atakuje w prawo ▶ · POGOŃ" przy
+obu drużynach. Po normalizacji stron był to napis **zawsze taki sam** — mapy są
+sprowadzane do jednego układu, więc tenant atakuje w prawo w każdym raporcie.
+Podpis, który nigdy się nie zmienia, nie jest informacją, tylko szumem
+zajmującym miejsce w nagłówku.
+
+Ślad po kierunku został **jeden**: mała strzałka i „kierunek ataku" w legendzie
+map, wpisane w szablon. `meta.direction` zostaje jako diagnostyka — po niej da
+się sprawdzić i cofnąć odbicie.
+
+**Zmiana stron po przerwie jest ZGŁASZANA, nie naprawiana** (sesja 7).
+`direction.halves` liczy kierunek każdej drużyny w każdej połowie osobno; przy
+kierunkach przeciwnych idzie ostrzeżenie `KIERUNEK_ZMIANA_POLOWY` i baner nad
+raportem. Odbicia nie robimy — ani per połowa (byłoby lustrzeniem „bo połowa
+druga", którego zakazuje pułapka 2), ani całego meczu (taki mecz nie ma jednego
+kierunku: mediana miesza dwa przeciwne rozkłady i ląduje koło środka boiska).
 
 **Tabela `events` też dostaje współrzędne po odbiciu**, a archiwum kanoniczne
 i pakiet metryk — oryginalne. Porównanie sezonowe nie może sumować map z dwóch

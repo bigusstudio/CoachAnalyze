@@ -267,8 +267,14 @@ echo "\n== świeży import: kreator MUSI zatrzymać ==\n";
  * w `Mappings::unknown()` — czyli dwieście linii dalej, w miejscu bez związku
  * z przyczyną. Wiersze przepisane 1:1, żeby asercje nie zmieniły znaczenia.
  *
- * SEDNO TYCH DANYCH: `AKCJA DEFENSYWNA`, `1x1 DEF` i `SBZ PODAJĄCY` są dla
- * silnika NIEZNANE, a `STRZAŁ` znany. Kreator ma się na tym zatrzymać.
+ * SEDNO TYCH DANYCH: `AKCJA DEFENSYWNA`, `1x1 DEF` i `WYJŚCIE SPOD PRESJI` są
+ * dla silnika NIEZNANE, a `STRZAŁ` znany. Kreator ma się na tym zatrzymać.
+ *
+ * `SBZ PODAJĄCY` ZOSTAJE W PLIKU, ale od silnika 0.16.1 NIE JEST już nieznany:
+ * to alias domyślny `ZDOBYCIE SBZ` (engine/coachanalyze/config/aliasy.json).
+ * Trzymamy go tutaj właśnie po to, żeby asercja niżej pilnowała tej różnicy —
+ * przedtem eksport z tą nazwą miał zero wejść w SBZ w pokryciu, a jednocześnie
+ * policzone wejścia w raporcie.
  */
 $csvNoweTagi = ca_test_csv([
     ['tag_name', 'begin', 'end', 'team', 'labels', 'comment', 'pos_x_meters', 'pos_y_meters'],
@@ -276,6 +282,7 @@ $csvNoweTagi = ca_test_csv([
     ['AKCJA DEFENSYWNA', '30', '40', 'KLUB A', 'UDANA, NASZA POŁOWA',      '',      '50', '30'],
     ['AKCJA DEFENSYWNA', '45', '55', 'KLUB A', 'NIEUDANA',                 '',      '52', '28'],
     ['1x1 DEF',          '60', '70', 'KLUB A', 'WYGRANY, PRESSING WYSOKI', '',      '40', '20'],
+    ['WYJŚCIE SPOD PRESJI', '72', '78', 'KLUB A', 'UDANA',                 '',      '30', '25'],
     ['SBZ PODAJĄCY',     '80', '90', 'KLUB A', 'STRZAŁ',                   '',      '85', '33'],
     ['SBZ PODAJĄCY',     '95', '99', 'KLUB A', 'BRAK STRZAŁU',             '',      '86', '30'],
 ], 'ca_mapowania_');
@@ -331,7 +338,20 @@ check('KREATOR ZATRZYMUJE: pokrycie przekierowuje na mapowanie',
 $kreator = http('GET', '/import/' . $importId . '/mapowanie');
 check('ekran kreatora odpowiada', $kreator['status'] === 200, 'status ' . $kreator['status']);
 check('kreator wymienia nowe tagi', str_contains($kreator['body'], 'AKCJA DEFENSYWNA')
-    && str_contains($kreator['body'], 'SBZ PODAJĄCY'));
+    && str_contains($kreator['body'], 'WYJŚCIE SPOD PRESJI'));
+/*
+ * ALIAS DOMYŚLNY NIE JEST NOWYM TAGIEM (silnik 0.16.1). `SBZ PODAJĄCY` znaczy
+ * to samo, co `ZDOBYCIE SBZ`, więc kreator nie ma o co pytać — a pokrycie
+ * liczy te zdarzenia zamiast wycinać oś SBZ jako pustą.
+ */
+check('alias domyślny NIE trafia na listę nieznanych tagów',
+    !in_array('SBZ PODAJĄCY', array_column((array) ($meta['unmapped_tags'] ?? []), 'tag'), true),
+    'to ta sama zmienna pod inną nazwą, nie tag do zmapowania');
+// `coverage_json` jest SPŁASZCZONY: klucze pokrycia leżą na wierzchu, obok
+// `unmapped_tags` (patrz `Imports::saveInspection`).
+check('alias policzony w pokryciu razem z nazwą główną',
+    (int) ($meta['sbz'] ?? 0) === 2,
+    'sbz: ' . var_export($meta['sbz'] ?? null, true));
 check('kreator zna klub profilu', str_contains($kreator['body'], 'KLUB A'));
 
 // Kształt wzbogacony (silnik ≥ 0.9.0): liczby wystąpień zamiast kresek
