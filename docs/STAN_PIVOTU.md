@@ -232,6 +232,15 @@ i ta sesja jej nie dokłada.
 
 ## 5. Procedura powrotu do `pro`
 
+> **AKTUALNA WOBEC MIGRACJI 014–017** (sesja 7). Wszystkie cztery są addytywne:
+> `pro` nowych tabel (`events`, `tag_catalog`, `match_players`) ani nowych kolumn
+> (`matches.round`, `tag_catalog.alias_of`) NIE CZYTA i nie zapisuje. Powrót jest
+> więc wdrożeniem starszego kodu i **nie wymaga ruszania bazy** — krok 3 poniżej
+> zostaje wyjściem awaryjnym, nie częścią procedury.
+>
+> Wdrożenie W DRUGĄ STRONĘ (`pro` → `viewer`) opisuje osobny dokument:
+> **`docs/WDROZENIE_VIEWER.md`**, krok po kroku, z kontrolą po każdym kroku.
+
 > **Ta procedura została napisana pod STAN FAKTYCZNY serwera, nie pod RUNBOOK.**
 > Katalogów `current/` i `releases/` **nie ma** — `releases/` jest pusty, a aplikacja
 > mieszka wprost w `~/public_html/app.coachanalyze.pl/`. Sekcja „Wycofanie wdrożenia"
@@ -329,8 +338,14 @@ i leży w `~/CoachAnalyze/shared/backups/`.
 | Przeżywa | Nie przeżywa |
 |---|---|
 | Publiczne adresy `/r/{club_key}/{token}` — tokeny są w bazie i nie były ruszane | Raporty wygenerowane w okresie „viewer", jeśli wykonasz krok 3 |
-| Pliki raportów HTML już zapisane na dysku | Ustawienie `HTML_TEMPLATE=v21`, jeśli je kiedyś włączysz — `pro` nie zna tej zmiennej i użyje v17 |
+| Pliki raportów HTML już zapisane na dysku | Ustawienie `HTML_TEMPLATE=v21` — `pro` nie zna tej zmiennej i użyje v17 |
 | Konta, hasła (argon2id), sesje w Redisie | — |
+| **Tabele 014–017 wraz z zawartością** — `pro` ich nie czyta, więc czekają nietknięte na ewentualny powrót do `viewer` | — |
+| **Templaty schematu 2** (układ raportu, progi) — `pro` czyta z nich to, co rozumie, i ignoruje resztę | — |
+
+**Co to znaczy w praktyce:** powrót do `pro` i ponowne wejście w `viewer` nie
+wymagają ani jednej operacji na danych. Zdarzenia, katalog tagów i składy
+przeżywają obie podróże, bo żadna strona ich nie kasuje.
 
 ---
 

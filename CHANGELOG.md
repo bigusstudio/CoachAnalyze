@@ -3,6 +3,47 @@
 Format: [wersja silnika] — data — opis.
 Każda zmiana, która modyfikuje wyjście silnika, MUSI mieć tu wpis wraz z powodem.
 
+## Aplikacja — 2026-09-25 · blok „Menu sezonowe i produkcja"
+### Menu sezonowe na danych, procedura wdrożenia, regeneracja
+
+**Menu sezonowe (sesja 7).** Trzy pozycje szyny przestały być stroną zapowiedzi:
+
+- **SEZON › lista kolejek** (`/sezon`) — mecze klubu w sezonie w KOLEJNOŚCI
+  ROZGRYWKOWEJ, nie odwrotnej chronologii. Sortowanie po `round` numerycznie tam,
+  gdzie się da: kolumna jest napisem (mieści „1/8 finału"), więc samo
+  `ORDER BY round` dawałoby 1, 10, 11, 2.
+- **SEZON › SUMA** (`/sezon/suma`) — `Metrics::computeAll` dla zakresu sezonu plus
+  rozbicie na kolejki ze stopką sumującą. Suma to ta sama definicja metryki bez
+  filtra meczu, a nie osobne zestawienie.
+- **Karta meczu** (`/sezon/mecz/{id}`) — meta, liczby, skład i wszystkie działania
+  w jednym miejscu; dotąd rozrzucone po czterech ekranach.
+- **ZAWODNICY** (`/zawodnicy`) — `match_players` scalone z `events.player` po
+  pełnej nazwie, przez równość. Kreska w kolumnie minut, gdy żaden wiersz ich
+  nie miał: „nie podano minut" i „zagrał zero minut" to dwie różne rzeczy.
+- **KALENDARZ** (`/kalendarz`) — widok miesięczny bez skryptu. Mecz bez daty nie
+  trafia do żadnego dnia i mówimy o tym osobno, licznikiem.
+- Pasek sezonu na pulpicie prowadzi do karty meczu, SUMA do zestawienia.
+- **Cudzy klub daje 403**, nie 404 — identyfikator adresuje tu ZAKRES istniejącego
+  ekranu, a nie stronę, której nie ma.
+
+**Wdrożenie (commit 3).**
+
+- **`docs/WDROZENIE_VIEWER.md`** — procedura krok po kroku, z kontrolą po każdym
+  kroku: zrzut, migracje 014–017 (próbna → produkcja), `HTML_TEMPLATE=v21`,
+  merge `--ff-only`, `deploy.sh`, kontrola w przeglądarce, regeneracja, powrót.
+- **`deploy.sh` sprawdza migracje PRZED synchronizacją** i przerywa z listą tego,
+  czego brakuje. Kod czytający nieistniejącą tabelę daje błąd 500 na ekranie
+  klienta, a nie przy wdrożeniu — po synchronizacji produkcja jest już zepsuta.
+  Po wdrożeniu doszła kontrola `/api/metryki` bez sesji (oczekiwane **401**).
+- **`app/repairs/regeneruj_raporty.php`** — kolejkuje regenerację raportów
+  (`--club ID` albo `--all`, `--dry-run` wypisuje listę). Migracje zakładają puste
+  tabele; wypełnia je dopiero silnik przy generowaniu raportu, więc bez tego kroku
+  klient po wdrożeniu widzi puste liczby przy komplecie raportów.
+  W odróżnieniu od przycisku w panelu bierze WSZYSTKIE raporty klubu, nie tylko
+  nieaktualne wobec templatu.
+- `docs/STAN_PIVOTU.md` §5 i `app/migrations/README.md` zaktualizowane wobec
+  014–017: powrót do `pro` **nie wymaga ruszania bazy**, bo migracje są addytywne.
+
 ## [0.16.1] — 2026-09-25 · blok „Menu sezonowe i produkcja"
 ### Aliasy domyślne, kierunek per połowa, nagłówek bez podpisu kierunku
 

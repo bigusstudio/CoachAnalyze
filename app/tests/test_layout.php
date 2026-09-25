@@ -474,6 +474,42 @@ if (is_file($deployPath)) {
         }
     }
 
+    echo "\n== deploy.sh: bramka migracji 014-017 ==\n";
+
+    /*
+     * WDROŻENIE KODU PRZED MIGRACJAMI DAJE PANEL, KTÓRY WYGLĄDA NA DZIAŁAJĄCY.
+     *
+     * Pulpit, menu sezonowe i metryki czytają tabele z migracji 014–017. Bez
+     * nich zapytania padają na „no such table" — na ekranie klienta, nie przy
+     * wdrożeniu. Bramka stoi PRZED synchronizacją, bo po niej produkcja jest
+     * już zepsuta, a cofnięcie wymaga drugiego wdrożenia.
+     *
+     * Test pilnuje dwóch rzeczy: że bramka w ogóle jest i że jest PRZED rsync.
+     * Kolejność w skrypcie da się zgubić jedną przeprowadzką bloku, a skutek
+     * tej pomyłki widać dopiero na produkcji.
+     */
+    foreach (['events', 'tag_catalog', 'match_players', 'round', 'alias_of'] as $co) {
+        check("bramka migracji wymienia {$co}", str_contains($deploy, $co));
+    }
+
+    $pozycjaBramki = strpos($deploy, 'Kontrola migracji');
+    $pozycjaRsync  = strpos($deploy, 'rsync -a --delete');
+    check('bramka migracji stoi PRZED pierwszym rsync',
+        $pozycjaBramki !== false && $pozycjaRsync !== false && $pozycjaBramki < $pozycjaRsync,
+        'po synchronizacji produkcja jest już zepsuta');
+
+    /*
+     * KONTROLA PO WDROŻENIU: `/api/metryki` bez sesji ma zwrócić 401.
+     *
+     * Pomyłka jest cicha w drugą stronę — trasa wpuszczona przed
+     * `requireLogin()` bez własnego sprawdzenia sesji oddałaby metryki klubu
+     * bez logowania, a odpowiedź wyglądałaby poprawnie. Ten sam kod orzeka
+     * `app/tests/integracja/test_api_metryki_http.php`.
+     */
+    check('kontrola /api/metryki bez sesji jest w deploy.sh',
+        str_contains($deploy, '/api/metryki') && str_contains($deploy, '401'),
+        'trasa bez własnego sprawdzenia sesji oddaje metryki bez logowania');
+
     echo "\n== deploy.sh: żadnych dowiązań poza open_basedir ==\n";
 
     /**

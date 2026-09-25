@@ -137,6 +137,41 @@ mysql serwer400227_coachanalyze < app/migrations/014_....sql
 Migracja kończy się blokiem `SELECT`, który potwierdza wynik — tak jak `012` i `013`.
 Migracja bez kontroli po uruchomieniu jest migracją, o której nie wiadomo, czy przeszła.
 
+### Pivot „viewer": 014–017 nakłada się JEDNYM CIĄGIEM
+
+Cztery migracje pivotu idą razem i **w kolejności**: `016` dokłada kolumnę do
+tabeli z `015`, więc odwrócone wywalą się na „unknown table".
+
+```bash
+for M in 014_events_i_meta 015_katalog_tagow 016_alias_tagu 017_sklad_meczu; do
+  echo "== $M"
+  mysql --defaults-group-suffix=caproba serwer400227_caproba \
+    < app/migrations/$M.sql || { echo "PADŁO NA $M"; break; }
+done
+```
+
+`|| break` nie jest ozdobnikiem: bez niego pętla leci dalej po błędzie i kolejne
+migracje kładą się jedna po drugiej na ten sam brak, a w wyjściu trudno znaleźć
+pierwszą przyczynę.
+
+**Kontrola — pięć niepustych odpowiedzi:**
+
+```bash
+mysql <baza> -e "
+  SHOW TABLES LIKE 'events';
+  SHOW TABLES LIKE 'tag_catalog';
+  SHOW TABLES LIKE 'match_players';
+  SHOW COLUMNS FROM matches LIKE 'round';
+  SHOW COLUMNS FROM tag_catalog LIKE 'alias_of';
+"
+```
+
+To samo sprawdza `deploy/deploy.sh` przed synchronizacją katalogu webowego
+i przerywa wdrożenie, gdy czegokolwiek brakuje — kod czytający nieistniejącą
+tabelę daje błąd 500 na ekranie klienta, a nie przy wdrożeniu.
+
+Pełna procedura wdrożenia razem z kontrolami: **`docs/WDROZENIE_VIEWER.md`**.
+
 ### Baza próbna to nie kopia produkcji
 
 `serwer400227_caproba` istnieje od sierpnia 2026 jako środowisko próbne migracji.

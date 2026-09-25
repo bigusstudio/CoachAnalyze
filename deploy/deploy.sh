@@ -122,6 +122,77 @@ else
   exit 1
 fi
 
+echo "==> Kontrola migracji 014-017 (pivot viewer)"
+#
+# +------------------------------------------------------------------------+
+# | WDROZENIE KODU PRZED MIGRACJAMI DAJE PANEL, KTORY WYGLADA NA DZIALAJACY.|
+# |                                                                        |
+# | Pulpit, menu sezonowe i metryki czytaja tabele z migracji 014-017. Bez  |
+# | nich zapytania padaja na "no such table", a uzytkownik dostaje pusta    |
+# | strone albo blad 500 - na ekranie, nie przy wdrozeniu. Import nowego    |
+# | meczu wywraca sie dopiero w cronie, czyli minute pozniej i w logu.      |
+# |                                                                        |
+# | Dlatego sprawdzamy TU, przed synchronizacja: po niej produkcja jest juz |
+# | zepsuta, a cofniecie wymaga drugiego wdrozenia.                         |
+# +------------------------------------------------------------------------+
+#
+# Sprawdzamy TABELE I KOLUMNY, nie numer migracji: numeru nie ma gdzie zapisac
+# (projekt nie ma tabeli migracji), a obecnosc struktury jest tym, od czego
+# faktycznie zalezy aplikacja.
+BLAD_MIGRACJI="$BASE/shared/.migracje.blad"
+BRAKI=$(mysql --skip-column-names --batch "$DB_NAME" 2> "$BLAD_MIGRACJI" <<'SQL' || echo "__BLAD__"
+SELECT GROUP_CONCAT(brak SEPARATOR ', ') FROM (
+  SELECT 'tabela events (014)' AS brak WHERE NOT EXISTS (
+    SELECT 1 FROM information_schema.tables
+     WHERE table_schema = DATABASE() AND table_name = 'events')
+  UNION ALL
+  SELECT 'kolumna matches.round (014)' WHERE NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_schema = DATABASE() AND table_name = 'matches' AND column_name = 'round')
+  UNION ALL
+  SELECT 'tabela tag_catalog (015)' WHERE NOT EXISTS (
+    SELECT 1 FROM information_schema.tables
+     WHERE table_schema = DATABASE() AND table_name = 'tag_catalog')
+  UNION ALL
+  SELECT 'kolumna tag_catalog.alias_of (016)' WHERE NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_schema = DATABASE() AND table_name = 'tag_catalog' AND column_name = 'alias_of')
+  UNION ALL
+  SELECT 'tabela match_players (017)' WHERE NOT EXISTS (
+    SELECT 1 FROM information_schema.tables
+     WHERE table_schema = DATABASE() AND table_name = 'match_players')
+) x;
+SQL
+)
+
+if [ "$BRAKI" = "__BLAD__" ]; then
+  echo "    !!! BLAD: nie udalo sie odpytac bazy $DB_NAME o strukture"
+  sed 's/^/        /' "$BLAD_MIGRACJI" >&2 || true
+  rm -f "$BLAD_MIGRACJI"
+  exit 1
+fi
+rm -f "$BLAD_MIGRACJI"
+
+# Pusty wynik GROUP_CONCAT to NULL, ktore klient wypisuje jako "NULL".
+if [ -n "$BRAKI" ] && [ "$BRAKI" != "NULL" ]; then
+  echo "    !!! BLAD: baza $DB_NAME nie ma struktury wymaganej przez ten kod"
+  echo "        brakuje: $BRAKI"
+  echo ""
+  echo "        Naloz migracje PRZED wdrozeniem kodu, w kolejnosci:"
+  echo "          mysql $DB_NAME < $BASE/repo/app/migrations/014_events_i_meta.sql"
+  echo "          mysql $DB_NAME < $BASE/repo/app/migrations/015_katalog_tagow.sql"
+  echo "          mysql $DB_NAME < $BASE/repo/app/migrations/016_alias_tagu.sql"
+  echo "          mysql $DB_NAME < $BASE/repo/app/migrations/017_sklad_meczu.sql"
+  echo ""
+  echo "        Migracje sa ADDYTYWNE - nalozenie ich na baze z dzialajaca"
+  echo "        wersja pro niczego nie psuje (docs/STAN_PIVOTU.md par. 4)."
+  echo "        Pelna procedura: docs/WDROZENIE_VIEWER.md"
+  echo ""
+  echo "        Zrzut sprzed tej proby: $ZRZUT"
+  exit 1
+fi
+echo "    events, tag_catalog, match_players, round, alias_of   OK"
+
 echo "==> Synchronizacja katalogu webowego"
 mkdir -p "$WEB"
 # Przejście 1: kod aplikacji do podkatalogu app/.
@@ -382,6 +453,34 @@ else
   echo "    UWAGA: /assets/app.css bez wersji nie ma 'must-revalidate'"
   echo "        otrzymano: ${CACHE_BEZ:-brak nagłówka Cache-Control}"
   echo "        Bez tego obowiązuje buforowanie heurystyczne — to był pierwotny błąd."
+fi
+
+echo "==> Kontrola punktu koncowego metryk bez sesji"
+#
+# `/api/metryki` stoi ZA `requireLogin()` i bez sesji ma zwrocic 401.
+#
+# DLACZEGO 401, A NIE 404 - i dlaczego to nie jest niekonsekwencja wobec par. 9
+# z CLAUDE.md. Punkty koncowe chmurek i wskaznika pracy skrypt odpytuje na
+# KAZDEJ stronie, wiec 401 na istniejacej trasie potwierdzalby jej istnienie
+# kazdemu, kto podejrzy ruch. `/api/metryki` jest wolane SWIADOMIE, przez kogos,
+# kto juz wie, ze trasa istnieje - ukrywanie jej niczego nie chroni, a 404
+# kazaloby szukac literowki w adresie zamiast przeczytac "zaloguj sie".
+# Tak samo orzeka test app/tests/integracja/test_api_metryki_http.php.
+#
+# Kontrola ma wartosc, bo pomylka jest cicha w druga strone: trasa wpuszczona
+# przed `requireLogin()` bez wlasnego sprawdzenia sesji oddalaby metryki klubu
+# bez logowania, a odpowiedz wygladalaby poprawnie.
+METRYKI_KOD=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 \
+  "https://app.coachanalyze.pl/api/metryki?club=1" || echo "000")
+
+if [ "$METRYKI_KOD" = "401" ]; then
+  echo "    /api/metryki bez sesji -> 401          OK"
+else
+  echo "    !!! BLAD: /api/metryki bez sesji zwraca $METRYKI_KOD, oczekiwano 401"
+  echo "        200 znaczy WYCIEK metryk klubu bez logowania."
+  echo "        302 znaczy, ze trasa wrocila za zwykle przekierowanie na /login"
+  echo "        i klient dostaje strone logowania jako odpowiedz JSON."
+  FAIL=1
 fi
 
 if [ "$FAIL" -ne 0 ]; then
