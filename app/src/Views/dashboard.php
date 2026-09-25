@@ -343,7 +343,10 @@ $klasaWyniku = static function (?int $nas, ?int $ich): string {
             jak piąty mecz policzony od nowa. Dwie różne rzeczy w jednym pasku
             muszą się różnić wyglądem, a nie tylko znaczeniem.
           */ ?>
-          <a class="<?= $kl ?>" href="/mecze/<?= (int) $r['id'] ?>/historia"
+          <?php /* Kafelek prowadzi do KARTY MECZU (sesja 7), a nie do historii:
+                   karta ma meta, liczby i wszystko, co z meczem można zrobić,
+                   w jednym miejscu. Historia jest jednym z odsyłaczy na niej. */ ?>
+          <a class="<?= $kl ?>" href="/sezon/mecz/<?= (int) $r['id'] ?>"
              title="<?= View::e($tytul) ?>">
             <?php if ($kolejka !== null): ?>
               <?= View::e(View::t('dash.round.prefix', $kolejka)) ?>
@@ -353,8 +356,9 @@ $klasaWyniku = static function (?int $nas, ?int $ich): string {
             <small><?= View::e($podpis) ?></small>
           </a>
         <?php endforeach; ?>
-        <?php /* SUMA prowadzi do zapowiedzi: zestawienia sezonowego jeszcze nie ma. */ ?>
-        <a class="q q--next" href="/kalendarz"><?= View::e(View::t('dash.season_sum')) ?></a>
+        <?php /* SUMA prowadzi do zestawienia sezonu (sesja 7). Do tej sesji
+                 był to odsyłacz do zapowiedzi — zestawienia po prostu nie było. */ ?>
+        <a class="q q--next" href="/sezon/suma"><?= View::e(View::t('dash.season_sum')) ?></a>
       </div>
       <p class="legend">
         <span><i style="background: var(--ok-mikkie)"></i><?= View::e(View::t('dash.legend.win')) ?></span>

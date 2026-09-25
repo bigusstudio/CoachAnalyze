@@ -251,6 +251,210 @@ final class Stats
         );
     }
 
+    // ══════════════════════════════════════════════════════════════════════
+    // MENU SEZONOWE (sesja 7 pivotu „viewer")
+    //
+    // WSZYSTKO PONIŻEJ TO ODCZYT. PHP nie liczy żadnej metryki piłkarskiej
+    // (CLAUDE.md §4) — sumuje kolumny, które zapisał silnik, tak samo jak
+    // `seasonMatches` wyżej. Jedyne, co robi tu PHP poza `SELECT`, to SCALANIE
+    // dwóch zestawień zawodników po nazwie, bo ani MySQL, ani SQLite nie ma
+    // `FULL OUTER JOIN`; sumy przychodzą gotowe z bazy.
+    // ══════════════════════════════════════════════════════════════════════
+
+    /**
+     * Mecze klubu w sezonie — KOLEJNOŚĆ ROZGRYWKOWA, nie odwrotna chronologia.
+     *
+     * `seasonMatches()` sortuje od najnowszego, bo służy liście „ostatnie mecze".
+     * Menu sezonowe jest listą KOLEJEK i czyta się je od pierwszej: kolejka 1
+     * na górze, tak jak w tabeli ligowej.
+     *
+     * Sortujemy po `round` NUMERYCZNIE tam, gdzie się da. Kolumna jest napisem
+     * (mieści „1/8 finału"), więc sam `ORDER BY round` dałby 1, 10, 11, 2 —
+     * czyli kolejność, której nikt nie rozpozna jako kolejność.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public static function seasonRounds(int $clubId, ?int $seasonId): array
+    {
+        $warunek = $seasonId !== null ? 'AND m.season_id = :sid' : '';
+        $parametry = ['club' => $clubId, 'tag_us' => self::TAG_STRZAL,
+                      'tag_them' => self::TAG_STRZAL];
+        if ($seasonId !== null) {
+            $parametry['sid'] = $seasonId;
+        }
+
+        return Db::all(
+            "SELECT m.id, m.played_at, m.round, m.status, m.is_home,
+                    m.score_us, m.score_them,
+                    h.name AS home_name, a.name AS away_name,
+                    SUM(CASE WHEN e.team_side = 'us'   THEN e.is_goal ELSE 0 END) AS goals_us,
+                    SUM(CASE WHEN e.team_side = 'them' THEN e.is_goal ELSE 0 END) AS goals_them,
+                    SUM(CASE WHEN e.team_side = 'us'   AND e.xg IS NOT NULL THEN e.xg ELSE 0 END) AS xg_us,
+                    SUM(CASE WHEN e.team_side = 'them' AND e.xg IS NOT NULL THEN e.xg ELSE 0 END) AS xg_them,
+                    SUM(CASE WHEN e.team_side = 'us'   AND e.tag_name = :tag_us THEN 1 ELSE 0 END) AS shots_us,
+                    SUM(CASE WHEN e.team_side = 'them' AND e.tag_name = :tag_them THEN 1 ELSE 0 END) AS shots_them,
+                    COUNT(e.id) AS events
+               FROM matches m
+               LEFT JOIN clubs h  ON h.id = m.club_home_id
+               LEFT JOIN clubs a  ON a.id = m.club_away_id
+               LEFT JOIN events e ON e.match_id = m.id
+              WHERE m.club_id = :club {$warunek}
+              GROUP BY m.id, m.played_at, m.round, m.status, m.is_home,
+                       m.score_us, m.score_them, h.name, a.name
+              ORDER BY (m.round IS NULL OR m.round = ''),
+                       CAST(m.round AS DECIMAL(10,0)), m.round,
+                       (m.played_at IS NULL), m.played_at, m.id",
+            $parametry
+        );
+    }
+
+    /**
+     * Sezony, w których klub ma mecze. Do przełącznika nad listą kolejek.
+     *
+     * WYŁĄCZNIE sezony z meczami: lista wszystkich sezonów systemu kazałaby
+     * przeklikiwać puste, a pusty sezon nie jest wyborem, tylko ślepą uliczką.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public static function seasonsWithMatches(int $clubId): array
+    {
+        return Db::all(
+            "SELECT s.id, s.label, s.is_current, COUNT(m.id) AS matches
+               FROM seasons s
+               JOIN matches m ON m.season_id = s.id AND m.club_id = :club
+              GROUP BY s.id, s.label, s.is_current
+              ORDER BY s.label DESC",
+            ['club' => $clubId]
+        );
+    }
+
+    /**
+     * Zawodnicy klubu: skład (mecze, minuty) scalony ze zdarzeniami
+     * (strzały, xG, gole) PO PEŁNEJ NAZWIE, przez równość.
+     *
+     * DWA ŹRÓDŁA, BO OPISUJĄ CO INNEGO i żadne nie zastępuje drugiego:
+     *
+     *   `match_players` — kto był w protokole i ile zagrał. Zawodnik, który
+     *     rozegrał 90 minut i nie zrobił nic, co analityk tagował, jest TYLKO tu.
+     *   `events.player`  — kto co zrobił. Zawodnik, którego nikt nie wpisał do
+     *     składu, a dostał taga, jest TYLKO tu — i to znaczy albo literówkę,
+     *     albo skład, o którym zapomniano.
+     *
+     * Scalamy w PHP, bo `FULL OUTER JOIN` nie istnieje ani w MySQL, ani
+     * w SQLite. Sumy przychodzą z bazy; PHP dokłada wyłącznie łączenie wierszy.
+     *
+     * Dopasowanie przez RÓWNOŚĆ CAŁEJ NAZWY (pułapka 7): fragment łapałby
+     * „Nowak" wewnątrz „Nowakowski" i nikt by tego nie zauważył.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public static function players(int $clubId, ?int $seasonId = null): array
+    {
+        $warunek = $seasonId !== null ? 'AND m.season_id = :sid' : '';
+        $parametrySkład = ['club' => $clubId];
+        $parametryZdarzen = ['club' => $clubId, 'tag' => self::TAG_STRZAL];
+        if ($seasonId !== null) {
+            $parametrySkład['sid'] = $seasonId;
+            $parametryZdarzen['sid'] = $seasonId;
+        }
+
+        $sklad = Db::all(
+            "SELECT mp.player,
+                    COUNT(DISTINCT mp.match_id) AS roster_matches,
+                    SUM(CASE WHEN mp.minutes IS NOT NULL THEN mp.minutes ELSE 0 END) AS minutes,
+                    SUM(CASE WHEN mp.minutes IS NOT NULL THEN 1 ELSE 0 END) AS with_minutes,
+                    SUM(mp.is_starter) AS starts
+               FROM match_players mp
+               JOIN matches m ON m.id = mp.match_id
+              WHERE mp.club_id = :club {$warunek}
+              GROUP BY mp.player",
+            $parametrySkład
+        );
+
+        $zdarzenia = Db::all(
+            "SELECT e.player,
+                    COUNT(DISTINCT e.match_id) AS event_matches,
+                    SUM(CASE WHEN e.tag_name = :tag THEN 1 ELSE 0 END) AS shots,
+                    SUM(CASE WHEN e.xg IS NOT NULL THEN e.xg ELSE 0 END) AS xg,
+                    SUM(e.is_goal) AS goals,
+                    COUNT(e.id) AS events
+               FROM events e
+               JOIN matches m ON m.id = e.match_id
+              WHERE m.club_id = :club AND e.player IS NOT NULL AND e.player <> '' {$warunek}
+              GROUP BY e.player",
+            $parametryZdarzen
+        );
+
+        $out = [];
+        foreach ($sklad as $z) {
+            $out[(string) $z['player']] = [
+                'player'  => (string) $z['player'],
+                'matches' => (int) $z['roster_matches'],
+                // MINUTY TO `null`, GDY ŻADEN WIERSZ ICH NIE MIAŁ — nie zero.
+                // „Nie podano minut" i „zagrał zero minut" to dwie różne rzeczy.
+                'minutes' => (int) $z['with_minutes'] > 0 ? (int) $z['minutes'] : null,
+                'starts'  => (int) $z['starts'],
+                'shots'   => 0, 'xg' => 0.0, 'goals' => 0, 'events' => 0,
+                'in_roster' => true,
+            ];
+        }
+
+        foreach ($zdarzenia as $z) {
+            $nazwa = (string) $z['player'];
+            $wpis = $out[$nazwa] ?? [
+                'player' => $nazwa, 'matches' => 0, 'minutes' => null, 'starts' => 0,
+                'shots' => 0, 'xg' => 0.0, 'goals' => 0, 'events' => 0,
+                'in_roster' => false,
+            ];
+            $wpis['matches'] = max((int) $wpis['matches'], (int) $z['event_matches']);
+            $wpis['shots']  = (int) $z['shots'];
+            $wpis['xg']     = round((float) $z['xg'], 2);
+            $wpis['goals']  = (int) $z['goals'];
+            $wpis['events'] = (int) $z['events'];
+            $out[$nazwa] = $wpis;
+        }
+
+        $wiersze = array_values($out);
+        usort($wiersze, static function (array $a, array $b): int {
+            return [$b['matches'], $b['events'], $a['player']]
+                <=> [$a['matches'], $a['events'], $b['player']];
+        });
+        return $wiersze;
+    }
+
+    /**
+     * Mecze klubu w przedziale dat — do widoku miesięcznego kalendarza.
+     *
+     * Mecz BEZ DATY nie trafia do żadnego miesiąca i to jest poprawne: kalendarz
+     * pokazuje, co i kiedy, a „nie wiadomo kiedy" nie ma gdzie stanąć. Widok
+     * mówi o nich osobno, licznikiem — zamiast wieszać je na losowym dniu.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public static function matchesBetween(int $clubId, string $od, string $do): array
+    {
+        return Db::all(
+            "SELECT m.id, m.played_at, m.round, m.status, m.score_us, m.score_them,
+                    h.name AS home_name, a.name AS away_name
+               FROM matches m
+               LEFT JOIN clubs h ON h.id = m.club_home_id
+               LEFT JOIN clubs a ON a.id = m.club_away_id
+              WHERE m.club_id = :club AND m.played_at >= :od AND m.played_at <= :do
+              ORDER BY m.played_at, m.id",
+            ['club' => $clubId, 'od' => $od, 'do' => $do]
+        );
+    }
+
+    /** Ile meczów klubu nie ma daty — kalendarz mówi o nich osobno. */
+    public static function matchesWithoutDate(int $clubId): int
+    {
+        $row = Db::one(
+            'SELECT COUNT(*) AS c FROM matches WHERE club_id = :club AND played_at IS NULL',
+            ['club' => $clubId]
+        );
+        return (int) ($row['c'] ?? 0);
+    }
+
     /**
      * Nazwa taga strzału. STAŁA, BO PHP NIE MA SŁOWNIKA TAGÓW.
      *

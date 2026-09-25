@@ -193,6 +193,10 @@ $pozycja = static function (
 
     <nav class="grp">
       <span class="grp__lab"><?= View::e(View::t('nav.grp.club')) ?></span>
+      <?php /* SEZON prowadzi do LISTY KOLEJEK (sesja 7), a nie do administracji
+               sezonami — ta siedzi niżej, pod „Drużyna". Trener otwiera menu,
+               żeby zobaczyć kolejki, a nie żeby zakładać sezon. */ ?>
+      <?php $pozycja('season', '/sezon', View::t('nav.season')); ?>
       <?php $pozycja('seasons', '/sezony', View::t('nav.team')); ?>
       <?php $pozycja('players', '/zawodnicy', View::t('nav.players'), null, true); ?>
       <?php $pozycja('reports', '/raporty', View::t('nav.reports'), $liczniki['reports'] ?? null); ?>

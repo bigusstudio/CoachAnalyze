@@ -545,6 +545,17 @@ td.num, th.num { text-align: right; min-width: 88px; white-space: nowrap; }
    Kolejka dostaje prefiks „k.", więc dwie różne rzeczy w jednym pasku różnią się
    wyglądem, a nie tylko znaczeniem: „1, 2, 3, 4, 5, 3" czytało się jak pomyłka. */
 .q__nr { color: var(--tekst-slabszy); font-weight: 600; }
+
+/* ───────────────────────────────────────── kalendarz miesięczny (sesja 7) */
+/* Siedem równych kolumn i stała wysokość komórki: miesiąc ma wyglądać tak samo
+   niezależnie od tego, ile meczów wypadło w którym tygodniu. Bez skryptu —
+   przejście między miesiącami to zwykłe odsyłacze (CLAUDE.md §9). */
+.kal { table-layout: fixed; }
+.kal th { text-align: center; }
+.kal td { vertical-align: top; height: 76px; font-size: 12px; line-height: 1.4; }
+.kal td .muted { font-family: 'IBM Plex Mono', monospace; font-size: 11px; }
+.kal td div { margin-top: 3px; }
+.kal td small { display: block; color: var(--tekst-slabszy); }
 .legend { display: flex; gap: 14px; font-size: 12px; color: var(--tekst-slaby); margin-top: 10px; flex-wrap: wrap; }
 .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
 

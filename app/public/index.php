@@ -694,7 +694,7 @@ switch (true) {
         showTemplateHistory((int) $m[1]);
         break;
 
-    // ------------------------------------------- uklad raportu (Sesja 5 pivotu)
+// ------------------------------------------- uklad raportu (Sesja 5 pivotu)
     case preg_match('#^/klub/(\d+)/uklad$#', $path, $m) === 1 && $method === 'GET':
         showReportLayout((int) $m[1]);
         break;
@@ -807,27 +807,29 @@ switch (true) {
         showMatchNotes((int) $m[1]);
         break;
 
-    /*
-     * Pozycje szyny, których widok jeszcze nie powstał (sesja 3,5).
-     *
-     * Strona zapowiedzi zamiast 404: menu pokazuje docelowy kształt panelu,
-     * a operator dowiaduje się, że funkcja jest w planie, a nie że kliknął zły
-     * adres. Trasy są czysto prezentacyjne — nic nie czytają i nic nie zapisują.
-     */
+// ------------------------------------------- menu sezonowe (sesja 7 pivotu)
+    //
+    // Trzy pozycje szyny, ktore do tej sesji byly strona zapowiedzi. Wszystkie
+    // czytaja te same dane co pulpit i nie licza zadnej metryki po stronie PHP
+    // (CLAUDE.md §4): sumy przychodza z `Stats`, wskazniki z `Metrics`.
+    case $path === '/sezon' && $method === 'GET':
+        showSeasonRounds();
+        break;
+
+    case $path === '/sezon/suma' && $method === 'GET':
+        showSeasonSummary();
+        break;
+
+    case preg_match('#^/sezon/mecz/(\d+)$#', $path, $m) === 1 && $method === 'GET':
+        showRoundCard((int) $m[1]);
+        break;
+
     case $path === '/zawodnicy' && $method === 'GET':
-        View::page('soon', [
-            'title'   => View::t('nav.players'),
-            'active'  => 'players',
-            'heading' => View::t('nav.players'),
-        ]);
+        showPlayers();
         break;
 
     case $path === '/kalendarz' && $method === 'GET':
-        View::page('soon', [
-            'title'   => View::t('nav.calendar'),
-            'active'  => 'calendar',
-            'heading' => View::t('nav.calendar'),
-        ]);
+        showCalendar();
         break;
 
     /*
@@ -4130,6 +4132,221 @@ function showTemplateHistory(int $id): void
         'csrf'    => Session::csrfToken(),
         'notice'  => Session::flash('notice'),
         'error'   => Session::flash('error'),
+    ]);
+}
+
+// ------------------------------------------- menu sezonowe (sesja 7 pivotu)
+
+/**
+ * Klub, którego dotyczy ekran menu sezonowego.
+ *
+ * DOMYŚLNIE KLUB-TENANT, opcjonalnie `?klub=ID`. Zwraca `null` po wysłaniu
+ * odpowiedzi błędu — wywołujący ma wtedy tylko wrócić.
+ *
+ * CUDZY KLUB TO 403, NIE 404 — i to jest świadoma różnica wobec `/klub/{id}`.
+ * Tam identyfikator adresuje STRONĘ KLUBU, której dla rywala faktycznie nie ma.
+ * Tutaj adresuje ZAKRES istniejącego ekranu, o którym zalogowany użytkownik
+ * i tak wie — ukrywanie go niczego nie chroni, a 403 mówi wprost, o co chodzi.
+ * Ta sama zasada, co w `/api/metryki`.
+ *
+ * @return array<string,mixed>|null
+ */
+function zakresKlubu(): ?array
+{
+    $id = isset($_GET['klub']) ? (int) $_GET['klub'] : \CoachAnalyze\Clubs::tenantDefault();
+
+    if ($id === null) {
+        // Instalacja bez ani jednego klubu — ekran mówi to wprost zamiast
+        // pokazywać puste tabele bez wyjaśnienia.
+        return null;
+    }
+
+    $club = resolveTenant($id);
+    if ($club === null) {
+        http_response_code(403);
+        View::page('soon', [
+            'title'   => View::t('common.error'),
+            'heading' => View::t('common.error'),
+            'body'    => View::t('sezon.err.cudzy_klub'),
+        ]);
+        return null;
+    }
+    return $club;
+}
+
+/**
+ * Sezon wybrany na ekranie: `?sezon=ID`, a bez niego bieżący albo najnowszy
+ * z meczami. `null` znaczy „klub nie ma ani jednego meczu w żadnym sezonie".
+ *
+ * @param list<array<string,mixed>> $sezony
+ */
+function wybranySezon(array $sezony): ?int
+{
+    if (isset($_GET['sezon']) && $_GET['sezon'] !== '') {
+        $zadany = (int) $_GET['sezon'];
+        foreach ($sezony as $s) {
+            if ((int) $s['id'] === $zadany) {
+                return $zadany;
+            }
+        }
+        // Sezon spoza listy klubu ignorujemy zamiast pokazywać pustkę: to nie
+        // jest wybór operatora, tylko adres przeklejony z innego kontekstu.
+    }
+    foreach ($sezony as $s) {
+        if (!empty($s['is_current'])) {
+            return (int) $s['id'];
+        }
+    }
+    return $sezony !== [] ? (int) $sezony[0]['id'] : null;
+}
+
+/** Wspólny zestaw danych nagłówka ekranów sezonowych. */
+function kontekstSezonu(array $club): array
+{
+    $sezony = \CoachAnalyze\Stats::seasonsWithMatches((int) $club['id']);
+    $sezonId = wybranySezon($sezony);
+    $etykieta = null;
+    foreach ($sezony as $s) {
+        if ((int) $s['id'] === $sezonId) {
+            $etykieta = (string) $s['label'];
+        }
+    }
+    return ['sezony' => $sezony, 'sezonId' => $sezonId, 'sezonLabel' => $etykieta];
+}
+
+/** SEZON › lista kolejek. Kolejność rozgrywkowa, nie odwrotna chronologia. */
+function showSeasonRounds(): void
+{
+    $club = zakresKlubu();
+    if ($club === null) {
+        return;
+    }
+    $ctx = kontekstSezonu($club);
+
+    View::page('season_rounds', [
+        'title'   => View::t('sezon.title'),
+        'active'  => 'season',
+        'club'    => $club,
+        'kolejki' => \CoachAnalyze\Stats::seasonRounds((int) $club['id'], $ctx['sezonId']),
+    ] + $ctx);
+}
+
+/**
+ * SEZON › SUMA. Metryki całego sezonu plus rozbicie na kolejki.
+ *
+ * SUMA TO TA SAMA DEFINICJA BEZ FILTRA MECZU, a nie osobna metryka — inaczej
+ * zestawienie mogłoby się nie zgadzać z sumą kolejek (`Metrics::compute`).
+ */
+function showSeasonSummary(): void
+{
+    $club = zakresKlubu();
+    if ($club === null) {
+        return;
+    }
+    $ctx = kontekstSezonu($club);
+    $zakres = ['club_id' => (int) $club['id'], 'season_id' => $ctx['sezonId']];
+
+    View::page('season_summary', [
+        'title'    => View::t('sezon.suma.title'),
+        'active'   => 'season',
+        'club'     => $club,
+        'metryki'  => \CoachAnalyze\Metrics::computeAll($zakres),
+        'kolejki'  => \CoachAnalyze\Stats::seasonRounds((int) $club['id'], $ctx['sezonId']),
+    ] + $ctx);
+}
+
+/**
+ * Karta jednego meczu: meta, metryki i odsyłacze do wszystkiego, co z nim
+ * można zrobić. Jedno miejsce zamiast szukania po czterech ekranach.
+ */
+function showRoundCard(int $matchId): void
+{
+    $mecz = Matches::find($matchId);
+    if ($mecz === null || $mecz['club_id'] === null) {
+        tenantNotFound();
+        return;
+    }
+    $club = resolveTenant((int) $mecz['club_id']);
+    if ($club === null) {
+        http_response_code(403);
+        View::page('soon', [
+            'title'   => View::t('common.error'),
+            'heading' => View::t('common.error'),
+            'body'    => View::t('sezon.err.cudzy_klub'),
+        ]);
+        return;
+    }
+
+    $raport = Imports::latestReport($matchId);
+    $import = Imports::latestForMatch($matchId);
+
+    View::page('season_match', [
+        'title'   => View::t('sezon.mecz.title'),
+        'active'  => 'season',
+        'club'    => $club,
+        'mecz'    => $mecz,
+        'fakty'   => \CoachAnalyze\Stats::matchFacts($matchId),
+        'metryki' => \CoachAnalyze\Metrics::computeAll([
+            'club_id' => (int) $club['id'], 'match_id' => $matchId,
+        ]),
+        'sklad'   => \CoachAnalyze\Roster::forMatch($matchId, (int) $club['id']),
+        'raport'  => $raport,
+        'import'  => $import,
+        'csrf'    => Session::csrfToken(),
+        'notice'  => Session::flash('notice'),
+        'error'   => Session::flash('error'),
+    ]);
+}
+
+/** ZAWODNICY — skład scalony ze zdarzeniami po pełnej nazwie. */
+function showPlayers(): void
+{
+    $club = zakresKlubu();
+    if ($club === null) {
+        return;
+    }
+    $ctx = kontekstSezonu($club);
+
+    View::page('players_list', [
+        'title'     => View::t('nav.players'),
+        'active'    => 'players',
+        'club'      => $club,
+        'zawodnicy' => \CoachAnalyze\Stats::players((int) $club['id'], $ctx['sezonId']),
+    ] + $ctx);
+}
+
+/**
+ * KALENDARZ — widok miesięczny, BEZ SKRYPTU.
+ *
+ * Przejście między miesiącami to zwykłe odsyłacze z parametrem `?m=RRRR-MM`.
+ * Panel ma jeden zatwierdzony plik JavaScript i jest to wyjątek na chmurki
+ * powiadomień (CLAUDE.md §9).
+ */
+function showCalendar(): void
+{
+    $club = zakresKlubu();
+    if ($club === null) {
+        return;
+    }
+
+    $miesiac = (string) ($_GET['m'] ?? '');
+    if (preg_match('/^\d{4}-\d{2}$/', $miesiac) !== 1) {
+        $miesiac = date('Y-m');
+    }
+    $pierwszy = new \DateTimeImmutable($miesiac . '-01');
+    $ostatni = $pierwszy->modify('last day of this month');
+
+    View::page('calendar', [
+        'title'    => View::t('nav.calendar'),
+        'active'   => 'calendar',
+        'club'     => $club,
+        'miesiac'  => $pierwszy,
+        'mecze'    => \CoachAnalyze\Stats::matchesBetween(
+            (int) $club['id'], $pierwszy->format('Y-m-d'), $ostatni->format('Y-m-d')
+        ),
+        'bezDaty'  => \CoachAnalyze\Stats::matchesWithoutDate((int) $club['id']),
+        'poprzedni' => $pierwszy->modify('-1 month')->format('Y-m'),
+        'nastepny'  => $pierwszy->modify('+1 month')->format('Y-m'),
     ]);
 }
 
