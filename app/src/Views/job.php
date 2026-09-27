@@ -113,8 +113,10 @@ $canRetry = Jobs::canRetry((string) $job['status']);
     <a class="btn btn--ghost" href="/raport/<?= (int) $report['id'] ?>">
       <?= View::e(View::t('job.report')) ?>
     </a>
-    <a class="btn btn--ghost" href="/raport/<?= (int) $report['id'] ?>/udostepnij">
-      <?= View::e(View::t('share.create')) ?>
+    <?php /* „Utwórz link" przeniesiony na kartę meczu (golden layout W0) —
+             strona zadania jest techniczna, a link publiczny to decyzja o meczu. */ ?>
+    <a class="btn btn--ghost" href="/mecze/<?= (int) $report['match_id'] ?>">
+      <?= View::e(View::t('card.title')) ?>
     </a>
     <span class="hint"><?= View::e(View::t(
         'job.report.meta',
@@ -123,5 +125,5 @@ $canRetry = Jobs::canRetry((string) $job['status']);
     )) ?></span>
   <?php endif; ?>
 
-  <a class="link" href="/"><?= View::e(View::t('common.back')) ?></a>
+  <a class="link" href="<?= View::e(\CoachAnalyze\Powrot::url('/pulpit')) ?>"><?= View::e(View::t('common.back')) ?></a>
 </div>

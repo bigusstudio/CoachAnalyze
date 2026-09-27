@@ -82,6 +82,17 @@ final class Reports
             $params['club_a'] = (int) $filters['club'];
         }
 
+        /*
+         * WIERSZ = MECZ (golden layout W0). Lista raportów pokazuje najnowszy
+         * raport każdego meczu; starsze wersje są na karcie meczu, w zakładce
+         * „Wersje raportu" [op]. Kolejność „najnowszy" taka sama jak
+         * w `oznaczNajnowsze()`: po dacie wygenerowania, przy remisie po id.
+         */
+        if (!empty($filters['jeden_na_mecz'])) {
+            $warunki[] = 'r.id = (SELECT r2.id FROM reports r2 WHERE r2.match_id = r.match_id
+                                   ORDER BY r2.generated_at DESC, r2.id DESC LIMIT 1)';
+        }
+
         if (!empty($filters['season'])) {
             $warunki[] = 'm.season_id = :season';
             $params['season'] = (int) $filters['season'];

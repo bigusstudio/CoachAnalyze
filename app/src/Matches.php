@@ -418,4 +418,64 @@ final class Matches
         $linia = $koniec === false ? $tekst : substr($tekst, 0, $koniec);
         return mb_substr($linia, 0, 160);
     }
+
+    // ══════════════════════════════════════════════ karta meczu (golden layout W0)
+
+    /**
+     * Zadania kolejki dotyczące meczu — po `match_id` albo po imporcie meczu.
+     * `payload_json` czytamy w PHP: funkcje JSON różnią się między MySQL a SQLite.
+     *
+     * @return list<array<string,mixed>> od najnowszego
+     */
+    public static function zadania(int $matchId, int $limit = 20): array
+    {
+        $importy = array_map('intval', array_column(
+            Db::all('SELECT id FROM imports WHERE match_id = :m', ['m' => $matchId]), 'id'
+        ));
+        $out = [];
+        foreach (Db::all('SELECT * FROM jobs ORDER BY id DESC') as $j) {
+            $p = json_decode((string) ($j['payload_json'] ?? ''), true);
+            if (!is_array($p)) {
+                continue;
+            }
+            if ((int) ($p['match_id'] ?? 0) === $matchId || in_array((int) ($p['import_id'] ?? 0), $importy, true)) {
+                $out[] = $j;
+                if (count($out) >= $limit) {
+                    break;
+                }
+            }
+        }
+        return $out;
+    }
+
+    /** Zadanie meczu, które właśnie trwa albo czeka — albo null. */
+    public static function zadanieWToku(int $matchId): ?array
+    {
+        foreach (self::zadania($matchId, 5) as $j) {
+            if (in_array((string) $j['status'], ['queued', 'running'], true)) {
+                return $j;
+            }
+        }
+        return null;
+    }
+
+    /** @return list<array<string,mixed>> raporty meczu od najnowszego */
+    public static function raporty(int $matchId): array
+    {
+        return Db::all(
+            'SELECT id, generated_at, template_version, engine_version, html_path
+               FROM reports WHERE match_id = :m ORDER BY generated_at DESC, id DESC',
+            ['m' => $matchId]
+        );
+    }
+
+    /** @return list<array<string,mixed>> importy meczu od najnowszego */
+    public static function importy(int $matchId): array
+    {
+        return Db::all(
+            'SELECT id, csv_path, json_path, created_at, engine_version
+               FROM imports WHERE match_id = :m ORDER BY id DESC',
+            ['m' => $matchId]
+        );
+    }
 }

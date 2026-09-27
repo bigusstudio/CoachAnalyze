@@ -71,6 +71,13 @@ putenv('CA_ENV_PATH=' . $envFile);
 require $root . '/app/src/bootstrap.php';
 require $here . '/seed.php';
 ca_test_db($baza);   // klub 1 = tenant „Klub A" (club_key HUT7K2QX)
+/*
+ * ADMINISTRATOR, NIE ANALITYK (golden layout W0). Ten zestaw sprawdza mechanikę
+ * pracy w tle — stronę zadania, wskaźnik, kolumny wersji — a te od W0 widzi
+ * wyłącznie rola `admin`. Analityk dostaje kartę meczu; to sprawdza
+ * `test_golden_w0_http.php`.
+ */
+\CoachAnalyze\Db::run("UPDATE users SET role = 'admin' WHERE email = 'operator@example.com'");
 
 $procesy = [];
 $procesy[] = proc_open(
@@ -445,8 +452,9 @@ unlink($csvSciezka);
 $biblioteka = http('GET', '/klub/1/raporty');
 check('lista mówi WPROST, że brakuje surowych plików',
     str_contains($biblioteka['body'], 'brak surowych plików'));
-check('lista prowadzi do ponownego wgrania w widoku meczu',
-    str_contains($biblioteka['body'], '/mecze/' . $m1['match'] . '/wgraj'));
+// Od W0 ponowne wgranie jest w zakładce „Pliki" karty meczu.
+check('lista prowadzi do ponownego wgrania na karcie meczu',
+    str_contains($biblioteka['body'], '/mecze/' . $m1['match'] . '?zakladka=pliki'));
 check('przy zablokowanym raporcie nie ma przycisku Przelicz',
     !str_contains($biblioteka['body'], '/raport/' . $m1['report'] . '/przelicz'));
 
@@ -574,7 +582,7 @@ check('postęp wymienia nieudane',
  * wtedy, gdy `assignClubs()` nie skasowało wyboru operatora przy generowaniu.
  */
 check('nieudana pozycja odsyła do swojego meczu',
-    str_contains($postep['body'], '/mecze/' . $m2['match'] . '/historia'));
+    str_contains($postep['body'], '/mecze/' . $m2['match'] . '"'));
 check('nieudana pozycja jest podpisana nazwą meczu, nie samą datą',
     str_contains($postep['body'], 'GKS Drugi'),
     'wybór rywala musi przeżyć generowanie');

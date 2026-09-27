@@ -141,7 +141,7 @@ $szczegoly = \CoachAnalyze\Clubs::decodeDetails($club['details'] ?? null);
             <td class="akcje">
               <?php /* Wejście do poprawki daty i sezonu — hub jest miejscem,
                        w którym operator najczęściej zauważa, że ich brakuje. */ ?>
-              <a class="link" href="/mecze/<?= (int) $m['id'] ?>/meta?powrot=<?= rawurlencode('/klub/' . (int) $club['id']) ?>">
+              <a class="link" href="/mecze/<?= (int) $m['id'] ?>?zakladka=dane">
                 <?= View::e(View::t('meta.edit.link')) ?>
               </a>
             </td>

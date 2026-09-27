@@ -3,6 +3,60 @@
 Format: [wersja silnika] — data — opis.
 Każda zmiana, która modyfikuje wyjście silnika, MUSI mieć tu wpis wraz z powodem.
 
+## [0.16.4] — 2026-09-27 · Golden layout W0: nawigacja i karta meczu
+
+**POWÓD: z raportu nie dało się wrócić, a „Wróć" prowadził do listy klubów.**
+Hierarchia panelu to odtąd Pulpit → Sezon → Mecz → Raport (docs/GOLDEN_LAYOUT.md
+powstanie po W3). Każdy ekran ma jednego rodzica; okruszki prowadzą do rodzica,
+nigdy do `/kluby` ani `/zadania`.
+
+### Silnik 0.16.4 (szablon v21) — wyjście zmienione, liczby nie
+- **Klips „← CA"** w lewym górnym rogu raportu v21 (`position: fixed`, tokeny
+  barw). Cel to **znacznik serwowania** `__POWROT_URL__`, który przechodzi przez
+  render nietknięty i wypełnia go PHP: karta meczu w panelu, coachanalyze.pl pod
+  linkiem publicznym (strzałka tylko przy celu wewnętrznym). Ukryty w druku,
+  wycięty ze slajdów. `render.ZNACZNIKI_SERWOWANIA`, docs/KONTRAKT_CLI.md.
+- `#slajdy` w adresie raportu uruchamia ten sam eksport PNG co przycisk.
+- **v17 i test złoty nietknięte.**
+
+### Aplikacja
+- **`Powrot`** (`app/src/Powrot.php`): `url($rodzic)` z `?powrot=` przepuszcza
+  wyłącznie ścieżkę wewnętrzną — bez schematu, hosta, `//`, `\`, znaków
+  sterujących, nigdy `/kluby` ani `/zadania`. Okruszki w `layout.php` od Pulpitu.
+- **`/` i logowanie → `/pulpit`** (było `/kluby`).
+- **Karta meczu `/mecze/{id}`** zastępuje historię meczu, osobne strony mety
+  i składu oraz kartę kolejki `/sezon/mecz/{id}` (stare adresy przekierowują).
+  Nagłówek: k. N · data · miejsce · klub wynik rywal · pastylka stanu raportu;
+  wynik ręczny oznaczony jako wpis ręczny, obok „z tagów: X:Y". Akcje: Otwórz
+  raport, Slajdy, link publiczny (utwórz / skopiuj / wyłącz — przeniesione ze
+  strony zadania). Zakładki bez skryptu: Dane meczu (zapis zostaje na karcie),
+  Skład (osobna trasa `POST /mecze/{id}/sklad`, żeby zapis składu nie czyścił
+  mety), Pliki; [op] Pokrycie, Wersje raportu (z Przelicz / Wygeneruj ponownie),
+  Zadania (z historią meczu). Mecz w przygotowaniu pokazuje wskaźnik pracy.
+- **Formularz mety wydzielony** do `_meta_pola.php` i `_sklad_tabela.php` —
+  ten sam plik w ścieżce importu i na karcie.
+- **Lista raportów: wiersz = mecz** (najnowszy raport meczu, `jeden_na_mecz`),
+  nazwa → karta, „Otwórz raport" w wierszu, filtry jako odsyłacze (bez „Pokaż"),
+  [op] kolumna silnika/templatu, Przelicz, Wygeneruj ponownie.
+- **`/zadania/{id}` tylko [op]** — reszta ról dostaje to samo 404 co przy
+  nieistniejącym zadaniu. Przekierowania po imporcie, generowaniu i przeliczeniu
+  idą przez `Jobs::celDla()`: administrator na stronę zadania, pozostali na kartę
+  meczu. Powiadomienia zapisane z adresem `/zadania/N` są przepisywane przy
+  odczycie pod rolę czytającego (bez migracji danych).
+- **[op] = rola `admin`** (Administrator); `View::op()`. Rozdział analityk /
+  trener z zawężeniem trenera do klubu — W2.
+
+### Testy
+- nowy `app/tests/integracja/test_golden_w0_http.php` (46 asercji): odbiór (a)
+  i (b), klips w panelu i pod linkiem publicznym, [op] na zadaniach i zakładkach,
+  lista raportów dla obu ról, walidacja `?powrot=`,
+- pytest: znacznik serwowania w v21, brak klipsa w v17,
+- zestawy potoku (import, generowanie, przeliczenie, wskaźnik) logują
+  administratora — sprawdzają mechanikę pracy w tle, którą od W0 widzi `admin`;
+  zestawy nawigacji zaktualizowane do `/pulpit`, karty meczu i okruszków.
+
+Zrzuty: `docs/zrzuty/W0/` (analityk 01–09, administrator 10–12).
+
 ## Aplikacja — 2026-09-27 · Porządki: `app/repairs/usun_mecz.php`
 
 **POWÓD: mecze i klub testowy z odbioru UX na produkcji, mecze podpięte pod zły

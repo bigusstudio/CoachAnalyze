@@ -129,8 +129,8 @@ if ($isNew && $suggestedName !== null && $aliases === '') {
       <input type="hidden" name="csrf" value="<?= View::e(Session::csrfToken()) ?>">
       <button class="btn btn--ghost" type="submit"><?= View::e(View::t('club.delete')) ?></button>
     </form>
-    <a class="link" href="/kluby"><?= View::e(View::t('common.back')) ?></a>
+    <a class="link" href="<?= View::e(\CoachAnalyze\Powrot::url('/pulpit')) ?>"><?= View::e(View::t('common.back')) ?></a>
   </div>
 <?php else: ?>
-  <p><a class="link" href="/kluby"><?= View::e(View::t('common.back')) ?></a></p>
+  <p><a class="link" href="<?= View::e(\CoachAnalyze\Powrot::url('/pulpit')) ?>"><?= View::e(View::t('common.back')) ?></a></p>
 <?php endif; ?>

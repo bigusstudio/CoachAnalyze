@@ -84,5 +84,5 @@ $mb = (int) (Upload::maxBytes() / 1024 / 1024);
 </section>
 
 <p>
-  <a class="link" href="/mecze/<?= (int) $match['id'] ?>/historia"><?= View::e(View::t('history.title')) ?></a>
+  <a class="link" href="/mecze/<?= (int) $match['id'] ?>"><?= View::e(View::t('history.title')) ?></a>
 </p>

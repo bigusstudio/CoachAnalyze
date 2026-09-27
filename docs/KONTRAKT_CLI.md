@@ -593,6 +593,21 @@ Wartości wpisuje człowiek, a raport wisi pod publicznym adresem — przechodz�
 przez ucieczkę HTML plus usunięcie grawisu i `${`, bo w szablonie v21 lądują
 jednocześnie w treści HTML i w literale szablonowym JS.
 
+### Znaczniki serwowania (od silnika 0.16.4)
+
+Znaczniki, które **przechodzą przez render nietknięte** i wypełnia je panel PHP
+w chwili wysłania raportu. Silnik nie zna sesji ani adresów panelu (CLAUDE.md §4),
+więc nie ma czego w nie wpisać. Nie są zgłaszane w `unresolved_placeholders`
+ani jako `BRAKUJACY_ZNACZNIK` (`render.ZNACZNIKI_SERWOWANIA`).
+
+| Znacznik | Generacja | Wypełnia | Wartość |
+|---|---|---|---|
+| `__POWROT_URL__` | v21 | `serveReport()` / `servePublicReport()` przez `Powrot::wypelnijRaport` | `/mecze/{id}` (panel) albo `https://coachanalyze.pl` (link publiczny) |
+
+Wystąpienie jest dokładnie jedno (atrybut `href` klipsa „← CA"). Raport otwarty
+z pliku, poza panelem, ma klips z niewypełnionym adresem — to świadoma cena
+jednego pliku dla obu dróg serwowania.
+
 ### `--html-template` — generacja szablonu HTML
 
 > **NIE MYLIĆ Z `--template`.** Dwie nazwy blisko siebie, dwie różne rzeczy:

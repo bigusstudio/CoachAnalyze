@@ -94,4 +94,4 @@ use CoachAnalyze\View;
   <?php endif; ?>
 </section>
 
-<p><a class="link" href="/mecze"><?= View::e(View::t('common.back')) ?></a></p>
+<p><a class="link" href="<?= View::e(\CoachAnalyze\Powrot::url('/mecze/' . (int) $report['match_id'])) ?>"><?= View::e(View::t('common.back')) ?></a></p>

@@ -34,8 +34,17 @@
 #theme-toggle,.tb{margin-left:5px;padding:5px 9px;border:1px solid var(--line);background:var(--panel2);color:var(--ink2);border-radius:999px;padding:5px 12px;font:600 11.5px 'IBM Plex Sans',system-ui,sans-serif;cursor:pointer;letter-spacing:.04em}
 #theme-toggle:hover{color:var(--ink)}
 /* v21: druk. Dwa tryby: PDF (A4 poziomo, ciągły) i slajdy 16:9 (każda sekcja = jeden slajd) */
+/* v26 (golden layout W0): KLIPS „← CA" — droga z raportu z powrotem do panelu.
+   Cel wstawia PHP przy wysyłce (znacznik serwowania w atrybucie href): karta
+   meczu dla zalogowanego, coachanalyze.pl pod linkiem publicznym. Strzałka tylko
+   przy celu wewnętrznym — odbiorca linku publicznego nie ma dokąd „wracać". */
+.ca-klips{position:fixed;top:10px;left:10px;z-index:60;display:inline-flex;align-items:center;gap:4px;
+  padding:4px 9px;border:1px solid var(--line);border-radius:999px;background:var(--nav-bg);color:var(--ink2);
+  font:600 11px 'IBM Plex Sans',system-ui,sans-serif;letter-spacing:.06em;text-decoration:none}
+.ca-klips:hover{color:var(--ink);border-color:var(--ink3)}
+.ca-klips[href^="http"] .ca-klips__strz{display:none}
 @media print{
-  #theme-toggle,#topbar,#btn-pdf,#btn-slides,.pngbtn{display:none!important}
+  #theme-toggle,#topbar,#btn-pdf,#btn-slides,.pngbtn,.ca-klips{display:none!important}
   :root{--bg:#fff;--panel:#fff;--panel2:#f1f3f1;--line:#d5dcd6;--ink:#111;--ink2:#444;--ink3:#777;--pitch:#eef2ee;--pitchline:#b5c2b8;--ok:#1F8A4C;--bad:#C6423A;--neut:#7C8F86;--ctx-poz:#1F8A4C;--ctx-pre:#C6423A;--ctx-kon:#7A4BD6;--ctx-sfg:#0B7FA8;--stroke:#fff;--stripe:#000;--sel:#1E4D3A;--sel-ink:#fff;--nav-bg:#fff;--tip-bg:#fff}
   body{background:#fff;font-size:11px}
   .wrap{max-width:none;padding:0}
@@ -255,6 +264,7 @@ svg text{font-family:'IBM Plex Mono',monospace}
 </style>
 </head>
 <body>
+<a class="ca-klips" href="__POWROT_URL__" title="CoachAnalyze"><span class="ca-klips__strz" aria-hidden="true">←</span>CA</a>
 <div class="wrap">
 __BANER__
 <header id="hdr2"></header>
@@ -1527,6 +1537,10 @@ addPngButtons(); new MutationObserver(()=>addPngButtons()).observe(document.getE
   }
   document.getElementById('btn-pdf').onclick=()=>go('pdf');
   document.getElementById('btn-slides').onclick=()=>exportSlidesPNG();
+  /* v26 (golden layout W0): „Slajdy" z karty meczu otwiera raport z `#slajdy`
+     i uruchamia TEN SAM eksport co przycisk — bez drugiej implementacji.
+     Po wszystkich skryptach (load), bo `exportSlidesPNG` jest zdefiniowane niżej. */
+  if(location.hash==='#slajdy') window.addEventListener('load',()=>setTimeout(()=>document.getElementById('btn-slides').click(),600));
 })();
 </script>
 <script>
@@ -1581,7 +1595,7 @@ function buildSlide(def){
   wrap.style.cssText=`width:${SLIDE_W}px;height:${SLIDE_H}px;box-sizing:border-box;padding:${def.cover?60:28}px 36px;background:${cs.backgroundColor};color:${cs.color};font-family:${cs.fontFamily};font-size:14px;overflow:hidden;display:flex;flex-direction:column;gap:14px;${def.cover?'justify-content:center':''}`;
   if(def.title){const h=document.createElement('div');h.textContent=def.title;h.style.cssText=`font-family:'Barlow Condensed','Arial Narrow',sans-serif;font-weight:700;font-size:26px;letter-spacing:.06em;text-transform:uppercase;color:${getComputedStyle(document.querySelector('h2')||document.body).color}`;wrap.appendChild(h);}
   const body=document.createElement('div');body.style.cssText='flex:1;min-height:0;display:flex;flex-direction:column;gap:12px';
-  def.nodes.forEach(n=>{const c=n.cloneNode(true);c.querySelectorAll('button,.pngbtn,.frag,.controls').forEach(x=>x.setAttribute('data-rm','1'));inlineStyles(n,c);c.querySelectorAll('[data-rm]').forEach(x=>x.remove());
+  def.nodes.forEach(n=>{const c=n.cloneNode(true);c.querySelectorAll('button,.pngbtn,.frag,.controls,.ca-klips').forEach(x=>x.setAttribute('data-rm','1'));inlineStyles(n,c);c.querySelectorAll('[data-rm]').forEach(x=>x.remove());
     /* pełna szerokość slajdu: zdejmij ograniczenia szerokości i marginesy auto z klonów */
     [c,...c.querySelectorAll('*')].forEach(el=>{el.style.maxWidth='none';if(el.style.marginLeft==='auto'&&el.style.marginRight==='auto'){el.style.marginLeft='0';el.style.marginRight='0';}});
     c.style.width='100%';

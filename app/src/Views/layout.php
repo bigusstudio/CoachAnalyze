@@ -30,12 +30,17 @@ use CoachAnalyze\View;
  * @var bool|null   $chrome   false = strona bez panelu (logowanie)
  * @var array<string,mixed>|null $club   kontekst klubu — WŁĄCZA scope theming
  * @var string|null $crumb   etykieta bieżącej podstrony w okruszkach
+ * @var list<array{0:string,1:string}>|null $okruszki  RODZICE ekranu, od Pulpitu:
+ *      [[etykieta, adres], …]. Ostatni element okruszków (bez odsyłacza) to
+ *      `$crumb` albo `$title`. Reguła (docs/GOLDEN_LAYOUT.md): ścieżka prowadzi
+ *      do rodzica, nigdy do /kluby ani do /zadania.
  */
 $theme  = View::theme();
 $chrome = $chrome ?? true;
 $active = $active ?? '';
 $club   = $club ?? null;
 $crumb  = $crumb ?? null;
+$okruszki = $okruszki ?? null;
 
 $next = $theme === 'dark' ? 'light' : 'dark';
 
@@ -249,20 +254,24 @@ $pozycja = static function (
     <header class="top">
       <a class="ico rail__toggle" href="#szyna" aria-label="<?= View::e(View::t('nav.menu')) ?>">≡</a>
 
+      <?php
+        /*
+         * OKRUSZKI = ŚCIEŻKA DO RODZICA (golden layout W0). Korzeń to Pulpit,
+         * nie lista klubów: `/kluby` jest ekranem administracyjnym, a nie
+         * miejscem, z którego analityk przyszedł. Ekran bez jawnych rodziców
+         * dostaje „Pulpit → tytuł" — nigdy pustą ścieżkę.
+         */
+        if ($okruszki === null) {
+            $okruszki = $active === 'pulpit' ? [] : [[View::t('nav.dashboard'), '/pulpit']];
+        }
+        $biezacy = $crumb ?? ($title ?? View::t('app.name'));
+      ?>
       <nav class="crumbs" aria-label="<?= View::e(View::t('nav.breadcrumb')) ?>">
-        <?php if ($club !== null): ?>
-          <a href="/kluby"><?= View::e(View::t('nav.clubs')) ?></a>
+        <?php foreach ($okruszki as [$etykieta, $adres]): ?>
+          <a href="<?= View::e((string) $adres) ?>"><?= View::e((string) $etykieta) ?></a>
           <span aria-hidden="true">→</span>
-          <?php if ($crumb === null): ?>
-            <b><?= View::e((string) $club['name']) ?></b>
-          <?php else: ?>
-            <a href="/klub/<?= (int) $club['id'] ?>"><?= View::e((string) $club['name']) ?></a>
-            <span aria-hidden="true">→</span>
-            <b><?= View::e($crumb) ?></b>
-          <?php endif; ?>
-        <?php else: ?>
-          <b><?= View::e($title ?? View::t('app.name')) ?></b>
-        <?php endif; ?>
+        <?php endforeach; ?>
+        <b><?= View::e((string) $biezacy) ?></b>
       </nav>
 
       <?php /*

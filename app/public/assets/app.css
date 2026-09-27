@@ -1490,3 +1490,30 @@ form.chmurka__zamknij button:hover { color: var(--tekst); }
   border-color: var(--akcent);
   background: var(--info-tlo);
 }
+
+/* ═══════════════════════════════════════════════ golden layout W0
+   Karta meczu, zakładki bez skryptu i filtry-odsyłacze na liście raportów.
+   Barwy wyłącznie przez tokeny motywu (test_4b: zero wartości szesnastkowych
+   poza definicją motywu). */
+.karta-meczu { margin: 0 0 16px; }
+.karta-meczu__meta { margin: 0 0 4px; font-size: 13px; color: var(--tekst-slaby); letter-spacing: .02em; }
+.karta-meczu__tytul { margin-bottom: 8px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 12px; }
+.karta-meczu__wynik { font-variant-numeric: tabular-nums; padding: 0 10px; border-radius: 8px; background: var(--tlo-drugi); }
+.karta-meczu__pod { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 0 0 12px; }
+.karta-meczu__pod .hint { margin: 0; }
+.karta-meczu__akcje { justify-content: flex-start; margin: 0; }
+
+.zakladki { display: flex; gap: 4px; flex-wrap: wrap; margin: 0 0 -1px; border-bottom: 1px solid var(--obramowanie); }
+.zakladki__poz { padding: 8px 14px; border: 1px solid transparent; border-bottom: 0; border-radius: 8px 8px 0 0;
+  color: var(--tekst-slaby); text-decoration: none; font-size: 14px; }
+.zakladki__poz:hover { color: var(--tekst); }
+.zakladki__poz--on { color: var(--tekst); background: var(--tlo-panel); border-color: var(--obramowanie); font-weight: 600; }
+.zakladki + .panel { border-top-left-radius: 0; }
+
+.fchipy { display: grid; gap: 8px; }
+.fchipy__rz { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 0; }
+.fchipy__rz .field__label { min-width: 90px; margin: 0; }
+.fchip { padding: 3px 11px; border: 1px solid var(--obramowanie); border-radius: 999px; font-size: 13px;
+  color: var(--tekst-slaby); text-decoration: none; }
+.fchip:hover { color: var(--tekst); border-color: var(--tekst-slabszy); }
+.fchip--on { background: var(--akcent); border-color: var(--akcent); color: var(--akcent-tekst); }

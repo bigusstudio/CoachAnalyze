@@ -116,7 +116,7 @@ $wartosc = static function (array $m) use ($dziesietna): string {
               <?php endif; ?>
             </td>
             <td>
-              <a class="link" href="/sezon/mecz/<?= (int) $k['id'] ?>">
+              <a class="link" href="/mecze/<?= (int) $k['id'] ?>">
                 <?= View::e((string) ($k['away_name'] ?? View::t('match.no_club'))) ?>
               </a>
             </td>

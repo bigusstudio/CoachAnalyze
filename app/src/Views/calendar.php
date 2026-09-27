@@ -70,7 +70,7 @@ $link = static fn(string $m): string => '/kalendarz?klub=' . (int) $club['id'] .
                 <span class="muted"><?= $dzienNr ?></span>
                 <?php foreach ($poDniach[$data] ?? [] as $m): ?>
                   <div>
-                    <a class="link" href="/sezon/mecz/<?= (int) $m['id'] ?>">
+                    <a class="link" href="/mecze/<?= (int) $m['id'] ?>">
                       <?= View::e((string) ($m['away_name'] ?? View::t('match.no_club'))) ?>
                     </a>
                     <small class="muted"><?= View::e(View::t('status.' . (string) $m['status'])) ?></small>

@@ -297,14 +297,14 @@ check('filtr po innym sezonie mecz odsiewa',
     !str_contains($filtrPusty['body'], '2025-10-12'),
     'filtr ma zawężać, a nie tylko wyglądać');
 
-check('lista prowadzi do edycji mety',
-    str_contains($lista['body'], '/mecze/' . $matchId . '/meta'),
+check('lista prowadzi do edycji mety (zakładka „Dane meczu" karty, golden layout W0)',
+    str_contains($lista['body'], '/mecze/' . $matchId . '?zakladka=dane'),
     'bez wejścia z listy operator nie ma jak uzupełnić pustych kolumn');
 
 // ============================================================ D. edycja po fakcie
 echo "\n== D. edycja mety istniejącego meczu ==\n";
 
-$edycja = http('GET', '/mecze/' . $matchId . '/meta');
+$edycja = http('GET', '/mecze/' . $matchId . '?zakladka=dane');
 check('ekran edycji odpowiada', $edycja['status'] === 200, 'status ' . $edycja['status']);
 check('formularz kieruje na trasę edycji',
     str_contains($edycja['body'], 'action="/mecze/' . $matchId . '/meta"'));
@@ -370,7 +370,7 @@ ca_test_db($baza);
 check('raport istnieje',
     Db::one('SELECT id FROM reports WHERE match_id = :m', ['m' => $matchId]) !== null);
 
-$edycja2 = http('GET', '/mecze/' . $matchId . '/meta');
+$edycja2 = http('GET', '/mecze/' . $matchId . '?zakladka=dane');
 check('przy raporcie ekran uprzedza o nagłówku',
     str_contains($edycja2['body'], 'Przelicz'),
     'meta nie wpływa na liczby, ale nagłówek gotowego HTML-a zostaje stary');
@@ -391,21 +391,23 @@ check('komunikat mówi, że liczby się nie zmieniły',
 echo "\n== F. wejścia do edycji z trzech miejsc ==\n";
 
 check('z widoku pokrycia',
-    str_contains(http('GET', '/import/' . $importId)['body'], '/mecze/' . $matchId . '/meta'));
+    str_contains(http('GET', '/import/' . $importId)['body'], '/mecze/' . $matchId . '?zakladka=dane'));
 check('z huba klubu',
-    str_contains(http('GET', '/klub/1')['body'], '/mecze/' . $matchId . '/meta'));
-check('z historii meczu',
-    str_contains(http('GET', '/mecze/' . $matchId . '/historia')['body'], '/mecze/' . $matchId . '/meta'));
+    str_contains(http('GET', '/klub/1')['body'], '/mecze/' . $matchId . '?zakladka=dane'));
+$historia = http('GET', '/mecze/' . $matchId . '/historia');
+check('stara historia meczu przekierowuje na kartę',
+    $historia['status'] === 302 && str_starts_with((string) $historia['location'], '/mecze/' . $matchId));
 
 // ============================================================ G. kolejka i skład
 echo "\n== G. kolejka i skład meczu (Sesja 6 pivotu) ==\n";
 
-$formG = http('GET', '/mecze/' . $matchId . '/meta');
+$formG = http('GET', '/mecze/' . $matchId . '?zakladka=dane');
 check('formularz ma pole kolejki',
     str_contains($formG['body'], 'name="round"'),
     'kolumna `round` istniała od migracji 014 i NIC jej nie zapisywało');
+$formSklad = http('GET', '/mecze/' . $matchId . '?zakladka=sklad');
 check('formularz ma 18 wierszy składu',
-    substr_count($formG['body'], 'name="sklad[') === 18 * 5,
+    substr_count($formSklad['body'], 'name="sklad[') === 18 * 5,
     'pięć pól na wiersz: nazwisko, numer, pozycja, minuty, wyjściowy');
 
 $zapisG = http('POST', '/mecze/' . $matchId . '/meta', ['form' => [
@@ -453,9 +455,10 @@ check('minuty spoza zakresu to brak danych, nie 999',
     $poNazwie['Wiśniewski Adam']['minutes'] === null,
     'zawodnik ZOSTAJE w składzie — odpada sama liczba');
 
-$formPo = http('GET', '/mecze/' . $matchId . '/meta');
+$formPo = http('GET', '/mecze/' . $matchId . '?zakladka=dane');
+$formPoSklad = http('GET', '/mecze/' . $matchId . '?zakladka=sklad');
 check('skład wraca do formularza',
-    str_contains($formPo['body'], 'value="Kowalski Jan"')
+    str_contains($formPoSklad['body'], 'value="Kowalski Jan"')
     && str_contains($formPo['body'], 'value="7"'));
 
 // Skład zapisany drugi raz ZASTĘPUJE poprzedni — formularz jest edytowalną

@@ -165,7 +165,7 @@ $link = static function (array $zmiany) use ($filtr, $basePath): string {
             <?php endif; ?>
             <?php /* WEJŚCIE DO POPRAWKI META. Pusta data i pusty sezon w tej
                      tabeli brały się stąd, że nie było gdzie ich uzupełnić. */ ?>
-            <a class="link" href="/mecze/<?= (int) $m['id'] ?>/meta?powrot=<?= rawurlencode($_SERVER['REQUEST_URI'] ?? '/mecze') ?>">
+            <a class="link" href="/mecze/<?= (int) $m['id'] ?>?zakladka=dane">
               <?= View::e(View::t('meta.edit.link')) ?>
             </a>
           </td>

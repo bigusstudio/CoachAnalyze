@@ -96,7 +96,7 @@ $klasaWyniku = static function (?int $nas, ?int $ich): string {
     <h2>
       <?= View::e(View::t('dash.last_match')) ?>
       <?php if ($lastMatch !== null): ?>
-        <a class="more" href="/mecze/<?= (int) $lastMatch['id'] ?>/historia"><?= View::e(View::t('dash.more')) ?></a>
+        <a class="more" href="/mecze/<?= (int) $lastMatch['id'] ?>"><?= View::e(View::t('dash.more')) ?></a>
       <?php endif; ?>
     </h2>
 
@@ -242,7 +242,7 @@ $klasaWyniku = static function (?int $nas, ?int $ich): string {
             <b><?= View::e(View::t('job.type')) ?></b>
             <small><?= View::e(View::t('status.' . $j['status'])) ?> · #<?= (int) $j['id'] ?></small>
           </span>
-          <a class="btn s" href="/zadania/<?= (int) $j['id'] ?>"><?= View::e(View::t('dash.open')) ?></a>
+          <a class="btn s" href="<?= View::e(\CoachAnalyze\Jobs::celDla((int) $j['id'], View::op())) ?>"><?= View::e(View::t('dash.open')) ?></a>
         </div>
       <?php endforeach; ?>
 
@@ -346,7 +346,7 @@ $klasaWyniku = static function (?int $nas, ?int $ich): string {
           <?php /* Kafelek prowadzi do KARTY MECZU (sesja 7), a nie do historii:
                    karta ma meta, liczby i wszystko, co z meczem można zrobić,
                    w jednym miejscu. Historia jest jednym z odsyłaczy na niej. */ ?>
-          <a class="<?= $kl ?>" href="/sezon/mecz/<?= (int) $r['id'] ?>"
+          <a class="<?= $kl ?>" href="/mecze/<?= (int) $r['id'] ?>"
              title="<?= View::e($tytul) ?>">
             <?php if ($kolejka !== null): ?>
               <?= View::e(View::t('dash.round.prefix', $kolejka)) ?>
@@ -444,7 +444,7 @@ $klasaWyniku = static function (?int $nas, ?int $ich): string {
                 </td>
                 <td>
                   <span class="acts2">
-                    <a class="btn s" href="/mecze/<?= (int) $r['id'] ?>/historia"><?= View::e(View::t('dash.report')) ?></a>
+                    <a class="btn s" href="/mecze/<?= (int) $r['id'] ?>"><?= View::e(View::t('dash.report')) ?></a>
                     <a class="btn s" href="/kalendarz"><?= View::e(View::t('dash.slides')) ?></a>
                   </span>
                 </td>

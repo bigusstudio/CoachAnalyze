@@ -102,7 +102,7 @@ $doKolejki = array_filter($outdated, static fn(array $r) => !empty($r['raw_ready
         <?php foreach ($progress['rows'] as $poz): ?>
           <tr>
             <td>
-              <a class="link" href="/mecze/<?= (int) $poz['match_id'] ?>/historia">
+              <a class="link" href="/mecze/<?= (int) $poz['match_id'] ?>">
                 <?= View::e((string) ($poz['label'] ?? View::t('common.unknown'))) ?>
               </a>
             </td>
@@ -116,7 +116,9 @@ $doKolejki = array_filter($outdated, static fn(array $r) => !empty($r['raw_ready
               <?php endif; ?>
             </td>
             <td class="akcje">
-              <a class="link" href="/zadania/<?= (int) $poz['job_id'] ?>"><?= View::e(View::t('recalc.job')) ?></a>
+              <?php if (View::op()): ?>
+                <a class="link" href="/zadania/<?= (int) $poz['job_id'] ?>"><?= View::e(View::t('recalc.job')) ?></a>
+              <?php endif; ?>
               <?php if ((int) $poz['report_id'] > 0): ?>
                 <a class="link" href="/raport/<?= (int) $poz['report_id'] ?>"><?= View::e(View::t('reports.act.open')) ?></a>
               <?php endif; ?>
@@ -149,7 +151,7 @@ $doKolejki = array_filter($outdated, static fn(array $r) => !empty($r['raw_ready
         <?php foreach ($outdated as $r): ?>
           <tr>
             <td>
-              <a class="link" href="/mecze/<?= (int) $r['match_id'] ?>/historia">
+              <a class="link" href="/mecze/<?= (int) $r['match_id'] ?>">
                 <?= View::e(trim((string) ($r['home_name'] ?? '')) ?: View::t('common.unknown')) ?>
                 —
                 <?= View::e(trim((string) ($r['away_name'] ?? '')) ?: View::t('common.unknown')) ?>

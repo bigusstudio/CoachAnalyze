@@ -42,7 +42,7 @@ $status = $job !== null ? (string) $job['status'] : 'queued';
     <dd><?= View::status($status) ?></dd>
     <?php if ($job !== null): ?>
       <dt><?= View::e(View::t('conf.wait.job')) ?></dt>
-      <dd><a class="link" href="/zadania/<?= (int) $job['id'] ?>">#<?= (int) $job['id'] ?></a></dd>
+      <dd><?php if (View::op()): ?><a class="link" href="/zadania/<?= (int) $job['id'] ?>">#<?= (int) $job['id'] ?></a><?php else: ?>#<?= (int) $job['id'] ?><?php endif; ?></dd>
     <?php endif; ?>
   </dl>
 

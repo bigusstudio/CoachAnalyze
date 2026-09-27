@@ -54,6 +54,16 @@ final class View
      * renderze po stronie serwera, inaczej strona mignie jasnym tłem, zanim
      * JavaScript zdąży się wykonać. Brak ciasteczka = decyduje prefers-color-scheme.
      */
+    /**
+     * Czy zalogowany widzi rzeczy [op] — silnik, kolejkę, zadania, templat
+     * (golden layout W0). [op] = rola `admin` (Administrator). To decyzja
+     * o tym, co POKAZAĆ; o dostępie rozstrzyga router.
+     */
+    public static function op(): bool
+    {
+        return Users::isAdmin(Auth::currentUser());
+    }
+
     public static function theme(): ?string
     {
         $theme = $_COOKIE['ca_theme'] ?? null;

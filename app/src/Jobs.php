@@ -90,7 +90,7 @@ final class Jobs
             return null;
         }
         return Db::one(
-            'SELECT id, generated_at, engine_version FROM reports
+            'SELECT id, match_id, generated_at, engine_version FROM reports
               WHERE match_id = :mid ORDER BY id DESC LIMIT 1',
             ['mid' => (int) $matchId]
         );
@@ -175,6 +175,51 @@ final class Jobs
                 // że mają. Wskaźnik pokaże „Gotowe" bez przejścia dokądkolwiek.
                 return null;
         }
+    }
+
+    /** Mecz, którego dotyczy zadanie: po `match_id`, imporcie albo raporcie. */
+    public static function meczZadania(array $job): ?int
+    {
+        $p = json_decode((string) ($job['payload_json'] ?? ''), true);
+        $p = is_array($p) ? $p : [];
+        if ((int) ($p['match_id'] ?? 0) > 0) {
+            return (int) $p['match_id'];
+        }
+        foreach (['import_id' => 'imports', 'report_id' => 'reports'] as $klucz => $tabela) {
+            if ((int) ($p[$klucz] ?? 0) > 0) {
+                $w = Db::one("SELECT match_id FROM {$tabela} WHERE id = :id", ['id' => (int) $p[$klucz]]);
+                if ($w !== null) {
+                    return (int) $w['match_id'];
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Dokąd prowadzi „praca w tle" (golden layout W0).
+     *
+     * Strona zadania jest TECHNICZNA i widzi ją tylko administrator. Pozostali
+     * trafiają na kartę meczu, która pokazuje ten sam wskaźnik pracy; zadanie
+     * bez meczu (poczta, zbiorcze przeliczenie) — na pulpit.
+     */
+    public static function celDla(int $jobId, bool $op): string
+    {
+        if ($op) {
+            return '/zadania/' . $jobId;
+        }
+        $job = self::find($jobId);
+        $mecz = $job !== null ? self::meczZadania($job) : null;
+        return $mecz !== null ? '/mecze/' . $mecz : '/pulpit';
+    }
+
+    /** Adres zapisany w powiadomieniu, przepisany pod rolę czytającego. */
+    public static function adresDla(?string $url, bool $op): ?string
+    {
+        if ($url === null || $op || preg_match('#^/zadania/(\d+)$#', $url, $m) !== 1) {
+            return $url;
+        }
+        return self::celDla((int) $m[1], false);
     }
 
     /**

@@ -260,11 +260,12 @@ echo "\n== C. lista kolejek ==\n";
 $lista = http('GET', $q('/sezon'));
 check('ekran kolejek odpowiada', $lista['status'] === 200, 'status ' . $lista['status']);
 check('na liście są DOKŁADNIE mecze tego sezonu',
-    substr_count($lista['body'], '/sezon/mecz/') === 2,
+    preg_match_all('#href="/mecze/\d+"#', $lista['body']) === 2,
     'sezon filtruje, a nie tylko sortuje');
 
-$poz1 = strpos($lista['body'], '/sezon/mecz/' . $mecze['1']);
-$poz2 = strpos($lista['body'], '/sezon/mecz/' . $mecze['2']);
+// Od W0 wiersz kolejki prowadzi na KARTĘ MECZU (/mecze/{id}), nie /sezon/mecz/.
+$poz1 = strpos($lista['body'], 'href="/mecze/' . $mecze['1'] . '"');
+$poz2 = strpos($lista['body'], 'href="/mecze/' . $mecze['2'] . '"');
 check('KOLEJNOŚĆ ROZGRYWKOWA: kolejka 1 przed kolejką 2',
     $poz1 !== false && $poz2 !== false && $poz1 < $poz2,
     'to nie jest lista „ostatnie mecze" odwrócona — sortujemy po kolejce');
@@ -289,7 +290,7 @@ check('suma strzałów z obu kolejek', str_contains($suma['body'], '5 : 0'),
     'stopka tabeli sumuje kolumnę, którą widać na ekranie');
 check('suma xG z obu kolejek', str_contains($suma['body'], '1,50 : 0,00'));
 check('rozbicie na kolejki jest pod sumą',
-    substr_count($suma['body'], '/sezon/mecz/') >= 2);
+    preg_match_all('#href="/mecze/\d+"#', $suma['body']) >= 2);
 
 $metrykaStrzaly = preg_match('/Strzały[^<]*<\/td>\s*<td class="num">5</s', $suma['body']) === 1;
 check('metryka „Strzały" liczy 5 dla całego sezonu', $metrykaStrzaly,
@@ -298,18 +299,24 @@ check('metryka „Strzały" liczy 5 dla całego sezonu', $metrykaStrzaly,
 // ============================================================ E. karta meczu
 echo "\n== E. karta meczu ==\n";
 
-$karta = http('GET', '/sezon/mecz/' . $mecze['1']);
+// Od W0 karta kolejki to KARTA MECZU /mecze/{id}; stary adres przekierowuje.
+$stary = http('GET', '/sezon/mecz/' . $mecze['1']);
+check('stary adres karty kolejki przekierowuje na kartę meczu',
+    $stary['status'] === 302 && $stary['location'] === '/mecze/' . $mecze['1'], (string) $stary['location']);
+$karta = http('GET', '/mecze/' . $mecze['1']);
 check('karta meczu odpowiada', $karta['status'] === 200, 'status ' . $karta['status']);
 check('karta niesie meta meczu', str_contains($karta['body'], '2026-08-06'));
+$kartaSklad = http('GET', '/mecze/' . $mecze['1'] . '?zakladka=sklad');
 check('karta niesie skład z minutami',
-    str_contains($karta['body'], 'Kowalski Jan') && str_contains($karta['body'], '90'));
-check('karta niesie odsyłacze do działań',
-    str_contains($karta['body'], '/mecze/' . $mecze['1'] . '/meta')
-    && str_contains($karta['body'], '/mecze/' . $mecze['1'] . '/historia'));
+    str_contains($kartaSklad['body'], 'Kowalski Jan') && str_contains($kartaSklad['body'], 'value="90"'));
+check('karta niesie zakładki działań',
+    str_contains($karta['body'], '/mecze/' . $mecze['1'] . '?zakladka=dane')
+    && str_contains($karta['body'], '/mecze/' . $mecze['1'] . '?zakladka=pliki'));
 
-$kartaBezSkladu = http('GET', '/sezon/mecz/' . $mecze['2']);
-check('mecz bez składu mówi to wprost, zamiast pustej tabeli',
-    str_contains($kartaBezSkladu['body'], 'Nie wpisano składu'));
+$kartaBezSkladu = http('GET', '/mecze/' . $mecze['2'] . '?zakladka=sklad');
+check('mecz bez składu: pusty formularz składu, żadnych cudzych nazwisk',
+    str_contains($kartaBezSkladu['body'], 'name="sklad[0][player]"')
+    && !str_contains($kartaBezSkladu['body'], 'Kowalski Jan'));
 
 // ============================================================ F. zawodnicy
 echo "\n== F. zawodnicy ==\n";
@@ -327,8 +334,8 @@ echo "\n== G. kalendarz ==\n";
 $kalendarz = http('GET', '/kalendarz?m=2026-08');
 check('kalendarz odpowiada', $kalendarz['status'] === 200, 'status ' . $kalendarz['status']);
 check('mecze sierpnia są w siatce',
-    str_contains($kalendarz['body'], '/sezon/mecz/' . $mecze['1'])
-    && str_contains($kalendarz['body'], '/sezon/mecz/' . $mecze['2']));
+    str_contains($kalendarz['body'], '/mecze/' . $mecze['1'])
+    && str_contains($kalendarz['body'], '/mecze/' . $mecze['2']));
 check('przejście między miesiącami bez skryptu',
     str_contains($kalendarz['body'], 'm=2026-07') && str_contains($kalendarz['body'], 'm=2026-09'));
 

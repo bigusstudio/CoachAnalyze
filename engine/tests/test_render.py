@@ -715,3 +715,22 @@ def test_ampersand_w_nazwie_nie_znika_z_klucza_dopasowania():
     assert "&" in slots["__TEAM_HOME__"]
     assert "&amp;" not in slots["__TEAM_HOME__"]
     assert "&amp;" in slots["__TEAM_HOME_LABEL__"], "etykieta idzie do HTML"
+
+
+# ------------------------------------------------------------------ znaczniki serwowania
+def test_powrot_url_przechodzi_przez_render_v21_nietkniety():
+    """Klips „← CA" (golden layout W0): cel wstawia PHP przy wysyłce.
+
+    Silnik nie zna ani sesji, ani adresu karty meczu (CLAUDE.md §4) — znacznik
+    ma zostać w pliku dokładnie raz i NIE być zgłaszany jako brakujący.
+    """
+    html, raport = render.render(RAMKA, template_path="v21")
+    assert html.count("__POWROT_URL__") == 1
+    assert "__POWROT_URL__" not in raport["unresolved_placeholders"]
+    assert 'class="ca-klips"' in html
+
+
+def test_v17_nie_ma_klipsa():
+    """Test złoty stoi na v17 — klips jest wyłącznie w v21."""
+    html, _ = render.render(RAMKA, template_path="v17")
+    assert "__POWROT_URL__" not in html and "ca-klips" not in html

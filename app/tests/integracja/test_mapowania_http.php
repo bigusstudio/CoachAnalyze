@@ -90,6 +90,13 @@ require $root . '/app/src/bootstrap.php';
 require $here . '/seed.php';
 
 ca_test_db($baza, false);
+/*
+ * ADMINISTRATOR, NIE ANALITYK (golden layout W0). Ten zestaw sprawdza mechanikę
+ * pracy w tle — stronę zadania, wskaźnik, kolumny wersji — a te od W0 widzi
+ * wyłącznie rola `admin`. Analityk dostaje kartę meczu; to sprawdza
+ * `test_golden_w0_http.php`.
+ */
+\CoachAnalyze\Db::run("UPDATE users SET role = 'admin' WHERE email = 'operator@example.com'");
 $teraz = Stats::now();
 
 // Klub „nasz" o nazwie zgodnej z kolumną `team` eksportów testowych.

@@ -232,13 +232,13 @@ check('formularz niesie token CSRF', $csrf !== '');
 
 $zalogowanie = http('POST', '/login', ['email' => KONTO, 'password' => HASLO, 'csrf' => $csrf]);
 check('LOGOWANIE PRZY PIERWSZYM WEJŚCIU PRZECHODZI',
-    $zalogowanie['status'] === 302 && $zalogowanie['location'] === '/',
+    $zalogowanie['status'] === 302 && $zalogowanie['location'] === '/pulpit',
     $zalogowanie['status'] . ' → ' . (string) $zalogowanie['location']);
-// Sesja 2 (przebudowa pod kluby): punkt wejścia po zalogowaniu to lista
-// klubów, nie „/" wprost — „/" przekierowuje tam samo (docs/PRZEBUDOWA_KLUB_SESJE.md).
+// Golden layout W0: punkt wejścia po zalogowaniu to PULPIT, a „/" przekierowuje
+// tam samo (docs/GOLDEN_LAYOUT.md). Lista klubów jest ekranem administracyjnym.
 $wejscie = http('GET', '/');
-check('panel wpuszcza (przekierowanie na listę klubów)',
-    $wejscie['status'] === 302 && $wejscie['location'] === '/kluby',
+check('panel wpuszcza (przekierowanie na pulpit)',
+    $wejscie['status'] === 302 && $wejscie['location'] === '/pulpit',
     $wejscie['status'] . ' → ' . (string) $wejscie['location']);
 check('lista klubów odpowiada', http('GET', '/kluby')['status'] === 200);
 
@@ -292,7 +292,7 @@ echo "\n== po odrzuceniu druga próba PRZECHODZI (pętla się rozplątuje) ==\n"
 $druga = http('POST', '/login', ['email' => KONTO, 'password' => HASLO,
     'csrf' => csrfZ($zlyToken['body'])]);
 check('powtórzenie z tokenem ze zwróconej strony loguje',
-    $druga['status'] === 302 && $druga['location'] === '/',
+    $druga['status'] === 302 && $druga['location'] === '/pulpit',
     $druga['status'] . ' → ' . (string) $druga['location']);
 
 // ============================================================ 6. trasy przedlogowe
@@ -390,7 +390,7 @@ check('nieznany adres NIE KASUJE ciasteczka sesji',
 
 $poSondach = http('POST', '/login', ['email' => KONTO, 'password' => HASLO, 'csrf' => $tokenKarty]);
 check('ŚWIEŻE LOGOWANIE PRZECHODZI PO ŻĄDANIACH TOWARZYSZĄCYCH',
-    $poSondach['status'] === 302 && $poSondach['location'] === '/',
+    $poSondach['status'] === 302 && $poSondach['location'] === '/pulpit',
     $poSondach['status'] . ' → ' . (string) $poSondach['location']);
 
 // ============================================================ 9. dwa formularze naraz

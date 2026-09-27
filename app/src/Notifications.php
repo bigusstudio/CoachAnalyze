@@ -205,11 +205,32 @@ final class Notifications
     public static function forUser(int $userId, int $limit = 50): array
     {
         // LIMIT jako parametr zapytania, nie sklejany z liczbą.
-        return Db::all(
+        return self::adresyPodRole($userId, Db::all(
             'SELECT * FROM notifications WHERE user_id = :uid
               ORDER BY created_at DESC, id DESC LIMIT :lim',
             ['uid' => $userId, 'lim' => max(1, min(200, $limit))]
-        );
+        ));
+    }
+
+    /**
+     * Adresy powiadomień pod rolę czytającego (golden layout W0).
+     *
+     * Powiadomienia zapisane przed tą zmianą wskazują `/zadania/N` — stronę,
+     * którą widzi już tylko administrator. Przepisujemy je przy ODCZYCIE, nie
+     * w bazie: to samo powiadomienie administrator ma dalej otwierać na stronie
+     * zadania, a migracja danych dla odsyłacza byłaby nieodwracalna bez powodu.
+     *
+     * @param list<array<string,mixed>> $wiersze
+     * @return list<array<string,mixed>>
+     */
+    private static function adresyPodRole(int $userId, array $wiersze): array
+    {
+        $op = Users::isAdmin(Db::one('SELECT role FROM users WHERE id = :id', ['id' => $userId]));
+        foreach ($wiersze as &$w) {
+            $w['url'] = Jobs::adresDla(isset($w['url']) ? (string) $w['url'] : null, $op);
+        }
+        unset($w);
+        return $wiersze;
     }
 
     /**
@@ -224,13 +245,13 @@ final class Notifications
      */
     public static function unreadForToasts(int $userId, int $limit = 5): array
     {
-        return Db::all(
+        return self::adresyPodRole($userId, Db::all(
             'SELECT id, type, title, body, url, created_at
                FROM notifications
               WHERE user_id = :uid AND read_at IS NULL
               ORDER BY id DESC LIMIT :lim',
             ['uid' => $userId, 'lim' => max(1, min(20, $limit))]
-        );
+        ));
     }
 
     /**

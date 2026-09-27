@@ -182,10 +182,10 @@ $zalogowano = http('POST', '/login', ['form' => [
 check('zalogowanie przekierowuje', $zalogowano['status'] === 302, 'status ' . $zalogowano['status']);
 
 // ---------------------------------------------------------------- punkt wejścia
-echo "\n== punkt wejścia = lista klubów ==\n";
+echo "\n== punkt wejścia = pulpit (golden layout W0) ==\n";
 
 $root_ = http('GET', '/');
-check('„/" przekierowuje na „/kluby"', $root_['status'] === 302 && $root_['location'] === '/kluby',
+check('„/" przekierowuje na „/pulpit"', $root_['status'] === 302 && $root_['location'] === '/pulpit',
     $root_['status'] . ' → ' . (string) $root_['location']);
 
 $pulpit = http('GET', '/pulpit');
@@ -211,7 +211,10 @@ $hub = http('GET', '/klub/1');
 check('hub tenanta odpowiada', $hub['status'] === 200, 'status ' . $hub['status']);
 check('hub pokazuje nazwę klubu', str_contains($hub['body'], 'Klub A'));
 check('hub niesie CSS klubu (--club-primary)', str_contains($hub['body'], '--club-primary:'));
-check('hub niesie okruszki do „Kluby"', str_contains($hub['body'], 'href="/kluby"'));
+// Okruszki prowadzą od Pulpitu, nigdy do /kluby (golden layout W0).
+preg_match('#<nav class="crumbs".*?</nav>#s', $hub['body'], $okr);
+check('hub niesie okruszki od Pulpitu, bez /kluby',
+    str_contains($okr[0] ?? '', 'href="/pulpit"') && !str_contains($okr[0] ?? '', '/kluby'));
 check('CTA „Skonfiguruj raporty" prowadzi do konfiguratora',
     str_contains($hub['body'], '/klub/1/konfigurator'));
 

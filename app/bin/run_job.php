@@ -922,7 +922,7 @@ function powiadomOAwarii(int $matchId, int $jobId, string $powod, bool $moznaPon
             : 'Tego zadania nie da się ponowić; konieczne jest ponowne wgranie eksportu.'),
         'entity'    => 'job',
         'entity_id' => $jobId,
-        'url'       => '/zadania/' . $jobId,
+        'url'       => '/mecze/' . $matchId,
     ]);
 }
 

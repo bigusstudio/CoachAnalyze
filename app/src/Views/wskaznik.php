@@ -131,6 +131,8 @@ $mmss = sprintf('%d:%02d', intdiv($sekundy, 60), $sekundy % 60);
       </form>
     <?php endif; ?>
 
-    <a class="link" href="/zadania/<?= (int) $job['id'] ?>"><?= View::e(View::t('work.details')) ?></a>
+    <?php if (View::op()): ?>
+      <a class="link" href="/zadania/<?= (int) $job['id'] ?>"><?= View::e(View::t('work.details')) ?></a>
+    <?php endif; ?>
   </div>
 </section>

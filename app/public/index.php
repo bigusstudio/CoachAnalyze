@@ -291,13 +291,12 @@ function requireCan(array $user, string $czynnosc): void
 
 switch (true) {
     /*
-     * PUNKT WEJŚCIA = LISTA KLUBÓW (Sesja 2, docs/PRZEBUDOWA_KLUB_SESJE.md).
-     * Klub jest teraz jednostką, wokół której kręci się panel — pulpit ogólny
-     * (liczniki i zadania niezależne od klubu) zostaje, ale pod `/pulpit`,
-     * dostępny z nawigacji, nie jako to, co widać zaraz po zalogowaniu.
+     * PUNKT WEJŚCIA = PULPIT (golden layout W0, docs/GOLDEN_LAYOUT.md).
+     * Hierarchia panelu to Pulpit → Sezon → Mecz → Raport; lista klubów jest
+     * ekranem administracyjnym i nie jest miejscem, do którego się „wraca".
      */
     case $path === '/' && $method === 'GET':
-        redirect('/kluby');
+        redirect('/pulpit');
         break;
 
     case $path === '/pulpit' && $method === 'GET':
@@ -382,6 +381,13 @@ switch (true) {
         break;
 
     case preg_match('#^/zadania/(\d+)$#', $path, $m) === 1 && $method === 'GET':
+        // Strona zadania jest TECHNICZNA [op] (golden layout W0). Analityk
+        // i trener widzą postęp na karcie meczu; tu dostają to samo 404, co
+        // przy nieistniejącym zadaniu — bez potwierdzania, że trasa istnieje.
+        if (!\CoachAnalyze\Users::isAdmin($user)) {
+            jobNotFound();
+            break;
+        }
         showJob((int) $m[1]);
         break;
 
@@ -397,7 +403,7 @@ switch (true) {
             $done ? 'notice' : 'error',
             View::t($done ? 'job.retry.done' : 'job.retry.refused')
         );
-        redirect('/zadania/' . $id);
+        redirect(celPracy($id));
         break;
 
     case $path === '/motyw' && $method === 'POST':
@@ -821,7 +827,7 @@ switch (true) {
         break;
 
     case preg_match('#^/sezon/mecz/(\d+)$#', $path, $m) === 1 && $method === 'GET':
-        showRoundCard((int) $m[1]);
+        redirect('/mecze/' . (int) $m[1]);
         break;
 
     case $path === '/zawodnicy' && $method === 'GET':
@@ -1043,8 +1049,21 @@ switch (true) {
         redirect(safeReturn($_POST['powrot'] ?? '/'));
         break;
 
+    // KARTA MECZU (golden layout W0) — zastępuje historię, metę, skład i kartę
+    // kolejki. Stare adresy zostają jako przekierowania: krążą w mailach
+    // i w zapisanych powiadomieniach.
+    case preg_match('#^/mecze/(\d+)$#', $path, $m) === 1 && $method === 'GET':
+        showMatchCard((int) $m[1], $user);
+        break;
+
+    case preg_match('#^/mecze/(\d+)/sklad$#', $path, $m) === 1 && $method === 'POST':
+        requireCan($user, 'upload');
+        requireCsrf();
+        saveMatchRoster((int) $m[1], (int) $user['id']);
+        break;
+
     case preg_match('#^/mecze/(\d+)/historia$#', $path, $m) === 1 && $method === 'GET':
-        showMatchHistory((int) $m[1]);
+        redirect('/mecze/' . (int) $m[1] . (\CoachAnalyze\Users::isAdmin($user) ? '?zakladka=zadania' : ''));
         break;
 
     /*
@@ -1057,7 +1076,7 @@ switch (true) {
      * bez tej trasy mecz bez daty i sezonu zostawał taki na zawsze.
      */
     case preg_match('#^/mecze/(\d+)/meta$#', $path, $m) === 1 && $method === 'GET':
-        showMatchMetaEdit((int) $m[1]);
+        redirect('/mecze/' . (int) $m[1] . '?zakladka=dane');
         break;
 
     case preg_match('#^/mecze/(\d+)/meta$#', $path, $m) === 1 && $method === 'POST':
@@ -1315,7 +1334,7 @@ function showJob(int $id): void
  */
 function serveReport(int $id): void
 {
-    $report = \CoachAnalyze\Db::one('SELECT html_path FROM reports WHERE id = :id', ['id' => $id]);
+    $report = \CoachAnalyze\Db::one('SELECT html_path, match_id FROM reports WHERE id = :id', ['id' => $id]);
     $storage = \CoachAnalyze\Config::get('STORAGE_PATH');
 
     $file = null;
@@ -1340,7 +1359,11 @@ function serveReport(int $id): void
     header('Content-Type: text/html; charset=utf-8');
     header('X-Robots-Tag: noindex, nofollow');
     header('Cache-Control: private, no-store');
-    readfile($file);
+    // Klips „← CA" wraca na kartę meczu — rodzica raportu (docs/GOLDEN_LAYOUT.md).
+    echo \CoachAnalyze\Powrot::wypelnijRaport(
+        (string) file_get_contents($file),
+        '/mecze/' . (int) $report['match_id']
+    );
 }
 
 /**
@@ -1417,12 +1440,12 @@ function handleImport(int $userId, ?int $clubId = null, string $formPath = '/imp
             'body'      => View::t('notif.pending.body'),
             'entity'    => 'match',
             'entity_id' => (int) $import['match_id'],
-            'url'       => '/zadania/' . $jobId,
+            'url'       => '/mecze/' . (int) $import['match_id'],
             'delay'     => Notifications::OPOZNIENIE_PENDING,
         ]);
     }
 
-    redirect('/zadania/' . $jobId);
+    redirect(celPracy($jobId));
 }
 
 function showCoverage(int $importId): void
@@ -1447,7 +1470,7 @@ function showCoverage(int $importId): void
      */
     if ($report['coverage'] === []) {
         $job = Imports::latestJob($importId, 'inspect');
-        redirect($job !== null ? '/zadania/' . (int) $job['id'] : '/import');
+        redirect($job !== null ? celPracy((int) $job['id']) : '/import');
     }
 
     /*
@@ -1552,7 +1575,7 @@ function showMapping(int $importId): void
     if (!is_array($meta) || $meta === []) {
         // Bez pokrycia nie ma czego mapować — wracamy do stanu zadania.
         $job = Imports::latestJob($importId, 'inspect');
-        redirect($job !== null ? '/zadania/' . (int) $job['id'] : '/import');
+        redirect($job !== null ? celPracy((int) $job['id']) : '/import');
     }
 
     $clubId   = Imports::mappingClubId($import);
@@ -1759,7 +1782,7 @@ function queueBuild(int $importId, int $userId): void
 
     // Zadanie czeka na crona — z przeglądarki nie wolno uruchomić procesu.
     Session::flash('notice', View::t('coverage.queued'));
-    redirect('/zadania/' . $jobId);
+    redirect(celPracy($jobId));
 }
 
 
@@ -1767,6 +1790,7 @@ function queueBuild(int $importId, int $userId): void
 function showReports(): void
 {
     $wynik = Reports::search([
+        'jeden_na_mecz' => true,
         'club'   => isset($_GET['klub']) && $_GET['klub'] !== '' ? (int) $_GET['klub'] : null,
         'season' => isset($_GET['sezon']) && $_GET['sezon'] !== '' ? (int) $_GET['sezon'] : null,
         'sort'   => isset($_GET['sort']) ? (string) $_GET['sort'] : null,
@@ -1817,7 +1841,7 @@ function regenerateReport(int $reportId, int $userId): void
 
     $jobId = Imports::queueBuild((int) $import['id'], $userId);
     Session::flash('notice', View::t('reports.regen.queued'));
-    redirect('/zadania/' . $jobId);
+    redirect(celPracy($jobId));
 }
 
 /**
@@ -1852,7 +1876,7 @@ function recalcReport(int $reportId, int $userId): void
     }
 
     Session::flash('notice', View::t('recalc.queued'));
-    redirect('/zadania/' . (int) $wynik['job_id']);
+    redirect(celPracy((int) $wynik['job_id']));
 }
 
 /**
@@ -1990,7 +2014,7 @@ function handleMatchUpload(int $matchId, int $userId): void
     $jobId = Imports::queueInspect($importId, $userId);
 
     Session::flash('notice', View::t('reupload.queued'));
-    redirect('/zadania/' . $jobId);
+    redirect(celPracy($jobId));
 }
 
 /**
@@ -2167,23 +2191,121 @@ function showNotifications(int $userId): void
 }
 
 /** Historia zdarzeń jednego meczu: wgranie, pokrycie, raport, udostępnienie. */
-function showMatchHistory(int $matchId): void
+/**
+ * Karta meczu (golden layout W0, docs/GOLDEN_LAYOUT.md). Rodzic: Sezon.
+ *
+ * @param array<string,mixed>|null $user
+ */
+function showMatchCard(int $matchId, ?array $user): void
 {
-    $match = Matches::find($matchId);
-    if ($match === null) {
-        http_response_code(404);
-        View::page('soon', ['title' => View::t('common.not_found'), 'heading' => View::t('common.not_found')]);
+    $mecz = Matches::find($matchId);
+    if ($mecz === null) {
+        tenantNotFound();
         return;
     }
 
-    View::page('match_history', [
-        'title'  => View::t('history.title'),
-        'active' => 'matches',
-        'match'  => $match,
-        'events' => Matches::history($matchId),
-        // Cel powrotu po zapisie danych meczu — bez tego potwierdzenie ginie.
-        'notice' => Session::flash('notice'),
-        'error'  => Session::flash('error'),
+    $op = \CoachAnalyze\Users::isAdmin($user);
+    $zakladki = $op
+        ? ['dane', 'sklad', 'pliki', 'pokrycie', 'wersje', 'zadania']
+        : ['dane', 'sklad', 'pliki'];
+    $zakladka = in_array($_GET['zakladka'] ?? '', $zakladki, true) ? (string) $_GET['zakladka'] : 'dane';
+
+    $club = $mecz['club_id'] !== null ? Clubs::find((int) $mecz['club_id']) : null;
+    $raporty = Matches::raporty($matchId);
+    $raport = $raporty[0] ?? null;
+    $import = Imports::latestForMatch($matchId);
+    $wToku = Matches::zadanieWToku($matchId);
+
+    $aktywnyLink = null;
+    if ($raport !== null) {
+        foreach (Share::forReport((int) $raport['id']) as $l) {
+            if ($l['stan'] === 'active') {
+                $aktywnyLink = $l;
+                break;
+            }
+        }
+    }
+
+    $sezonWybrany = $mecz['season_id'] !== null
+        ? (int) $mecz['season_id']
+        : Seasons::suggestFor(null, $mecz['played_at'] ?? null);
+
+    View::page('match_card', [
+        'title'     => View::t('card.title'),
+        'active'    => 'season',
+        'crumb'     => trim(($mecz['round'] ?? '') !== '' ? View::t('card.round', (string) $mecz['round']) : '')
+                       ?: View::t('card.title'),
+        'okruszki'  => [
+            [View::t('nav.dashboard'), '/pulpit'],
+            [View::t('nav.season'), $club !== null ? '/sezon?klub=' . (int) $club['id'] : '/sezon'],
+        ],
+        'refresh'   => $wToku !== null ? 5 : null,
+        'mecz'      => $mecz,
+        'club'      => $club,
+        'zakladka'  => $zakladka,
+        'zakladki'  => $zakladki,
+        'op'        => $op,
+        'mozeEdytowac'    => \CoachAnalyze\Users::can($user, 'upload'),
+        'mozeUdostepniac' => \CoachAnalyze\Users::can($user, 'share'),
+        'raport'    => $raport,
+        'raporty'   => $raporty,
+        'importy'   => Matches::importy($matchId),
+        'import'    => $import,
+        'wToku'     => $wToku,
+        'fakty'     => \CoachAnalyze\Stats::matchFacts($matchId),
+        'aktywnyLink' => $aktywnyLink,
+        'appUrl'    => (string) \CoachAnalyze\Config::get('APP_URL', ''),
+        'zadania'   => $op && $zakladka === 'zadania' ? Matches::zadania($matchId) : [],
+        'historia'  => $op && $zakladka === 'zadania' ? Matches::history($matchId) : [],
+        'rywale'    => Clubs::rivals(),
+        'seasons'   => Seasons::all(),
+        'sezonWybrany' => $sezonWybrany,
+        'sklad'     => skladDoFormularza($mecz, $import),
+        'propozycja' => \CoachAnalyze\Roster::zEksportu(
+            (array) json_decode((string) (($import ?? [])['coverage_json'] ?? ''), true)
+        ),
+        'notice'    => Session::flash('notice'),
+        'error'     => Session::flash('error'),
+    ]);
+}
+
+/**
+ * Zapis SAMEGO składu z zakładki „Skład". Osobna trasa, bo `zapiszMetaMeczu()`
+ * zapisuje wszystkie pola mety — formularz składu bez nich wyczyściłby datę.
+ */
+function saveMatchRoster(int $matchId, int $userId): void
+{
+    $mecz = Matches::find($matchId);
+    if ($mecz === null || $mecz['club_id'] === null) {
+        tenantNotFound();
+        return;
+    }
+    $karta = '/mecze/' . $matchId . '?zakladka=sklad';
+
+    if ((string) ($_POST['akcja'] ?? '') === 'z_eksportu') {
+        Session::flash('sklad_roboczy', \CoachAnalyze\Roster::normalizuj((array) ($_POST['sklad'] ?? [])));
+        Session::flash('sklad_z_eksportu', '1');
+        redirect($karta);
+    }
+
+    \CoachAnalyze\Roster::save($matchId, (int) $mecz['club_id'], (array) ($_POST['sklad'] ?? []), $userId);
+    Session::flash('notice', View::t('card.sklad.saved'));
+    redirect($karta);
+}
+
+/** Cel przekierowania po zleceniu pracy w tle — pod rolę zalogowanego. */
+function celPracy(int $jobId): string
+{
+    return Jobs::celDla($jobId, Users::isAdmin(Auth::currentUser()));
+}
+
+function jobNotFound(): void
+{
+    http_response_code(404);
+    View::page('soon', [
+        'title'   => View::t('common.not_found'),
+        'heading' => View::t('common.not_found'),
+        'body'    => View::t('job.not_found'),
     ]);
 }
 
@@ -2312,7 +2434,9 @@ function createShare(int $reportId, int $userId): void
 
     Share::create($reportId, $clubId, $expires !== '' ? $expires . ' 23:59:59' : null, $userId);
     Session::flash('notice', View::t('share.created'));
-    redirect('/raport/' . $reportId . '/udostepnij');
+    // Link tworzy się z karty meczu i ze strony udostępnień — wracamy tam, skąd
+    // przyszło żądanie (golden layout W0: „Utwórz link" jest na karcie).
+    redirect(\CoachAnalyze\Powrot::bezpieczna($_POST['powrot'] ?? null) ?? ('/raport/' . $reportId . '/udostepnij'));
 }
 
 // ------------------------------------------------------- raport publiczny
@@ -2359,7 +2483,12 @@ function servePublicReport(string $clubKey, string $token): void
     header('X-Content-Type-Options: nosniff');
     header('Cache-Control: private, no-store');
 
-    readfile($path);
+    // Czytelnik linku publicznego nie ma konta — klips prowadzi na stronę
+    // produktu, a nie do panelu, w którym zobaczyłby ekran logowania.
+    echo \CoachAnalyze\Powrot::wypelnijRaport(
+        (string) file_get_contents($path),
+        \CoachAnalyze\Powrot::STRONA_PUBLICZNA
+    );
     exit;
 }
 
@@ -2996,6 +3125,7 @@ function showClubReports(int $id): void
     }
 
     $wynik = Reports::search([
+        'jeden_na_mecz' => true,
         'tenant' => $id,
         'season' => isset($_GET['sezon']) && $_GET['sezon'] !== '' ? (int) $_GET['sezon'] : null,
         'sort'   => isset($_GET['sort']) ? (string) $_GET['sort'] : null,
@@ -3483,7 +3613,7 @@ function queueSampleReport(int $id, int $userId): void
 
     $jobId = Imports::queueBuild((int) $import['id'], $userId, true);
     Session::flash('notice', View::t('conf.sample.queued'));
-    redirect('/zadania/' . $jobId);
+    redirect(celPracy($jobId));
 }
 
 // ------------------------------------------- import meczu n+1 (Sesja 6)
@@ -3535,61 +3665,6 @@ function showMatchMeta(int $importId): void
         // Propozycja z kolumny zawodnika eksportu — do ZATWIERDZENIA, nie zapis.
         'propozycja' => \CoachAnalyze\Roster::zEksportu(
             (array) json_decode((string) ($import['coverage_json'] ?? ''), true)
-        ),
-        'notice'  => Session::flash('notice'),
-        'error'   => Session::flash('error'),
-    ]);
-}
-
-/**
- * Edycja mety meczu JUŻ ZAIMPORTOWANEGO.
- *
- * ═══════════════════════════════════════════════════════════════════════════
- * PO CO, SKORO META JEST PRZY IMPORCIE.
- *
- * Bo dotąd dało się ją ustawić WYŁĄCZNIE raz, w kroku przed diffem. Mecz
- * wgrany przed powstaniem tego kroku — albo taki, przy którym operator przeszedł
- * dalej bez daty — zostawał bez daty i bez sezonu NA ZAWSZE. Stąd puste kolumny
- * „Sezon" i „bez daty" na liście meczów: to nie usterka filtrowania, tylko brak
- * drogi do uzupełnienia danych.
- *
- * Ten sam formularz, inny adres zapisu (`app/src/Views/match_meta.php`).
- * ═══════════════════════════════════════════════════════════════════════════
- */
-function showMatchMetaEdit(int $matchId): void
-{
-    $mecz = Matches::find($matchId);
-    if ($mecz === null) {
-        http_response_code(404);
-        View::page('soon', ['title' => View::t('common.not_found'), 'heading' => View::t('common.not_found')]);
-        return;
-    }
-
-    $tenant = $mecz['club_id'] !== null ? Clubs::find((int) $mecz['club_id']) : null;
-    $import = Imports::latestForMatch($matchId);
-
-    View::page('match_meta', [
-        'title'   => View::t('meta.edit.title'),
-        'active'  => 'matches',
-        'club'    => $tenant,
-        'crumb'   => View::t('meta.edit.crumb'),
-        'import'  => $import ?? ['id' => 0],
-        'mecz'    => $mecz,
-        'rywale'  => Clubs::rivals(),
-        'seasons' => Seasons::all(),
-        'seasonDefault' => Seasons::suggestFor(
-            $mecz['season_id'] ?? null,
-            $mecz['played_at'] ?? null
-        ),
-        'akcja'   => '/mecze/' . $matchId . '/meta',
-        // Wracamy tam, skąd operator przyszedł: meta jest osiągalna z listy
-        // meczów, z huba klubu i z ekranu pokrycia.
-        'powrot'  => safeReturn($_GET['powrot'] ?? ('/mecze/' . $matchId . '/historia')),
-        'edycja'  => true,
-        'maRaport' => Imports::latestReport($matchId) !== null,
-        'sklad'   => skladDoFormularza($mecz, $import),
-        'propozycja' => \CoachAnalyze\Roster::zEksportu(
-            (array) json_decode((string) (($import ?? [])['coverage_json'] ?? ''), true)
         ),
         'notice'  => Session::flash('notice'),
         'error'   => Session::flash('error'),
@@ -3692,17 +3767,20 @@ function saveMatchMetaEdit(int $matchId, int $userId): void
         redirect('/mecze');
     }
 
-    $powrot = safeReturn($_POST['powrot'] ?? ('/mecze/' . $matchId . '/historia'));
+    // Zapis zostaje NA KARCIE meczu (golden layout W0): `powrot` z formularza
+    // wskazuje zakładkę, z której przyszedł, a bez niego — „Dane meczu".
+    $karta = '/mecze/' . $matchId . '?zakladka=dane';
+    $powrot = \CoachAnalyze\Powrot::bezpieczna($_POST['powrot'] ?? null) ?? $karta;
 
     if ((string) ($_POST['akcja'] ?? '') === 'z_eksportu') {
         Session::flash('sklad_roboczy', \CoachAnalyze\Roster::normalizuj(
             (array) ($_POST['sklad'] ?? [])
         ));
         Session::flash('sklad_z_eksportu', '1');
-        redirect('/mecze/' . $matchId . '/meta');
+        redirect('/mecze/' . $matchId . '?zakladka=sklad');
     }
 
-    if (!zapiszMetaMeczu($matchId, $userId, '/mecze/' . $matchId . '/meta')) {
+    if (!zapiszMetaMeczu($matchId, $userId, $karta)) {
         return;
     }
 
@@ -3840,7 +3918,7 @@ function requeueInspection(int $importId, int $userId): void
 
     $jobId = Imports::queueInspect($importId, $userId);
     Session::flash('notice', View::t('rev.inspect.queued'));
-    redirect('/zadania/' . $jobId);
+    redirect(celPracy($jobId));
 }
 
 function showTemplateDiff(int $importId): void
@@ -3857,7 +3935,7 @@ function showTemplateDiff(int $importId): void
 
     if (empty($import['coverage_json'])) {
         $job = Imports::latestJob($importId, 'inspect');
-        redirect($job !== null ? '/zadania/' . (int) $job['id'] : '/import');
+        redirect($job !== null ? celPracy((int) $job['id']) : '/import');
     }
 
     $diff = configuratorDiff($import, $clubId);
@@ -4316,49 +4394,6 @@ function showSeasonSummary(): void
     ] + $ctx);
 }
 
-/**
- * Karta jednego meczu: meta, metryki i odsyłacze do wszystkiego, co z nim
- * można zrobić. Jedno miejsce zamiast szukania po czterech ekranach.
- */
-function showRoundCard(int $matchId): void
-{
-    $mecz = Matches::find($matchId);
-    if ($mecz === null || $mecz['club_id'] === null) {
-        tenantNotFound();
-        return;
-    }
-    $club = resolveTenant((int) $mecz['club_id']);
-    if ($club === null) {
-        http_response_code(403);
-        View::page('soon', [
-            'title'   => View::t('common.error'),
-            'heading' => View::t('common.error'),
-            'body'    => View::t('sezon.err.cudzy_klub'),
-        ]);
-        return;
-    }
-
-    $raport = Imports::latestReport($matchId);
-    $import = Imports::latestForMatch($matchId);
-
-    View::page('season_match', [
-        'title'   => View::t('sezon.mecz.title'),
-        'active'  => 'season',
-        'club'    => $club,
-        'mecz'    => $mecz,
-        'fakty'   => \CoachAnalyze\Stats::matchFacts($matchId),
-        'metryki' => \CoachAnalyze\Metrics::computeAll([
-            'club_id' => (int) $club['id'], 'match_id' => $matchId,
-        ]),
-        'sklad'   => \CoachAnalyze\Roster::forMatch($matchId, (int) $club['id']),
-        'raport'  => $raport,
-        'import'  => $import,
-        'csrf'    => Session::csrfToken(),
-        'notice'  => Session::flash('notice'),
-        'error'   => Session::flash('error'),
-    ]);
-}
-
 /** ZAWODNICY — skład scalony ze zdarzeniami po pełnej nazwie. */
 function showPlayers(): void
 {
@@ -4617,7 +4652,7 @@ function discardConfiguratorDraft(int $id): void
 function showLogin(): void
 {
     if (Auth::isLoggedIn()) {
-        redirect('/');
+        redirect('/pulpit');
     }
     View::page('login', [
         'title'   => View::t('login.title'),
@@ -4812,7 +4847,8 @@ function handleLogin(): void
         if (!empty($_POST['zapamietaj'])) {
             setRememberCookie(Remember::issue((int) $result['user']['id']));
         }
-        redirect('/');
+        // Landing po zalogowaniu = pulpit (golden layout W0).
+        redirect('/pulpit');
     }
 
     renderLogin($email, match ($result['error']) {

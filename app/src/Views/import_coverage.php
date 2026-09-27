@@ -55,7 +55,7 @@ $liczby = [
   <section class="panel">
     <div class="actions actions--head">
       <h2 class="h2"><?= View::e(View::t('meta.edit.title')) ?></h2>
-      <a class="link" href="/mecze/<?= (int) $meczMeta['id'] ?>/meta?powrot=<?= rawurlencode('/import/' . (int) $import['id']) ?>">
+      <a class="link" href="/mecze/<?= (int) $meczMeta['id'] ?>?zakladka=dane">
         <?= View::e(View::t('meta.edit.link')) ?>
       </a>
     </div>
@@ -371,5 +371,5 @@ $liczby = [
     )) ?></span>
   <?php endif; ?>
 
-  <a class="link" href="/"><?= View::e(View::t('common.back')) ?></a>
+  <a class="link" href="<?= View::e(\CoachAnalyze\Powrot::url('/pulpit')) ?>"><?= View::e(View::t('common.back')) ?></a>
 </div>

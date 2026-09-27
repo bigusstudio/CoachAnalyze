@@ -148,6 +148,16 @@ EMPTY_PALETTE = {"tags": {}, "labels": {}}
 
 LEFTOVER_RE = re.compile(r"__[A-Z][A-Z0-9_]*__")
 
+# ZNACZNIKI SERWOWANIA — przechodzą przez render NIETKNIĘTE i wypełnia je PHP
+# w chwili wysłania raportu (docs/KONTRAKT_CLI.md, „Znaczniki serwowania").
+#
+# `__POWROT_URL__` — cel klipsa „← CA" w lewym górnym rogu raportu v21. Ten sam
+# plik HTML idzie do zalogowanego analityka (klips wraca na kartę meczu) i pod
+# publiczny adres `/r/{club_key}/{token}` (klips prowadzi na coachanalyze.pl).
+# Silnik nie zna ani sesji, ani adresu meczu w panelu (CLAUDE.md §4), więc nie
+# ma czego tu wpisać — a wpisanie czegokolwiek zamknęłoby jedną z dwóch dróg.
+ZNACZNIKI_SERWOWANIA = ("__POWROT_URL__",)
+
 # ------------------------------------------------------------------ grupy znaczników
 #
 # Znaczniki, których v17 NIE MA, a v21 ma. Podmieniamy je WYŁĄCZNIE tam, gdzie
@@ -868,8 +878,12 @@ def inject(template, data, palette, slots=None):
 
 
 def unresolved_placeholders(html):
-    """Znaczniki `__COŚ__`, które przetrwały render. Po poprawnym renderze pusto."""
-    return sorted(set(LEFTOVER_RE.findall(html)))
+    """Znaczniki `__COŚ__`, które przetrwały render. Po poprawnym renderze pusto.
+
+    Znaczniki serwowania (`ZNACZNIKI_SERWOWANIA`) nie są brakiem: zostają w pliku
+    celowo i wypełnia je panel przy wysyłce.
+    """
+    return sorted(set(LEFTOVER_RE.findall(html)) - set(ZNACZNIKI_SERWOWANIA))
 
 
 def crosscheck(data, metrics):
