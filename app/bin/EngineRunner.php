@@ -26,12 +26,18 @@ namespace CoachAnalyze;
 final class EngineRunner
 {
     /**
-     * Odczyt wersji z silnika i zapis artefaktu. WYŁĄCZNIE Z CLI.
-     * Wołane przez proces roboczy i nadzorcę, żeby stopka panelu miała co pokazać.
+     * Kontrola zgodności wersji. WYŁĄCZNIE Z CLI.
+     *
+     * DO W1 TA METODA ZAPISYWAŁA ARTEFAKT STOPKI i to była druga połowa usterki
+     * „stopka pokazuje 0.16.1 na 0.16.4": cron wpisywał wersję interpretera,
+     * którego nikt nie sprawdzał. Artefakt zapisuje teraz `deploy.sh`
+     * z `engine/coachanalyze/__init__.py` wdrażanej rewizji, a tu tylko
+     * porównujemy — rozjazd znaczy, że raporty liczy inny silnik niż wdrożony,
+     * i to ma być w logu, a nie w stopce.
      */
     public static function refreshVersion(): string
     {
-                $result = self::runPython(['-m', 'coachanalyze', '--version'], 30);
+        $result = self::runPython(['-m', 'coachanalyze', '--version'], 30);
         $version = trim($result['stdout']);
 
         if ($version === '' || !preg_match('/^\d+\.\d+\.\d+/', $version)) {
@@ -39,8 +45,12 @@ final class EngineRunner
         }
 
         $cache = self::cachePath();
-        if ($cache !== null) {
-            @file_put_contents($cache, $version, LOCK_EX);
+        $wdrozona = $cache !== null ? trim((string) @file_get_contents($cache)) : '';
+        if ($wdrozona !== '' && $wdrozona !== $version) {
+            error_log(sprintf(
+                'silnik: zainstalowany %s, wdrożony %s — sprawdź PYTHON_BIN i pip install -e',
+                $version, $wdrozona
+            ));
         }
         return $version;
     }

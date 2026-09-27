@@ -66,6 +66,21 @@ $dziesietna = static function (?float $w, int $miejsca = 2) use ($lub): string {
         : number_format($w, $miejsca, ',', ' ');
 };
 
+/*
+ * PODPIS NAJNOWSZEGO RAPORTU (golden layout W1): „raport z DD.MM HH:MM"
+ * i pastylka „nowy" dla raportu z ostatniej doby. Bez tego pulpit nie mówił,
+ * który raport jest świeży — a to pierwsze pytanie po wgraniu eksportu.
+ */
+$podpisRaportu = static function (?string $kiedy): string {
+    if ($kiedy === null || $kiedy === '' || ($t = strtotime($kiedy)) === false) {
+        return '';
+    }
+    $nowy = $t >= time() - 86400
+        ? ' <span class="pill pill--ok"><i></i>' . View::e(View::t('dash.report.new')) . '</span>'
+        : '';
+    return '<small class="raport-z">' . View::e(View::t('dash.report.at', date('d.m H:i', $t))) . '</small>' . $nowy;
+};
+
 /** Klasa wyniku z perspektywy klubu: wygrana / remis / porażka. */
 $klasaWyniku = static function (?int $nas, ?int $ich): string {
     if ($nas === null || $ich === null) {
@@ -120,7 +135,8 @@ $klasaWyniku = static function (?int $nas, ?int $ich): string {
             <?php endif; ?>
           </span>
           <span>
-            <b><?= View::e((string) ($lastMatch['home_name'] ?? View::t('match.no_club'))) ?></b>
+            <?php /* Nazwa meczu prowadzi na KARTĘ meczu; raport otwiera pastylka „Raport". */ ?>
+            <a class="hero__nazwa" href="/mecze/<?= (int) $lastMatch['id'] ?>"><b><?= View::e((string) ($lastMatch['home_name'] ?? View::t('match.no_club'))) ?></b></a>
             <small><?= View::e(View::t('match.us')) ?></small>
           </span>
         </div>
@@ -204,7 +220,10 @@ $klasaWyniku = static function (?int $nas, ?int $ich): string {
             <span><?= View::e(View::t('dash.col.round')) ?> <?= View::e((string) $lastMatch['round']) ?></span>
           <?php endif; ?>
           <span class="pill pill--ok"><i></i><?= View::e(View::t('dash.pill.import')) ?></span>
-          <span class="pill pill--ok"><i></i><?= View::e(View::t('dash.pill.report')) ?></span>
+          <?php if (!empty($lastMatch['report_id'])): ?>
+            <a class="pill pill--ok" href="/raport/<?= (int) $lastMatch['report_id'] ?>"><i></i><?= View::e(View::t('dash.pill.report')) ?></a>
+            <?= $podpisRaportu($lastMatch['report_at'] ?? null) ?>
+          <?php endif; ?>
           <a class="pill pill--club" href="/linki"><i></i><?= View::e(View::t('dash.pill.link')) ?></a>
         </div>
       </div>
@@ -319,7 +338,7 @@ $klasaWyniku = static function (?int $nas, ?int $ich): string {
         ?>
         <?php foreach ($chronologicznie as $nr => $r): ?>
           <?php
-            $ma  = (int) $r['events'] > 0;
+            $ma  = (int) $r['events'] > 0 && (int) ($r['shots_all'] ?? 0) > 0;
             $nas = $ma ? (int) $r['goals_us'] : null;
             $ich = $ma ? (int) $r['goals_them'] : null;
             $kl  = 'q';
@@ -395,7 +414,7 @@ $klasaWyniku = static function (?int $nas, ?int $ich): string {
           <tbody>
             <?php foreach (array_slice($seasonRows, 0, 8) as $r): ?>
               <?php
-                $ma  = (int) $r['events'] > 0;
+                $ma  = (int) $r['events'] > 0 && (int) ($r['shots_all'] ?? 0) > 0;
                 $nas = $ma ? (int) $r['goals_us'] : null;
                 $ich = $ma ? (int) $r['goals_them'] : null;
               ?>
@@ -404,9 +423,10 @@ $klasaWyniku = static function (?int $nas, ?int $ich): string {
                   <span class="match">
                     <span class="k"><?= View::e($r['round'] !== null && $r['round'] !== '' ? (string) $r['round'] : '·') ?></span>
                     <span>
-                      <b><?= View::e((string) ($r['home_name'] ?? View::t('match.no_club'))) ?>
-                         – <?= View::e((string) ($r['away_name'] ?? View::t('match.no_club'))) ?></b>
+                      <a href="/mecze/<?= (int) $r['id'] ?>"><b><?= View::e((string) ($r['home_name'] ?? View::t('match.no_club'))) ?>
+                         – <?= View::e((string) ($r['away_name'] ?? View::t('match.no_club'))) ?></b></a>
                       <small><?= View::e((string) ($r['played_at'] ?? View::t('common.dash'))) ?></small>
+                      <?= $podpisRaportu($r['report_at'] ?? null) ?>
                     </span>
                   </span>
                 </td>
@@ -444,8 +464,10 @@ $klasaWyniku = static function (?int $nas, ?int $ich): string {
                 </td>
                 <td>
                   <span class="acts2">
-                    <a class="btn s" href="/mecze/<?= (int) $r['id'] ?>"><?= View::e(View::t('dash.report')) ?></a>
-                    <a class="btn s" href="/kalendarz"><?= View::e(View::t('dash.slides')) ?></a>
+                    <?php if (!empty($r['report_id'])): ?>
+                      <a class="btn s" href="/raport/<?= (int) $r['report_id'] ?>"><?= View::e(View::t('dash.report')) ?></a>
+                      <a class="btn s" href="/raport/<?= (int) $r['report_id'] ?>#slajdy"><?= View::e(View::t('dash.slides')) ?></a>
+                    <?php endif; ?>
                   </span>
                 </td>
               </tr>

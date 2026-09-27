@@ -6,6 +6,13 @@ declare(strict_types=1);
  *
  *   php app/repairs/regeneruj_raporty.php --club 3 [--dry-run]
  *   php app/repairs/regeneruj_raporty.php --all    [--dry-run]
+ *   php app/repairs/regeneruj_raporty.php --match 26 [--match 27] [--dry-run]
+ *   php app/repairs/regeneruj_raporty.php --nieaktualne [--club 2] [--dry-run]
+ *
+ * `--nieaktualne` (golden layout W1): wyłącznie raporty wyrenderowane INNĄ
+ * wersją silnika niż wdrożona — wersja rośnie przy każdej zmianie szablonu v21
+ * i silnika (CLAUDE.md §7), więc to ten sam zbiór co „sprzed ostatniej zmiany".
+ * Bez `--club`/`--match` obejmuje wszystkie kluby: tak podpowiada `deploy.sh`.
  *
  * ═══════════════════════════════════════════════════════════════════════════
  * PO CO TO ISTNIEJE — WDROŻENIE PIVOTU „viewer".
@@ -60,6 +67,8 @@ $argumenty = $argv ?? [];
 $clubId = null;
 $wszystkie = false;
 $suchobieg = false;
+$mecze = [];
+$nieaktualne = false;
 
 for ($i = 1; $i < count($argumenty); $i++) {
     $a = (string) $argumenty[$i];
@@ -67,6 +76,12 @@ for ($i = 1; $i < count($argumenty); $i++) {
         $wszystkie = true;
     } elseif ($a === '--dry-run') {
         $suchobieg = true;
+    } elseif ($a === '--nieaktualne') {
+        $nieaktualne = true;
+    } elseif ($a === '--match') {
+        $mecze[] = isset($argumenty[$i + 1]) ? (int) $argumenty[++$i] : 0;
+    } elseif (preg_match('/^--match=(\d+)$/', $a, $m) === 1) {
+        $mecze[] = (int) $m[1];
     } elseif ($a === '--club') {
         $clubId = isset($argumenty[$i + 1]) ? (int) $argumenty[++$i] : 0;
     } elseif (preg_match('/^--club=(\d+)$/', $a, $m) === 1) {
@@ -84,11 +99,13 @@ for ($i = 1; $i < count($argumenty); $i++) {
  * z dwudziestoma meczami to dwadzieścia minut pracy crona, uruchomione przez
  * pomyłkę przy sprawdzaniu, czy plik w ogóle działa.
  */
-if ($clubId === null && !$wszystkie) {
+if ($clubId === null && !$wszystkie && $mecze === [] && !$nieaktualne) {
     fwrite(STDERR, <<<TXT
     Podaj zakres:
-      --club <ID>   raporty jednego klubu
-      --all         raporty wszystkich klubów
+      --club <ID>    raporty jednego klubu
+      --all          raporty wszystkich klubów
+      --match <ID>   raporty jednego meczu (można powtórzyć)
+      --nieaktualne  raporty sprzed wdrożonej wersji silnika/szablonu
 
     Dodaj --dry-run, żeby zobaczyć listę bez kolejkowania.
 
@@ -101,11 +118,37 @@ if ($clubId !== null && $clubId <= 0) {
     exit(2);
 }
 
+foreach ($mecze as $mid) {
+    if ($mid <= 0) {
+        fwrite(STDERR, "--match wymaga dodatniego identyfikatora meczu\n");
+        exit(2);
+    }
+}
+
 // ─────────────────────────────────────────────────────────────── raporty
 $parametry = [];
-$warunek = '';
+$warunki = [];
+if ($mecze !== []) {
+    $miejsca = [];
+    foreach (array_values(array_unique($mecze)) as $i => $mid) {
+        $miejsca[] = ':m' . $i;
+        $parametry['m' . $i] = $mid;
+    }
+    $warunki[] = 'r.match_id IN (' . implode(', ', $miejsca) . ')';
+}
+if ($nieaktualne) {
+    // Wersja WDROŻONA: artefakt z `deploy.sh`, a bez niego plik źródłowy.
+    $wersja = \CoachAnalyze\Engine::version();
+    if (preg_match('/^\d+\.\d+\.\d+/', $wersja) !== 1) {
+        fwrite(STDERR, "Nie znam wdrożonej wersji silnika ({$wersja}) — --nieaktualne nie ma z czym porównać\n");
+        exit(2);
+    }
+    $warunki[] = '(r.engine_version IS NULL OR r.engine_version <> :wersja)';
+    $parametry['wersja'] = $wersja;
+    echo "Wdrożony silnik: {$wersja} — biorę raporty wyrenderowane inną wersją.\n";
+}
 if ($clubId !== null) {
-    $warunek = 'WHERE r.club_id = :club';
+    $warunki[] = 'r.club_id = :club';
     $parametry['club'] = $clubId;
 
     if (Clubs::find($clubId) === null) {
@@ -120,7 +163,7 @@ $raporty = Db::all(
        FROM reports r
        LEFT JOIN matches m ON m.id = r.match_id
        LEFT JOIN clubs   c ON c.id = r.club_id
-      {$warunek}
+      " . ($warunki === [] ? '' : 'WHERE ' . implode(' AND ', $warunki)) . "
       ORDER BY r.club_id, (m.played_at IS NULL), m.played_at, r.id",
     $parametry
 );
@@ -138,9 +181,11 @@ if ($raporty === []) {
 $konto = Db::one('SELECT id FROM users ORDER BY id LIMIT 1');
 $userId = $konto !== null ? (int) $konto['id'] : 0;
 
-$naglowek = $clubId !== null
-    ? "Klub {$clubId}: " . count($raporty) . " raportów"
-    : 'Wszystkie kluby: ' . count($raporty) . ' raportów';
+$naglowek = match (true) {
+    $mecze !== []    => 'Mecze ' . implode(', ', $mecze) . ': ' . count($raporty) . ' raportów',
+    $clubId !== null => "Klub {$clubId}: " . count($raporty) . ' raportów',
+    default          => 'Wszystkie kluby: ' . count($raporty) . ' raportów',
+} . ($nieaktualne ? ' (nieaktualne)' : '');
 echo $naglowek . ($suchobieg ? "  [SUCHOBIEG — nic nie zakolejkuję]\n" : "\n");
 echo str_repeat('─', 72) . "\n";
 

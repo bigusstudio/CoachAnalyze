@@ -175,8 +175,11 @@ final class Imports
      * Zapis wyniku `inspect`. Wołane WYŁĄCZNIE z procesu roboczego.
      *
      * @param array<string,mixed> $meta
+     * @param array{rodzaj:string, template_version:?int}|null $zrodlo  z czego
+     *   powstało pokrycie (golden layout W1): inspekcja bez szablonu albo render
+     *   z konkretną wersją szablonu — do podpisu „szablon vN · silnik X · data".
      */
-    public static function saveInspection(int $importId, array $meta): void
+    public static function saveInspection(int $importId, array $meta, ?array $zrodlo = null): void
     {
         Db::run(
             'UPDATE imports
@@ -243,6 +246,12 @@ final class Imports
                 'sec'  => self::encode([
                     'available'   => $meta['sections_available'] ?? [],
                     'unavailable' => $meta['sections_unavailable'] ?? [],
+                    'zrodlo'      => [
+                        'rodzaj'           => (string) ($zrodlo['rodzaj'] ?? 'inspekcja'),
+                        'template_version' => isset($zrodlo['template_version']) ? (int) $zrodlo['template_version'] : null,
+                        'engine_version'   => $meta['engine_version'] ?? null,
+                        'at'               => Stats::now(),
+                    ],
                 ]),
                 'ver'  => $meta['engine_version'] ?? null,
                 'id'   => $importId,
@@ -332,6 +341,25 @@ final class Imports
 
         $meta = self::decode($import['coverage_json'] ?? null);
 
+        /*
+         * EKRAN NIE MOŻE ZAPRZECZAĆ RAPORTOWI (golden layout W1). Pokrycie
+         * z samej inspekcji (świeże wgranie, bez szablonu) potrafiło nazwać
+         * sekcję „niedostępną", podczas gdy najnowszy raport meczu ją ma.
+         * Sekcja obecna w raporcie nie jest niedostępna — niezależnie od tego,
+         * co powiedziała wcześniejsza inspekcja.
+         */
+        $niedostepne = array_values((array) ($sections['unavailable'] ?? []));
+        $raport = self::latestReport((int) ($import['match_id'] ?? 0));
+        if ($raport !== null) {
+            $wRaporcie = (array) ((array) json_decode((string) (Db::one(
+                'SELECT params_json FROM reports WHERE id = :id', ['id' => (int) $raport['id']]
+            )['params_json'] ?? ''), true))['sections'] ?? [];
+            $niedostepne = array_values(array_filter(
+                $niedostepne,
+                static fn($s): bool => !in_array((string) (is_array($s) ? ($s['id'] ?? $s['section'] ?? '') : $s), $wRaporcie, true)
+            ));
+        }
+
         return [
             'coverage'             => $meta,
             'warnings'             => self::explainWarnings(
@@ -341,7 +369,10 @@ final class Imports
                 self::maTemplat($import)
             ),
             'sections_available'   => array_values((array) ($sections['available'] ?? [])),
-            'sections_unavailable' => array_values((array) ($sections['unavailable'] ?? [])),
+            'sections_unavailable' => $niedostepne,
+            // Z czego powstało pokrycie — podpis na ekranie. `null` dla zapisów
+            // sprzed W1: ekran mówi wtedy, że źródło nieznane, zamiast zgadywać.
+            'zrodlo'               => is_array($sections['zrodlo'] ?? null) ? $sections['zrodlo'] : null,
             // Co NIE weszlo do analizy. Raport pokrycia, ktory tego nie pokazuje,
             // sugeruje kompletnosc, ktorej nie ma — a to najgrozniejszy rodzaj
             // bledu w raporcie pokazywanym zarzadowi.

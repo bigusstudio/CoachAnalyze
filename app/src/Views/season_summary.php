@@ -85,7 +85,13 @@ $wartosc = static function (array $m) use ($dziesietna): string {
       // widocznej na ekranie jest jedyną sumą, którą da się sprawdzić wzrokiem.
       $sumaGoleUs = 0; $sumaGoleThem = 0; $sumaXgUs = 0.0; $sumaXgThem = 0.0;
       $sumaStrzalyUs = 0; $sumaStrzalyThem = 0;
+      // Mecz bez strzałów (golden layout W1) nie wchodzi do sum goli, xG
+      // i strzałów — jego „0" nie jest liczbą, tylko brakiem danych.
+      $zeStrzalami = static fn(array $k): bool => (int) ($k['shots_all'] ?? 0) > 0;
       foreach ($kolejki as $k) {
+          if (!$zeStrzalami($k)) {
+              continue;
+          }
           $sumaGoleUs += (int) $k['goals_us'];
           $sumaGoleThem += (int) $k['goals_them'];
           $sumaXgUs += (float) $k['xg_us'];
@@ -120,9 +126,10 @@ $wartosc = static function (array $m) use ($dziesietna): string {
                 <?= View::e((string) ($k['away_name'] ?? View::t('match.no_club'))) ?>
               </a>
             </td>
-            <td><?= View::e((int) $k['goals_us'] . ':' . (int) $k['goals_them']) ?></td>
-            <td class="num"><?= View::e($dziesietna($k['xg_us']) . ' : ' . $dziesietna($k['xg_them'])) ?></td>
-            <td class="num"><?= View::e((int) $k['shots_us'] . ' : ' . (int) $k['shots_them']) ?></td>
+            <?php $kr = View::t('common.dash'); $ok = $zeStrzalami($k); ?>
+            <td><?= View::e($ok ? (int) $k['goals_us'] . ':' . (int) $k['goals_them'] : $kr) ?></td>
+            <td class="num"><?= View::e($ok ? $dziesietna($k['xg_us']) . ' : ' . $dziesietna($k['xg_them']) : $kr) ?></td>
+            <td class="num"><?= View::e($ok ? (int) $k['shots_us'] . ' : ' . (int) $k['shots_them'] : $kr) ?></td>
           </tr>
         <?php endforeach; ?>
         </tbody>

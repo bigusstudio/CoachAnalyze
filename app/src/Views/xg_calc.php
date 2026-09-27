@@ -24,6 +24,17 @@ use CoachAnalyze\XgCalc;
  */
 $user = Auth::currentUser();
 $moze = Users::can($user, 'generate');
+
+/*
+ * NOWY STRZAŁ NA GÓRZE LISTY (golden layout W1). Kolejność reszty bez zmian;
+ * wyróżnienie trzyma się JEDNEGO przeładowania — po następnym kliknięciu
+ * „nowy" jest już kolejny strzał.
+ */
+$nowyId = $last !== null ? (int) $last['id'] : null;
+if ($nowyId !== null) {
+    usort($shots, static fn(array $a, array $b): int
+        => ((int) $b['id'] === $nowyId) <=> ((int) $a['id'] === $nowyId));
+}
 ?>
 <?php /*
   WSPÓLNY PRZODEK boiska i listy — potrzebny regułom parującym niżej.
@@ -129,6 +140,10 @@ $moze = Users::can($user, 'generate');
         Znaczniki dodanych strzałów leżą w tym samym kontenerze, pozycjonowane
         w procentach — dzięki temu trzymają swoje miejsce przy każdej szerokości.
       */ ?>
+      <?php /* KOTWICA OBEJMUJE BOISKO I WYNIK: po zapisie przekierowanie idzie na
+               `#wynik`, a boisko ma najwyżej 60vh — więc oba mieszczą się na
+               ekranie i analityk widzi skutek kliknięcia (golden layout W1). */ ?>
+      <div id="wynik" class="xg-cel">
       <div class="xg-boisko">
         <input class="xg-boisko__pole" type="image" name="punkt"
                src="<?= View::e(View::asset('/assets/boisko.svg')) ?>"
@@ -141,7 +156,7 @@ $moze = Users::can($user, 'generate');
             $lewo = max(0.0, min(100.0, ((float) $s['x'] / 105) * 100));
             $gora = max(0.0, min(100.0, ((float) $s['y'] / 68) * 100));
           ?>
-          <span class="xg-znacznik xg-znacznik--<?= View::e((string) $s['body_part']) ?>"
+          <span class="xg-znacznik xg-znacznik--<?= View::e((string) $s['body_part']) ?><?= (int) $s['id'] === $nowyId ? ' xg-znacznik--nowy' : '' ?>"
                 data-strzal="<?= (int) $s['id'] ?>"
                 style="left: <?= number_format($lewo, 3, '.', '') ?>%;
                        top: <?= number_format($gora, 3, '.', '') ?>%"
@@ -152,19 +167,25 @@ $moze = Users::can($user, 'generate');
                 )) ?>"></span>
         <?php endforeach; ?>
       </div>
-    </form>
 
-    <?php if ($last !== null): ?>
-      <p class="notice" role="status">
-        <?= View::e(View::t(
-            'xg.result',
-            number_format((float) $last['xg'], 2, ',', ''),
-            number_format((float) $last['x'], 1, ',', ''),
-            number_format((float) $last['y'], 1, ',', '')
-        )) ?>
-        — <?= View::e(View::t(XgCalc::quality((float) $last['xg']))) ?>
-      </p>
-    <?php endif; ?>
+      <?php if ($last !== null): ?>
+        <?php /* Wynik jako karta BEZPOŚREDNIO pod boiskiem — nie pod listą,
+                 gdzie był poza ekranem. */ ?>
+        <div class="xg-wynik" role="status">
+          <b class="xg-wynik__xg"><?= View::e(number_format((float) $last['xg'], 2, ',', '')) ?></b>
+          <span>
+            <?= View::e(View::t(
+                'xg.result',
+                number_format((float) $last['xg'], 2, ',', ''),
+                number_format((float) $last['x'], 1, ',', ''),
+                number_format((float) $last['y'], 1, ',', '')
+            )) ?>
+            — <?= View::e(View::t(XgCalc::quality((float) $last['xg']))) ?>
+          </span>
+        </div>
+      <?php endif; ?>
+      </div>
+    </form>
   </section>
 <?php endif; ?>
 
@@ -232,7 +253,11 @@ $moze = Users::can($user, 'generate');
           <?php /* `data-strzal` paruje wiersz z kropką na boisku — patrz
                    reguły wygenerowane na górze widoku. */ ?>
           <tr class="xg-wiersz" data-strzal="<?= (int) $s['id'] ?>">
-            <td><strong><?= View::e(number_format((float) $s['xg'], 2, ',', '')) ?></strong></td>
+            <td><strong><?= View::e(number_format((float) $s['xg'], 2, ',', '')) ?></strong>
+              <?php if ((int) $s['id'] === $nowyId): ?>
+                <span class="pill pill--ok"><i></i><?= View::e(View::t('dash.report.new')) ?></span>
+              <?php endif; ?>
+            </td>
             <td class="num"><?= View::e(number_format((float) $s['x'], 1, ',', '')) ?> ×
                 <?= View::e(number_format((float) $s['y'], 1, ',', '')) ?> m</td>
             <td><?= View::e(View::t('xg.body.' . $s['body_part'])) ?></td>

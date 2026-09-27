@@ -54,7 +54,7 @@ $przelacz = static fn(int $id): string => '/sezon?klub=' . (int) $club['id'] . '
         <tbody>
         <?php foreach ($kolejki as $nr => $k): ?>
           <?php
-            $ma = (int) $k['events'] > 0;
+            $ma = (int) $k['events'] > 0 && (int) ($k['shots_all'] ?? 0) > 0;
             $liczba = static fn($w): string => number_format((float) $w, 2, ',', ' ');
           ?>
           <tr>

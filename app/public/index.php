@@ -1359,11 +1359,10 @@ function serveReport(int $id): void
     header('Content-Type: text/html; charset=utf-8');
     header('X-Robots-Tag: noindex, nofollow');
     header('Cache-Control: private, no-store');
-    // Klips „← CA" wraca na kartę meczu — rodzica raportu (docs/GOLDEN_LAYOUT.md).
-    echo \CoachAnalyze\Powrot::wypelnijRaport(
-        (string) file_get_contents($file),
-        '/mecze/' . (int) $report['match_id']
-    );
+    // Klips „← CA" prowadzi na PULPIT (decyzja z odbioru W0 na produkcji):
+    // raport otwiera się z wielu miejsc, a pulpit jest jedynym punktem, który
+    // zawsze ma sens. Do karty meczu prowadzi nazwa meczu na pulpicie.
+    echo \CoachAnalyze\Powrot::wypelnijRaport((string) file_get_contents($file), '/pulpit');
 }
 
 /**
@@ -1536,6 +1535,7 @@ function showCoverage(int $importId): void
         'warnings'            => $report['warnings'],
         'sectionsUnavailable' => $report['sections_unavailable'],
         'sectionsAvailable'   => $report['sections_available'],
+        'zrodloPokrycia'      => $report['zrodlo'] ?? null,
         'excluded'            => $report['excluded'],
         'report'              => Imports::latestReport((int) $import['match_id']),
         // Pozycje spoza templatu — zignorowane na stałe i te, o które
@@ -2833,7 +2833,9 @@ function addXgShot(int $userId): void
 
     $strzal = \CoachAnalyze\XgCalc::find($id, $userId);
     Session::flash('xg_last', $strzal);
-    redirect('/xg');
+    // `#wynik` (golden layout W1): przeglądarka wraca do boiska z wynikiem pod
+    // nim, a nie na górę strony, gdzie wyniku nie widać — bez skryptu.
+    redirect('/xg#wynik');
 }
 
 function updateXgShot(int $id, int $userId): void

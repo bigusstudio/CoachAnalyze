@@ -1517,3 +1517,23 @@ form.chmurka__zamknij button:hover { color: var(--tekst); }
   color: var(--tekst-slaby); text-decoration: none; }
 .fchip:hover { color: var(--tekst); border-color: var(--tekst-slabszy); }
 .fchip--on { background: var(--akcent); border-color: var(--akcent); color: var(--akcent-tekst); }
+
+/* golden layout W1: podpis najnowszego raportu na pulpicie */
+.raport-z { display: block; color: var(--tekst-slabszy); font-size: 11.5px; }
+.hero__nazwa { color: inherit; text-decoration: none; }
+.hero__nazwa:hover { text-decoration: underline; }
+
+/* ═══════════════════════════════════════════════ golden layout W1: kalkulator xG
+   Boisko najwyżej 60vh, żeby wynik pod nim był na ekranie. Ograniczamy SZEROKOŚĆ
+   kontenera: skala `100cqi / 525px` liczy się od niej, więc współrzędne kliknięcia
+   znaczą dalej te same metry (XgCalc::PX_NA_METR) — zmienia się tylko rozmiar. */
+.xg-cel { scroll-margin-top: 12px; }
+.xg-boisko { max-width: calc(60vh * 525 / 340); }
+.xg-wynik { display: flex; align-items: center; gap: 14px; margin: 12px 0 0; padding: 12px 16px;
+  max-width: calc(60vh * 525 / 340); border: 1px solid var(--akcent); border-radius: var(--promien);
+  background: var(--akcent-mikkie); color: var(--tekst); }
+.xg-wynik__xg { font-size: 26px; font-variant-numeric: tabular-nums; color: var(--akcent); }
+.xg-znacznik--nowy { outline: 3px solid var(--akcent); outline-offset: 3px; z-index: 3;
+  animation: xg-puls 0.5s ease-in-out 4; }
+@keyframes xg-puls { 50% { transform: scale(1.7); } }
+@media (prefers-reduced-motion: reduce) { .xg-znacznik--nowy { animation: none; } }

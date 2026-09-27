@@ -628,9 +628,9 @@ function wykonajRender(int $jobId, int $importId, array $import, array $payload 
         }
 
         // Pokrycie z pełnego przebiegu jest dokładniejsze niż z `inspect`
-        // (tam nie było konfiguracji klubów) — nadpisujemy je.
+        // (tam nie było konfiguracji klubów) — nadpisujemy je, z podpisem wersji.
         if ($meta !== []) {
-            Imports::saveInspection($importId, $meta);
+            Imports::saveInspection($importId, $meta, ['rodzaj' => 'raport', 'template_version' => $templateVersion]);
         }
 
         Db::run('UPDATE matches SET status = :s, half_split_ms = :hs WHERE id = :id', [
@@ -792,7 +792,7 @@ function wykonajPrzeliczenie(int $jobId, int $importId, array $import, array $pa
      * To poprawny stan, nie awaria (spec Sesji 7, pkt 6).
      */
     if ($meta !== []) {
-        Imports::saveInspection($importId, $meta);
+        Imports::saveInspection($importId, $meta, ['rodzaj' => 'raport', 'template_version' => $bieg['template_version']]);
     }
 
     // Stan meczu zostaje `done` — nie było go po co ruszać. Aktualizujemy

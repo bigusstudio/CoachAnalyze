@@ -71,8 +71,8 @@ def wczytaj(html):
         e["tag"] = alias.get(e["tag"], e["tag"])
     shots = [e for e in ev if e["tag"] == "STRZAŁ"]
     for g in [e for e in ev if e["tag"] == "Gol"]:
-        if shots:
-            g["team"] = min(shots, key=lambda s: abs(s["b"] - g["b"]))["team"]
+        # Bez ani jednego strzału gol nie ma drużyny — jak `atrybujGole` w v21 (W1).
+        g["team"] = min(shots, key=lambda s: abs(s["b"] - g["b"]))["team"] if shots else None
     return ev, druzyny.group(1), druzyny.group(2)
 
 
@@ -92,6 +92,9 @@ def liczby(html):
     odb, strata = tag("ODBIÓR"), tag("STRATA")
     duele = tag("1x1 OFF") + tag("1x1 DEF.")
 
+    # Tag nieobecny W CAŁYM MECZU daje „–", nie 0 — jak `dostepnosc` w v21 (W1).
+    jest = lambda t: any(e["tag"] == t for e in ev)
+    strzaly_sa = jest("STRZAŁ")
     wiersze = []
     for etykieta, fn in [
         ("gole",          lambda t: sum(1 for e in ev if e["tag"] == "Gol" and e["team"] == t)),
@@ -101,7 +104,9 @@ def liczby(html):
         ("zdobycie SBZ",  lambda t: sum(1 for e in ev if e["tag"] == "ZDOBYCIE SBZ" and e["team"] == t)),
         ("III strefa",    lambda t: sum(1 for e in ev if e["tag"] == "III STREFA" and e["team"] == t)),
     ]:
-        wiersze.append((etykieta, fn(tenant), fn(rywal)))
+        wymaga = {"gole": strzaly_sa, "xG": strzaly_sa, "strzały": strzaly_sa, "celne": strzaly_sa,
+                  "zdobycie SBZ": jest("ZDOBYCIE SBZ"), "III strefa": jest("III STREFA")}[etykieta]
+        wiersze.append((etykieta, fn(tenant) if wymaga else "–", fn(rywal) if wymaga else "–"))
     # Tagi bez drużyny: tenant liczy wprost, rywal — to, co z nich wynika.
     wiersze.append(("odbiory",       len(odb), len(strata)))
     wiersze.append(("straty",        len(strata), len(odb)))

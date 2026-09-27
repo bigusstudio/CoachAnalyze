@@ -185,7 +185,8 @@ check('karta: „Slajdy" otwiera raport z #slajdy', str_contains($karta['body'],
 
 $raportHtml = http('GET', '/raport/' . $raport);
 check('raport odpowiada', $raportHtml['status'] === 200 && str_contains($raportHtml['body'], 'RAPORT-TESTOWY'));
-check('klips „← CA" wraca na kartę meczu', str_contains($raportHtml['body'], 'class="ca-klips" href="/mecze/' . $mecz . '"'));
+// W1 (decyzja z odbioru W0): klips prowadzi na pulpit, nie na kartę meczu.
+check('klips „← CA" wraca na pulpit', str_contains($raportHtml['body'], 'class="ca-klips" href="/pulpit"'));
 check('w raporcie nie zostaje znacznik serwowania', !str_contains($raportHtml['body'], '__POWROT_URL__'));
 
 $okr = okruszki($karta['body']);
@@ -249,6 +250,40 @@ $kartaOp = http('GET', '/mecze/' . $mecz . '?zakladka=zadania');
 check('administrator: zakładka Zadania z odsyłaczem do zadania', str_contains($kartaOp['body'], 'href="/zadania/' . $zadanie . '"'));
 check('administrator: zakładka Wersje raportu', str_contains(http('GET', '/mecze/' . $mecz . '?zakladka=wersje')['body'], '0.16.4'));
 check('administrator: lista raportów z „Wygeneruj ponownie"', str_contains(http('GET', '/raporty')['body'], '/raport/' . $raport . '/ponow'));
+
+// ===========================================================================
+echo "\n== W1: pulpit — Raport otwiera raport, nazwa prowadzi na kartę ==\n";
+
+Db::run("UPDATE users SET role = 'operator' WHERE email = 'operator@example.com'");
+check('analityk loguje się ponownie', zaloguj('operator@example.com', 'bardzo-dlugie-haslo-testowe'));
+$pulpitW1 = http('GET', '/pulpit');
+check('„Raport" w tabeli i pastylka „Raport" otwierają raport',
+    substr_count($pulpitW1['body'], 'href="/raport/' . $raport . '"') >= 2, 'wystąpień: ' . substr_count($pulpitW1['body'], 'href="/raport/' . $raport . '"'));
+check('nazwa meczu prowadzi na kartę meczu', str_contains($pulpitW1['body'], '<a href="/mecze/' . $mecz . '"><b>'));
+check('„Slajdy" w tabeli prowadzi do raportu z #slajdy, nie do kalendarza',
+    str_contains($pulpitW1['body'], '/raport/' . $raport . '#slajdy') && !str_contains($pulpitW1['body'], 'class="btn s" href="/kalendarz"'));
+check('podpis „raport z DD.MM HH:MM"', str_contains($pulpitW1['body'], 'raport z 17.08 10:00'));
+check('stary raport bez pastylki „nowy"', !str_contains($pulpitW1['body'], '>nowy</span>'));
+Db::run("INSERT INTO reports (match_id, club_id, template_version, html_path, engine_version, generated_at)
+         VALUES (:m, 1, 1, :h, '0.16.4', :g)", ['m' => $mecz, 'h' => $html, 'g' => date('Y-m-d H:i:s', time() - 3600)]);
+$swiezy = (int) Db::pdo()->lastInsertId();
+$pulpitNowy = http('GET', '/pulpit');
+check('raport z ostatniej doby: pastylka „nowy" i przycisk do NAJNOWSZEGO raportu',
+    str_contains($pulpitNowy['body'], '>nowy</span>') && str_contains($pulpitNowy['body'], 'href="/raport/' . $swiezy . '"'));
+
+// ===========================================================================
+echo "\n== W1: kalkulator xG — wynik widoczny po kliknięciu ==\n";
+
+$xg = http('GET', '/xg');
+$klik = http('POST', '/xg', ['form' => ['csrf' => csrfZ($xg['body']), 'punkt_x' => '480', 'punkt_y' => '170',
+    'body_part' => 'foot', 'situation' => 'open']]);
+check('po kliknięciu przekierowanie na #wynik', $klik['status'] === 302 && $klik['location'] === '/xg#wynik', (string) $klik['location']);
+$poKliku = http('GET', '/xg');
+check('kotwica #wynik obejmuje boisko i wynik', str_contains($poKliku['body'], 'id="wynik"'));
+check('wynik jako karta pod boiskiem', str_contains($poKliku['body'], 'class="xg-wynik"'));
+check('nowy punkt wyróżniony na boisku', str_contains($poKliku['body'], 'xg-znacznik--nowy'));
+check('nowy wiersz z pastylką „nowy"', str_contains($poKliku['body'], '>nowy</span>'));
+check('wynik jest PRZED listą strzałów', strpos($poKliku['body'], 'class="xg-wynik"') < strpos($poKliku['body'], 'class="tbl"'));
 
 // ===========================================================================
 echo "\n== ?powrot= — wyłącznie ścieżka wewnętrzna ==\n";

@@ -71,8 +71,8 @@ def test_szablon_przypina_perspektywe_do_lewego_slotu():
     assert "const TENANT=HUT, RIVAL=POG;" in szablon
     assert "USK" not in szablon.replace("`USK=POG`", ""), "stara stała wróciła"
     # KPI: lewa kolumna = tenant (u.*), prawa = to, co z tagów tenanta wynika dla rywala.
-    assert "k('Odbiory',u.odb,them.odb)" in szablon
-    assert "k('1x1 wygrane',u.won,them.won)" in szablon
+    assert "k('Odbiory',u.odb,them.odb," in szablon
+    assert "k('1x1 wygrane',u.won,them.won," in szablon
     # Fakty: „perspektywa …" i „xG → gole …" z nazwą LEWEGO slotu.
     assert "me=A[TENANT],ry=A[RIVAL],short='__TEAM_HOME_SHORT__'" in szablon
     assert "perspektywa __TEAM_HOME_LABEL__ ·" in szablon

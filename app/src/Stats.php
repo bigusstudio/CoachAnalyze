@@ -57,6 +57,22 @@ final class Stats
         return Db::one('SELECT id, label FROM seasons WHERE is_current = 1 ORDER BY id DESC LIMIT 1');
     }
 
+    /*
+     * NAJNOWSZY RAPORT MECZU I KOLEJNOŚĆ PULPITU (golden layout W1).
+     *
+     * Pulpit sortuje po DACIE MECZU, a przy jej braku po dacie najnowszego
+     * raportu — mecz wgrany dziś bez daty lądował dotąd na końcu listy i nie
+     * było widać, który raport jest najnowszy. Podzapytanie jest powtórzone
+     * w ORDER BY zamiast aliasu: MySQL nie gwarantuje aliasu wewnątrz wyrażenia.
+     * Kolejność „najnowszego" raportu taka sama jak w `Reports::search`.
+     */
+    private const SQL_RAPORT_ID = 'SELECT r.id FROM reports r WHERE r.match_id = m.id
+                                    ORDER BY r.generated_at DESC, r.id DESC LIMIT 1';
+    private const SQL_RAPORT_AT = 'SELECT MAX(r.generated_at) FROM reports r WHERE r.match_id = m.id';
+    private const SQL_KOLEJNOSC_PULPITU =
+        '(COALESCE(m.played_at, (SELECT MAX(r.generated_at) FROM reports r WHERE r.match_id = m.id)) IS NULL),
+         COALESCE(m.played_at, (SELECT MAX(r.generated_at) FROM reports r WHERE r.match_id = m.id)) DESC, m.id DESC';
+
     /**
      * Ostatnie mecze do tabeli na pulpicie.
      *
@@ -136,6 +152,8 @@ final class Stats
     {
         return Db::one(
             "SELECT m.id, m.played_at, m.round, m.competition, m.status,
+                    (" . self::SQL_RAPORT_ID . ") AS report_id,
+                    (" . self::SQL_RAPORT_AT . ") AS report_at,
                     m.club_home_id, m.club_away_id,
                     h.name AS home_name, h.crest_path AS home_crest,
                     a.name AS away_name, a.crest_path AS away_crest,
@@ -145,7 +163,7 @@ final class Stats
                LEFT JOIN clubs a ON a.id = m.club_away_id
                LEFT JOIN seasons s ON s.id = m.season_id
               WHERE m.status = 'done'
-              ORDER BY (m.played_at IS NULL), m.played_at DESC, m.id DESC
+              ORDER BY " . self::SQL_KOLEJNOSC_PULPITU . "
               LIMIT 1"
         );
     }
@@ -223,6 +241,7 @@ final class Stats
         $parametry = [
             'tag_us'   => self::TAG_STRZAL,
             'tag_them' => self::TAG_STRZAL,
+            'tag_all'  => self::TAG_STRZAL,
             'limit'    => max(1, min(200, $limit)),
         ];
         if ($seasonId !== null) {
@@ -232,12 +251,17 @@ final class Stats
         return Db::all(
             "SELECT m.id, m.played_at, m.round, m.status,
                     h.name AS home_name, a.name AS away_name,
+                    (" . self::SQL_RAPORT_ID . ") AS report_id,
+                    (" . self::SQL_RAPORT_AT . ") AS report_at,
                     SUM(CASE WHEN e.team_side = 'us'   THEN e.is_goal ELSE 0 END) AS goals_us,
                     SUM(CASE WHEN e.team_side = 'them' THEN e.is_goal ELSE 0 END) AS goals_them,
                     SUM(CASE WHEN e.team_side = 'us'   AND e.xg IS NOT NULL THEN e.xg ELSE 0 END) AS xg_us,
                     SUM(CASE WHEN e.team_side = 'them' AND e.xg IS NOT NULL THEN e.xg ELSE 0 END) AS xg_them,
                     SUM(CASE WHEN e.team_side = 'us'   AND e.tag_name = :tag_us THEN 1 ELSE 0 END) AS shots_us,
                     SUM(CASE WHEN e.team_side = 'them' AND e.tag_name = :tag_them THEN 1 ELSE 0 END) AS shots_them,
+                    -- Strzały meczu bez względu na stronę (golden layout W1): mecz ze
+                    -- zdarzeniami, ale BEZ strzałów, pokazuje kreskę zamiast 0:0.
+                    SUM(CASE WHEN e.tag_name = :tag_all THEN 1 ELSE 0 END) AS shots_all,
                     COUNT(e.id) AS events
                FROM matches m
                LEFT JOIN clubs h  ON h.id = m.club_home_id
@@ -245,7 +269,7 @@ final class Stats
                LEFT JOIN events e ON e.match_id = m.id
               {$warunek}
               GROUP BY m.id, m.played_at, m.round, m.status, h.name, a.name
-              ORDER BY (m.played_at IS NULL), m.played_at DESC, m.id DESC
+              ORDER BY " . self::SQL_KOLEJNOSC_PULPITU . "
               LIMIT :limit",
             $parametry
         );
@@ -278,7 +302,7 @@ final class Stats
     {
         $warunek = $seasonId !== null ? 'AND m.season_id = :sid' : '';
         $parametry = ['club' => $clubId, 'tag_us' => self::TAG_STRZAL,
-                      'tag_them' => self::TAG_STRZAL];
+                      'tag_them' => self::TAG_STRZAL, 'tag_all' => self::TAG_STRZAL];
         if ($seasonId !== null) {
             $parametry['sid'] = $seasonId;
         }
@@ -293,6 +317,9 @@ final class Stats
                     SUM(CASE WHEN e.team_side = 'them' AND e.xg IS NOT NULL THEN e.xg ELSE 0 END) AS xg_them,
                     SUM(CASE WHEN e.team_side = 'us'   AND e.tag_name = :tag_us THEN 1 ELSE 0 END) AS shots_us,
                     SUM(CASE WHEN e.team_side = 'them' AND e.tag_name = :tag_them THEN 1 ELSE 0 END) AS shots_them,
+                    -- Strzały meczu bez względu na stronę (golden layout W1): mecz ze
+                    -- zdarzeniami, ale BEZ strzałów, pokazuje kreskę zamiast 0:0.
+                    SUM(CASE WHEN e.tag_name = :tag_all THEN 1 ELSE 0 END) AS shots_all,
                     COUNT(e.id) AS events
                FROM matches m
                LEFT JOIN clubs h  ON h.id = m.club_home_id

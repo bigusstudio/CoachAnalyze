@@ -164,6 +164,25 @@ $liczby = [
 
 <section class="panel">
   <h2 class="h2"><?= View::e(View::t('coverage.sections')) ?></h2>
+  <?php
+    /* PODPIS ŹRÓDŁA (golden layout W1): z czego policzono dostępność sekcji.
+       Pokrycie przeliczane jest przy każdym renderze i przeliczeniu raportu,
+       więc podpis mówi, z którą wersją szablonu i silnika zgadza się ten ekran. */
+    $zr = $zrodloPokrycia ?? null;
+  ?>
+  <p class="hint">
+    <?php if ($zr === null): ?>
+      <?= View::e(View::t('coverage.source.unknown')) ?>
+    <?php else: ?>
+      <?= View::e(implode(' · ', array_filter([
+          $zr['template_version'] !== null
+              ? View::t('coverage.source.tpl', (int) $zr['template_version'])
+              : View::t('coverage.source.no_tpl'),
+          ($zr['engine_version'] ?? null) !== null ? View::t('coverage.source.engine', (string) $zr['engine_version']) : null,
+          substr((string) ($zr['at'] ?? ''), 0, 16),
+      ]))) ?>
+    <?php endif; ?>
+  </p>
 
   <?php if ($sectionsUnavailable === []): ?>
     <p class="empty"><?= View::e(View::t('coverage.all_sections')) ?></p>

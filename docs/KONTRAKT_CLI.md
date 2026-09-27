@@ -602,7 +602,7 @@ ani jako `BRAKUJACY_ZNACZNIK` (`render.ZNACZNIKI_SERWOWANIA`).
 
 | Znacznik | Generacja | Wypełnia | Wartość |
 |---|---|---|---|
-| `__POWROT_URL__` | v21 | `serveReport()` / `servePublicReport()` przez `Powrot::wypelnijRaport` | `/mecze/{id}` (panel) albo `https://coachanalyze.pl` (link publiczny) |
+| `__POWROT_URL__` | v21 | `serveReport()` / `servePublicReport()` przez `Powrot::wypelnijRaport` | `/pulpit` (panel, od W1) albo `https://coachanalyze.pl` (link publiczny) |
 
 Wystąpienie jest dokładnie jedno (atrybut `href` klipsa „← CA"). Raport otwarty
 z pliku, poza panelem, ma klips z niewypełnionym adresem — to świadoma cena

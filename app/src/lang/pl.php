@@ -1339,4 +1339,10 @@ return [
     'card.zadania.empty'    => 'Brak zadań dla tego meczu.',
     'card.zadania.history'  => 'Historia meczu',
     'card.readonly'         => 'Tylko do odczytu — edycję wykonuje analityk klubu.',
+    'dash.report.at'        => 'raport z %s',
+    'dash.report.new'       => 'nowy',
+    'coverage.source.tpl'     => 'szablon v%d',
+    'coverage.source.no_tpl'  => 'inspekcja bez szablonu',
+    'coverage.source.engine'  => 'silnik %s',
+    'coverage.source.unknown' => 'Źródło pokrycia nieznane — zapis sprzed podpisu wersji; przelicz raport, żeby odświeżyć.',
 ];

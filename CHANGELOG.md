@@ -3,6 +3,66 @@
 Format: [wersja silnika] — data — opis.
 Każda zmiana, która modyfikuje wyjście silnika, MUSI mieć tu wpis wraz z powodem.
 
+## [0.16.5] — 2026-09-27 · Golden layout W1: dane, które kłamią + odbiór W0
+
+### Silnik 0.16.5 (szablon v21) — wyświetlanie zmienione, liczby silnika nie
+- **Kreska to nie zero.** Tag, którego w meczu nie ma WCALE, daje „–" w nagłówku,
+  KPI Przeglądu, faktach i bilansie (np. raport z templatem, który zgubił STRZAŁ,
+  pokazuje „– : –", a nie 0:0). Zero we fragmencie przy tagu obecnym w meczu
+  zostaje zerem.
+- **Gole bez strzału nie lecą na tenanta.** Bez ani jednego strzału w meczu gol
+  nie dostaje drużyny (raport 28 pokazywał GOLE 3:0).
+- **Pressing: każda akcja w jednym kubełku**, akcja bez etykiety wyniku → INNE;
+  suma kafelków = liczba akcji (raport odbioru: NISKUTECZNY 2, pod spodem 1).
+- Funkcje liczące wydzielone do bloku `/*<liczby-v21>*/`; nowy
+  `engine/tests/test_liczby_v21.py` uruchamia DOKŁADNIE ten kod w Node.
+- Klips „← CA": komentarz zgodny z decyzją — panel → `/pulpit`.
+- **v17 i test złoty nietknięte.**
+
+### Aplikacja
+- **(a) Klips „← CA" prowadzi na `/pulpit`** (decyzja z odbioru W0); bez sesji
+  bez zmian (coachanalyze.pl).
+- **(b) Pulpit:** „Raport" i pastylka „Raport" otwierają `/raport/N`; do karty
+  meczu prowadzi nazwa meczu. „Slajdy" → raport z `#slajdy` (było: kalendarz).
+- **(c) Pulpit:** „Ostatni mecz" i tabela sortowane po dacie meczu, a bez niej po
+  dacie najnowszego raportu; przy meczu „raport z DD.MM HH:MM" i pastylka „nowy"
+  dla raportu z ostatnich 24 h. Przycisk prowadzi do NAJNOWSZEGO raportu meczu.
+- **(d) `regeneruj_raporty.php --match N` i `--nieaktualne`** (raporty z inną
+  `engine_version` niż wdrożona — wersja rośnie przy każdej zmianie szablonu
+  i silnika). **`deploy.sh`** po „==> Gotowe" wypisuje „Zmienił się
+  szablon/silnik: uruchom regeneruj_raporty.php --nieaktualne", gdy wdrażany
+  zakres dotknął `engine/coachanalyze/templates/` albo `engine/coachanalyze/*.py`.
+- **(e) Kalkulator xG:** po kliknięciu przekierowanie na `#wynik`; kotwica obejmuje
+  boisko i wynik, boisko ma najwyżej 60vh (ograniczona SZEROKOŚĆ kontenera —
+  skala i współrzędne kliknięcia bez zmian); wynik jako karta pod boiskiem, nowy
+  punkt z obwódką i pulsowaniem 2 s (bez ruchu przy `prefers-reduced-motion`),
+  nowy wiersz na górze z pastylką „nowy". Model xG bez zmian.
+- **(f) Stopka: wersja silnika z artefaktu wdrożenia.** Przyczyny „0.16.1 na
+  0.16.4" były dwie: wersja w SESJI (przeżywała wdrożenia) i cron nadpisujący
+  artefakt wersją interpretera. `deploy.sh` zapisuje `STORAGE_PATH/.engine_version`
+  z `engine/coachanalyze/__init__.py`; `Engine::version()` nie używa sesji;
+  cron tylko loguje rozjazd „zainstalowany ≠ wdrożony".
+- **Panel: „–" zamiast 0** w pasku sezonu, tabeli „Ostatnie mecze", liście
+  kolejek i sumie sezonu, gdy mecz ma zdarzenia, ale ani jednego strzału
+  (`shots_all`); taki mecz nie wchodzi do sum goli, xG i strzałów.
+- **Pokrycie po każdej regeneracji z podpisem** „szablon vN · silnik X · data"
+  (`sections_json.zrodlo`), i nie nazywa „niedostępną" sekcji, którą najnowszy
+  raport meczu ma (pokrycie z samej inspekcji po ponownym wgraniu).
+
+### Testy
+- nowy `app/tests/integracja/test_golden_w1.php` (21): etykiety bez Title Case
+  (także „Gol"), kolejność pulpitu, `--match`/`--nieaktualne`, pokrycie vs raport,
+  wersja bez sesji,
+- `test_golden_w0_http.php` +13: klips → pulpit, przyciski pulpitu, „nowy",
+  kalkulator xG,
+- kontrola negatywna w `test_naprawa_pogon.php`: templat v6 daje teraz „–",
+  nie 0:0.
+
+**Nie sprawdzone lokalnie:** składnia `deploy.sh` (`bash -n` jest na liście
+zakazanych poleceń w tej sesji) — zmiany są trzema blokami bez wpływu na kontrole.
+
+Zrzuty: `docs/zrzuty/W1/`.
+
 ## [0.16.4] — 2026-09-27 · Golden layout W0: nawigacja i karta meczu
 
 **POWÓD: z raportu nie dało się wrócić, a „Wróć" prowadził do listy klubów.**

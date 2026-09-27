@@ -35,8 +35,8 @@
 #theme-toggle:hover{color:var(--ink)}
 /* v21: druk. Dwa tryby: PDF (A4 poziomo, ciągły) i slajdy 16:9 (każda sekcja = jeden slajd) */
 /* v26 (golden layout W0): KLIPS „← CA" — droga z raportu z powrotem do panelu.
-   Cel wstawia PHP przy wysyłce (znacznik serwowania w atrybucie href): karta
-   meczu dla zalogowanego, coachanalyze.pl pod linkiem publicznym. Strzałka tylko
+   Cel wstawia PHP przy wysyłce (znacznik serwowania w atrybucie href): pulpit
+   dla zalogowanego, coachanalyze.pl pod linkiem publicznym. Strzałka tylko
    przy celu wewnętrznym — odbiorca linku publicznego nie ma dokąd „wracać". */
 .ca-klips{position:fixed;top:10px;left:10px;z-index:60;display:inline-flex;align-items:center;gap:4px;
   padding:4px 9px;border:1px solid var(--line);border-radius:999px;background:var(--nav-bg);color:var(--ink2);
@@ -429,9 +429,61 @@ const ALIAS={}; Object.entries(VARS).forEach(([k,v])=>(v.aliases||[]).forEach(a=
 const disp=k=>(VARS[k]&&VARS[k].display)||k;
 DATA.events.forEach(e=>{ if(ALIAS[e.tag]) e.tag=ALIAS[e.tag]; });
 Object.keys(PAL.tags).forEach(k=>{ if(ALIAS[k]&&!PAL.tags[ALIAS[k]]) PAL.tags[ALIAS[k]]=PAL.tags[k]; });
-/* gol: team_uuid gola w eksporcie bywa błędny, atrybucja po najbliższym strzale */
-(()=>{const sh=DATA.events.filter(e=>e.tag==='STRZAŁ');DATA.events.filter(e=>e.tag==='Gol').forEach(g=>{if(!sh.length)return;const s=sh.reduce((a,b)=>Math.abs(b.b-g.b)<Math.abs(a.b-g.b)?b:a);g.team=s.team;});})();
+/*<liczby-v21>*/
+/* v27 (golden layout W1): CZYSTE FUNKCJE LICZĄCE — bez DOM-u i bez stałych
+   z danych. Test silnika (engine/tests/test_liczby_v21.py) wycina ten blok
+   i uruchamia go w Node na syntetycznych zdarzeniach, bo liczb raportu v21 nie
+   da się inaczej sprawdzić poza przeglądarką.
+
+   KRESKA TO NIE ZERO. Tag, którego w meczu nie ma WCALE, daje „–", a nie 0:
+   raport 28 (templat Pogoni v6 przemianował STRZAŁ na „Strzał") pokazał
+   STRZAŁY 0:0 i xG 0,00 — liczby, które wyglądały jak mecz bez strzałów.
+   Zero we FRAGMENCIE przy tagu obecnym w meczu jest prawdziwe i zostaje zerem. */
+
+/* gol: team_uuid gola w eksporcie bywa błędny, atrybucja po najbliższym strzale.
+   BEZ ANI JEDNEGO STRZAŁU gol nie dostaje drużyny: dotąd zostawał przy drużynie
+   z eksportu i raport 28 pokazał GOLE 3:0 — wszystkie „na tenanta". */
+function atrybujGole(ev){
+  const sh=ev.filter(e=>e.tag==='STRZAŁ');
+  ev.filter(e=>e.tag==='Gol').forEach(g=>{
+    if(!sh.length){ g.team=null; return; }
+    const s=sh.reduce((a,b)=>Math.abs(b.b-g.b)<Math.abs(a.b-g.b)?b:a); g.team=s.team;
+  });
+  return ev;
+}
+/* Które wielkości mecz W OGÓLE niesie — po tagach całego meczu, nie fragmentu. */
+function dostepnosc(ev){
+  const jest=t=>ev.some(e=>e.tag===t);
+  return {strzaly:jest('STRZAŁ'), sbz:jest('ZDOBYCIE SBZ'), p3:jest('III STREFA'),
+          odb:jest('ODBIÓR')||jest('STRATA'), duele:jest('1x1 OFF')||jest('1x1 DEF.'),
+          pressing:jest('SKUTECZNY')||jest('NISKUTECZNY')};
+}
+/* Liczniki Przeglądu. `T` = tenant (lewy slot), `R` = rywal. Tagi bez drużyny
+   liczą się tenantowi, rywal dostaje to, co z nich wynika. */
+function liczPrzeglad(Ev,T,R){
+  const ma=(e,l)=>e.labels.includes(l);
+  const O={};for(const t of [T,R]){const ss=Ev.filter(e=>e.tag==='STRZAŁ'&&e.team===t);const sbz=Ev.filter(e=>e.tag==='ZDOBYCIE SBZ'&&e.team===t);const p3=Ev.filter(e=>e.tag==='III STREFA'&&e.team===t);
+    O[t]={gole:Ev.filter(e=>e.tag==='Gol'&&e.team===t).length,xg:ss.reduce((a,e)=>a+(e.xg||0),0),strzaly:ss.length,celne:ss.filter(e=>ma(e,'CELNY')).length,sbz:sbz.length,sbz_shot:sbz.filter(e=>ma(e,'STRZAŁ')).length,p3:p3.length,p3ok:p3.filter(e=>ma(e,'UDANA')).length};}
+  const w=a=>a.filter(e=>ma(e,'WYGRANY')).length,off=Ev.filter(e=>e.tag==='1x1 OFF'),de=Ev.filter(e=>e.tag==='1x1 DEF.'),str=Ev.filter(e=>e.tag==='STRATA'),odb=Ev.filter(e=>e.tag==='ODBIÓR');
+  const pok=Ev.filter(e=>e.tag==='SKUTECZNY').length,pno=Ev.filter(e=>e.tag==='NISKUTECZNY').length;
+  O.us={odb:odb.length,str:str.length,str_re:str.filter(e=>ma(e,'REAKCJA')).length,off:[w(off),off.length],def:[w(de),de.length],pr:[pok,pno]};
+  O.them={odb:str.length,won:(de.length-w(de))+(off.length-w(off))};O.us.won=w(off)+w(de);return O;}
+/* Pressing: KAŻDA akcja w DOKŁADNIE jednym kubełku, żeby suma kafelków była
+   liczbą akcji. Kolejność pierwszeństwa od najdalej doprowadzonego wyjścia;
+   akcja bez żadnej z tych etykiet (albo z etykietą INNE) idzie do INNE —
+   dotąd znikała: raport odbioru miał NISKUTECZNY 2, a pod spodem 1 akcję. */
+const PRESS_KOLEJNOSC=['STRZAŁ Z SBZ','ZDOBYCIE SBZ','POSIADANIE','STRATA'];
+const PRESS_WIERSZE=['ZDOBYCIE SBZ','STRZAŁ Z SBZ','POSIADANIE','INNE','STRATA'];
+function kubelkiPressingu(evs){
+  const n={}; PRESS_WIERSZE.forEach(k=>n[k]=0);
+  evs.forEach(e=>{const k=PRESS_KOLEJNOSC.find(k=>e.labels.includes(k)); n[k||'INNE']++;});
+  return PRESS_WIERSZE.map(k=>[k,n[k]]);
+}
+/*</liczby-v21>*/
+atrybujGole(DATA.events);
 const E = DATA.events, HS = DATA.half_split;
+const DOST = dostepnosc(E);
+const KRESKA = '–';
 const HUT='__TEAM_HOME__', POG='__TEAM_AWAY__';
 /* PERSPEKTYWA KLUBU-TENANTA. Od sesji 4a lewy slot (HOME/HUT) to klub, dla którego
    powstaje raport (render.kolejnosc_slotow). Tagi bez drużyny (odbiór, strata, 1x1,
@@ -493,38 +545,39 @@ function renderPanel(i, fid){
   if(fid!==undefined) PQ[i]=fragToggle(PQ[i], fid);
   const qs=PQ[i];
   const xgS=t=>shots.filter(e=>e.team===t&&inSet(qs,e)).reduce((a,e)=>a+(e.xg||0),0);
+  /* piąta kolumna: czy mecz W OGÓLE niesie ten tag — bez niego „–", nie 0 */
   const rows=[
-    ['STRZAŁY', cntT(qs,'STRZAŁ',HUT), cntT(qs,'STRZAŁ',POG), 0],
-    ['xG', xgS(HUT), xgS(POG), 2],
-    ['ZDOBYCIE SBZ', cntT(qs,'ZDOBYCIE SBZ',HUT), cntT(qs,'ZDOBYCIE SBZ',POG), 0],
-    ['ZDOBYCIE III STREFY', cntT(qs,'III STREFA',HUT), cntT(qs,'III STREFA',POG), 0],
+    ['STRZAŁY', cntT(qs,'STRZAŁ',HUT), cntT(qs,'STRZAŁ',POG), 0, DOST.strzaly],
+    ['xG', xgS(HUT), xgS(POG), 2, DOST.strzaly],
+    ['ZDOBYCIE SBZ', cntT(qs,'ZDOBYCIE SBZ',HUT), cntT(qs,'ZDOBYCIE SBZ',POG), 0, DOST.sbz],
+    ['ZDOBYCIE III STREFY', cntT(qs,'III STREFA',HUT), cntT(qs,'III STREFA',POG), 0, DOST.p3],
   ];
   const neut=[
-    ['WYGRANY I KONTAKT', cntN(qs,'PIERWSZY KONTAKT','WYGRANY')],
-    ['1x1 W OFENSYWIE', cntN(qs,'1x1 OFF')],
-    ['1x1 W DEFENSYWIE', cntN(qs,'1x1 DEF.')],
-    ['ODBIÓR', cntN(qs,'ODBIÓR')],
-    ['STRATA', cntN(qs,'STRATA')],
+    ['WYGRANY I KONTAKT', cntN(qs,'PIERWSZY KONTAKT','WYGRANY'), E.some(e=>e.tag==='PIERWSZY KONTAKT')],
+    ['1x1 W OFENSYWIE', cntN(qs,'1x1 OFF'), E.some(e=>e.tag==='1x1 OFF')],
+    ['1x1 W DEFENSYWIE', cntN(qs,'1x1 DEF.'), E.some(e=>e.tag==='1x1 DEF.')],
+    ['ODBIÓR', cntN(qs,'ODBIÓR'), E.some(e=>e.tag==='ODBIÓR')],
+    ['STRATA', cntN(qs,'STRATA'), E.some(e=>e.tag==='STRATA')],
   ];
   const nmx=Math.max(...neut.map(r=>r[1]),1);
   document.getElementById('pbody-'+i).innerHTML=
-    rows.map(([l,a,b,d])=>{
+    rows.map(([l,a,b,d,ok])=>{
       const mx=Math.max(a,b,0.001);
       return `<div class="stat">
-        <div class="v">${fmt(a,d)}</div>
-        <div class="bar l"><i style="width:${a/mx*100}%"></i></div>
+        <div class="v">${ok?fmt(a,d):KRESKA}</div>
+        <div class="bar l"><i style="width:${ok?a/mx*100:0}%"></i></div>
         <div class="lbl">${l}</div>
-        <div class="bar r"><i style="width:${b/mx*100}%"></i></div>
-        <div class="v r">${fmt(b,d)}</div>
+        <div class="bar r"><i style="width:${ok?b/mx*100:0}%"></i></div>
+        <div class="v r">${ok?fmt(b,d):KRESKA}</div>
       </div>`;
     }).join('')
     +`<div class="panel-note">Bez przypisania drużyny</div>`
-    +neut.map(([l,n])=>`<div class="stat neutral">
+    +neut.map(([l,n,ok])=>`<div class="stat neutral">
         <div class="v" style="color:var(--ink3)">—</div>
-        <div class="bar l"><i style="width:${n/nmx*100}%"></i></div>
+        <div class="bar l"><i style="width:${ok?n/nmx*100:0}%"></i></div>
         <div class="lbl">${l}</div>
-        <div class="bar r"><i style="width:${n/nmx*100}%"></i></div>
-        <div class="v r">${n}</div>
+        <div class="bar r"><i style="width:${ok?n/nmx*100:0}%"></i></div>
+        <div class="v r">${ok?n:KRESKA}</div>
       </div>`).join('');
   syncFragBtns(`.fbtn[data-p="${i}"]`, qs);
 }
@@ -703,13 +756,8 @@ function budujSzkieletMap(){
 }
 
 /* v20: liczniki bazowe dla nagłówka i przeglądu */
-function ovStats(Ev){
-  const R={};for(const t of [HUT,POG]){const ss=Ev.filter(e=>e.tag==='STRZAŁ'&&e.team===t);const sbz=Ev.filter(e=>e.tag==='ZDOBYCIE SBZ'&&e.team===t);const p3=Ev.filter(e=>e.tag==='III STREFA'&&e.team===t);
-    R[t]={gole:Ev.filter(e=>e.tag==='Gol'&&e.team===t).length,xg:ss.reduce((a,e)=>a+(e.xg||0),0),strzaly:ss.length,celne:ss.filter(e=>has(e,'CELNY')).length,sbz:sbz.length,sbz_shot:sbz.filter(e=>has(e,'STRZAŁ')).length,p3:p3.length,p3ok:p3.filter(e=>has(e,'UDANA')).length};}
-  const w=a=>a.filter(e=>has(e,'WYGRANY')).length,off=Ev.filter(e=>e.tag==='1x1 OFF'),de=Ev.filter(e=>e.tag==='1x1 DEF.'),str=Ev.filter(e=>e.tag==='STRATA'),odb=Ev.filter(e=>e.tag==='ODBIÓR');
-  const pok=Ev.filter(e=>e.tag==='SKUTECZNY').length,pno=Ev.filter(e=>e.tag==='NISKUTECZNY').length;
-  R.us={odb:odb.length,str:str.length,str_re:str.filter(e=>has(e,'REAKCJA')).length,off:[w(off),off.length],def:[w(de),de.length],pr:[pok,pno]};
-  R.them={odb:str.length,won:(de.length-w(de))+(off.length-w(off))};R.us.won=w(off)+w(de);return R;}
+/* Liczniki bazowe nagłówka i przeglądu — blok `liczby-v21` wyżej. */
+function ovStats(Ev){ return liczPrzeglad(Ev,TENANT,RIVAL); }
 const goalOf=e=>e.tag==='STRZAŁ'&&E.some(g=>g.tag==='Gol'&&g.team===e.team&&Math.abs(g.b-e.b)<4);
 /* v21: meta meczu składana z NIEPUSTYCH części. Sezon, kolejka i data przychodzą
    z render.py i bywają puste — kolejki nie ma dziś skąd wziąć (brak kolumny w bazie).
@@ -727,11 +775,11 @@ function renderHeader2(){
   sbz.forEach(e=>{const y=e.team===HUT?30:52;st+=`<rect ${hdrTip(e)} x="${X(e.b)-1.5}" y="${y-5}" width="3" height="10" fill="${col(e.team)}" fill-opacity=".45"/>`;});
   shots.forEach(e=>{const y=e.team===HUT?30:52,r=3+Math.sqrt(e.xg||0.01)*12;if(goalOf(e))st+=`<circle cx="${X(e.b)}" cy="${y}" r="${r+6}" fill="none" stroke="${col(e.team)}" stroke-width="2.5" stroke-dasharray="3 3"/>`;st+=glyph(kindOf(outcomeOf(e)),X(e.b),y,r,col(e.team),shotTip(e));});
   document.getElementById('hdr2').innerHTML=`
-   <div class="club"><span class="crest hutc"><img src="__LOGO_HOME__" alt=""></span><div><div class="kicker">__TEAM_HOME_SHORT__</div><h1 class="h">__TEAM_HOME_LABEL__</h1><div class="sub">${h.strzaly} strzałów · ${h.sbz} wejść w SBZ</div></div></div>
-   <div class="score"><div class="kicker">${metaLinia('Raport pomeczowy',metaCzesc('sezon','__SEZON__'),metaCzesc('kolejka','__KOLEJKA__'),metaCzesc('','__DATA_MECZU__'))}</div><div class="n"><span class="h">${h.gole}</span><small>:</small><span class="p">${p.gole}</span></div>
-     <div class="xg">xG <b class="h">${fmt(h.xg,2)}</b> · <b class="p">${fmt(p.xg,2)}</b></div>
-     <div class="race"><span class="h">${fmt(h.xg,2)}</span><div class="t"><i class="a" style="width:${h.xg/tot*100}%"></i><i class="b" style="width:${p.xg/tot*100}%"></i></div><span class="p" style="text-align:right">${fmt(p.xg,2)}</span></div></div>
-   <div class="club r"><div><div class="kicker">__TEAM_AWAY_SHORT__</div><h1 class="p">__TEAM_AWAY_LABEL__</h1><div class="sub">${p.strzaly} strzałów · ${p.sbz} wejść w SBZ</div></div><span class="crest pogc"><img src="__LOGO_AWAY__" alt=""></span></div>
+   <div class="club"><span class="crest hutc"><img src="__LOGO_HOME__" alt=""></span><div><div class="kicker">__TEAM_HOME_SHORT__</div><h1 class="h">__TEAM_HOME_LABEL__</h1><div class="sub">${DOST.strzaly?h.strzaly:KRESKA} strzałów · ${DOST.sbz?h.sbz:KRESKA} wejść w SBZ</div></div></div>
+   <div class="score"><div class="kicker">${metaLinia('Raport pomeczowy',metaCzesc('sezon','__SEZON__'),metaCzesc('kolejka','__KOLEJKA__'),metaCzesc('','__DATA_MECZU__'))}</div><div class="n"><span class="h">${DOST.strzaly?h.gole:KRESKA}</span><small>:</small><span class="p">${DOST.strzaly?p.gole:KRESKA}</span></div>
+     <div class="xg">xG <b class="h">${DOST.strzaly?fmt(h.xg,2):KRESKA}</b> · <b class="p">${DOST.strzaly?fmt(p.xg,2):KRESKA}</b></div>
+     <div class="race"><span class="h">${DOST.strzaly?fmt(h.xg,2):KRESKA}</span><div class="t"><i class="a" style="width:${DOST.strzaly?h.xg/tot*100:0}%"></i><i class="b" style="width:${DOST.strzaly?p.xg/tot*100:0}%"></i></div><span class="p" style="text-align:right">${DOST.strzaly?fmt(p.xg,2):KRESKA}</span></div></div>
+   <div class="club r"><div><div class="kicker">__TEAM_AWAY_SHORT__</div><h1 class="p">__TEAM_AWAY_LABEL__</h1><div class="sub">${DOST.strzaly?p.strzaly:KRESKA} strzałów · ${DOST.sbz?p.sbz:KRESKA} wejść w SBZ</div></div><span class="crest pogc"><img src="__LOGO_AWAY__" alt=""></span></div>
    <div class="strip">${st}</svg></div>`;
 }
 function mcLabel(){const q=MC.qs,all=ALLQ.every(x=>q.has(x));if(all)return 'CAŁY MECZ';if(['q1','q2','q3'].every(x=>q.has(x))&&!['q4','q5','q6'].some(x=>q.has(x)))return 'I POŁOWA';if(['q4','q5','q6'].every(x=>q.has(x))&&!['q1','q2','q3'].some(x=>q.has(x)))return 'II POŁOWA';return ALLQ.filter(x=>q.has(x)).map(x=>QLBL[x]).join(' · ');}
@@ -739,13 +787,13 @@ function renderOverview(){
   if(!document.getElementById('ov-kpi')) return;
   const Ev=E.filter(e=>inSet(MC.qs,e)&&(e.team?MC.teams.has(e.team):MC.teams.has(TENANT)));
   const A=ovStats(Ev),h=A[HUT],p=A[POG],u=A.us,them=A.them,pc=(a,b)=>b?Math.round(100*a/b)+'%':'–';
-  const k=(l,a,b,f=x=>x)=>`<div class="kpi"><div class="l">${l}</div><div class="v"><span class="h">${f(a)}</span><span class="sep">:</span><span class="p">${f(b)}</span></div></div>`;
-  document.getElementById('ov-kpi').innerHTML=`<h3>Kluczowe liczby<span class="hint">${mcLabel()} · __TEAM_HOME_SHORT__ : __TEAM_AWAY_SHORT__</span></h3><div class="kpis">${k('Gole',h.gole,p.gole)}${k('xG',h.xg,p.xg,x=>fmt(x,2))}${k('Strzały',h.strzaly,p.strzaly)}${k('Celne',h.celne,p.celne)}${k('Zdobycie SBZ',h.sbz,p.sbz)}${k('Odbiory',u.odb,them.odb)}${k('1x1 wygrane',u.won,them.won)}${k('III strefa (udane)',h.p3ok,p.p3ok)}</div>`;
+  const k=(l,a,b,f=x=>x,ok=true)=>`<div class="kpi"><div class="l">${l}</div><div class="v"><span class="h">${ok?f(a):KRESKA}</span><span class="sep">:</span><span class="p">${ok?f(b):KRESKA}</span></div></div>`;
+  document.getElementById('ov-kpi').innerHTML=`<h3>Kluczowe liczby<span class="hint">${mcLabel()} · __TEAM_HOME_SHORT__ : __TEAM_AWAY_SHORT__</span></h3><div class="kpis">${k('Gole',h.gole,p.gole,undefined,DOST.strzaly)}${k('xG',h.xg,p.xg,x=>fmt(x,2),DOST.strzaly)}${k('Strzały',h.strzaly,p.strzaly,undefined,DOST.strzaly)}${k('Celne',h.celne,p.celne,undefined,DOST.strzaly)}${k('Zdobycie SBZ',h.sbz,p.sbz,undefined,DOST.sbz)}${k('Odbiory',u.odb,them.odb,undefined,DOST.odb)}${k('1x1 wygrane',u.won,them.won,undefined,DOST.duele)}${k('III strefa (udane)',h.p3ok,p.p3ok,undefined,DOST.p3)}</div>`;
   const f=[],push=(c,b,t)=>f.push({c,b,t}),[pok,pno]=u.pr,pn=pok+pno,me=A[TENANT],ry=A[RIVAL],short='__TEAM_HOME_SHORT__';
   if(pn)push(pok/pn>=PROGI.pressing/100?'ok':'bad',pc(pok,pn),`pressingów skutecznych (${pok} z ${pn})`);
   if(me.sbz)push(me.sbz_shot/me.sbz>=PROGI.sbz_strzal/100?'ok':'bad',`${me.sbz_shot}/${me.sbz}`,`wejść w SBZ zakończonych strzałem (${pc(me.sbz_shot,me.sbz)}); rywal ${ry.sbz_shot}/${ry.sbz}`);
   if(u.str)push(u.str_re/u.str>=PROGI.reakcja/100?'ok':'bad',pc(u.str_re,u.str),`strat z reakcją (${u.str_re} z ${u.str})`);
-  push(me.xg-me.gole>0.5?'bad':'neu',`${fmt(me.xg,2)} → ${me.gole}`,`xG → gole ${short}; rywal ${fmt(ry.xg,2)} → ${ry.gole}`);
+  if(DOST.strzaly)push(me.xg-me.gole>0.5?'bad':'neu',`${fmt(me.xg,2)} → ${me.gole}`,`xG → gole ${short}; rywal ${fmt(ry.xg,2)} → ${ry.gole}`);
   if(u.def[1])push(u.def[0]/u.def[1]>=PROGI.duel_def/100?'ok':'bad',pc(u.def[0],u.def[1]),`1x1 w defensywie wygranych (${u.def[0]}/${u.def[1]})`);
   if(me.p3)push(me.p3ok/me.p3>=PROGI.p3/100?'ok':'bad',`${me.p3ok}/${me.p3}`,`udanych wejść w III strefę (${pc(me.p3ok,me.p3)})`);
   document.getElementById('ov-facts').innerHTML=`<h3>Fakty z fragmentu<span class="hint">perspektywa __TEAM_HOME_LABEL__ · ${mcLabel()}</span></h3><div class="facts">${f.slice(0,6).map(x=>`<div class="fact ${x.c}"><div class="big">${x.b}</div><div class="t">${x.t}</div></div>`).join('')}</div>`;
@@ -975,9 +1023,8 @@ function renderMetricMaps(){
     <text x="65" y="61" text-anchor="middle" fill="var(--ink)" font-size="20" font-weight="600">${ptot}</text>
     <text x="65" y="78" text-anchor="middle" fill="var(--ink3)" font-size="10">akcji</text>
   </svg>`;
-  const PCATS=['ZDOBYCIE SBZ','STRZAŁ Z SBZ','POSIADANIE','INNE','STRATA'];
   const pRows=(evs,cc)=>{
-    const cnt=PCATS.map(k=>[k,evs.filter(e=>has(e,k)).length]).filter(r=>r[1]>0);
+    const cnt=kubelkiPressingu(evs).filter(r=>r[1]>0);
     const mx=Math.max(...cnt.map(r=>r[1]),1);
     return cnt.map(([k,n])=>`<div class="row"><div class="k">${k}</div><div class="b"><i style="width:${n/mx*100}%;background:${cc}"></i></div><div class="v">${n}</div></div>`).join('')||'<div class="n">—</div>';
   };

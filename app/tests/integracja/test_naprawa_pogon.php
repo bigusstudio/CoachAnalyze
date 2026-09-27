@@ -261,8 +261,10 @@ if (!is_file($python)) {
     $v6cfg = $v5;
     $v6cfg['variables'] = $v6;
     $zly = przeglad($v6cfg, 'v6');
-    check('KONTROLA NEGATYWNA: templat v6 daje strzały 0 : 0 (tak jak raport 28)',
-        ($zly['strzały'] ?? null) === ['0', '0'], json_encode($zly['strzały'] ?? $zly));
+    // Od W1 raport NIE KŁAMIE zerem: przy braku strzałów w meczu jest „–",
+    // a nie 0:0 z raportu 28. Test nadal widzi regresję — liczby zniknęły.
+    check('KONTROLA NEGATYWNA: templat v6 gubi strzały (od W1 „–", nie 0:0 z raportu 28)',
+        ($zly['strzały'] ?? null) === ['–', '–'], json_encode($zly['strzały'] ?? $zly));
 }
 
 // ===========================================================================
