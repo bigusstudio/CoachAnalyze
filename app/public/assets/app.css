@@ -1546,3 +1546,41 @@ form.chmurka__zamknij button:hover { color: var(--tekst); }
 .ctx__linia b { color: var(--szyna-tytul); font: 700 15px 'Barlow Condensed', sans-serif; }
 div.ctx { cursor: default; }
 .tbl__suma th, .tbl__suma td { border-top: 2px solid var(--obramowanie); font-weight: 700; }
+
+/* ── Golden layout W3: ścieżka importu „Wgraj → Postęp → Raport" ─────────── */
+.kroki { display: flex; gap: 8px; list-style: none; margin: 0 0 16px; padding: 0; font-size: 13px; }
+.kroki__k { display: flex; align-items: center; gap: 6px; color: var(--tekst-slabszy); }
+.kroki__k + .kroki__k::before { content: "·"; margin-right: 2px; color: var(--tekst-slabszy); }
+.kroki__k span { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%;
+  border: 1px solid var(--obramowanie); font-weight: 700; }
+.kroki__k--on { color: var(--tekst); font-weight: 600; }
+.kroki__k--on span { background: var(--akcent); color: var(--akcent-tekst); border-color: var(--akcent); }
+.kroki__k--done span { background: var(--ok-mikkie); color: var(--ok); border-color: var(--ok); }
+
+.upuszczenie { display: block; margin: 0 0 12px; padding: 22px 18px; border: 2px dashed var(--obramowanie);
+  border-radius: var(--promien); background: var(--tlo-drugi); cursor: pointer; }
+.upuszczenie:hover, .upuszczenie:focus-within { border-color: var(--akcent); }
+.upuszczenie--drugie { padding: 14px 18px; }
+.upuszczenie__tytul { display: block; margin-bottom: 8px; font-weight: 700; }
+.upuszczenie input[type="file"] { display: block; margin-bottom: 8px; max-width: 100%; }
+.upuszczenie--zle { border-color: var(--blad); background: var(--blad-mikkie); }
+
+.notice--warn { background: var(--ostrzez-mikkie); color: var(--tekst); }
+
+.postep { list-style: none; margin: 0 0 16px; padding: 0; display: flex; gap: 0; }
+.postep__k { flex: 1; padding: 10px 12px; border-top: 4px solid var(--obramowanie); color: var(--tekst-slabszy);
+  font-size: 13px; font-weight: 600; }
+.postep__k--done { border-top-color: var(--ok); color: var(--tekst); }
+.postep__k--on { border-top-color: var(--akcent); color: var(--tekst); }
+
+/* ── Golden layout W3: Ustawienia klubu ───────────────────────────────────── */
+.zakladki { display: flex; gap: 4px; margin: 0 0 16px; border-bottom: 1px solid var(--obramowanie); overflow-x: auto; }
+.zakladki__z { padding: 8px 14px; color: var(--tekst-slaby); text-decoration: none; border-bottom: 2px solid transparent;
+  white-space: nowrap; font-weight: 600; }
+.zakladki__z--on { color: var(--tekst); border-bottom-color: var(--akcent); }
+.uklad-lista { list-style: none; margin: 0 0 12px; padding: 0; }
+.uklad-lista__w { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--obramowanie); }
+.uklad-lista__w form { margin: 0 0 0 auto; }
+.uklad-lista__nr { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--tekst-slabszy); min-width: 2ch; }
+.uklad-lista__nazwa { flex: 1; font-weight: 600; }
+.sekcje-wybor label { display: inline-flex; gap: 4px; margin: 0 10px 4px 0; font-size: 13px; white-space: nowrap; }

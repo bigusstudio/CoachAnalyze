@@ -156,7 +156,11 @@ LEFTOVER_RE = re.compile(r"__[A-Z][A-Z0-9_]*__")
 # publiczny adres `/r/{club_key}/{token}` (klips prowadzi na coachanalyze.pl).
 # Silnik nie zna ani sesji, ani adresu meczu w panelu (CLAUDE.md §4), więc nie
 # ma czego tu wpisać — a wpisanie czegokolwiek zamknęłoby jedną z dwóch dróg.
-ZNACZNIKI_SERWOWANIA = ("__POWROT_URL__",)
+ZNACZNIKI_SERWOWANIA = ("__POWROT_URL__", "__TRYB__", "__KARTA_URL__")
+# Golden layout W3: `__TRYB__` (op | analityk | trener | publiczny) steruje tym,
+# co odbiorca widzi — zakładka Pokrycie i stopka wersji [op], baner „nie
+# wliczone" dla tych, którzy mogą coś z tym zrobić, przycisk „Link" w panelu.
+# `__KARTA_URL__` — karta meczu w panelu; pusty pod linkiem publicznym.
 
 # ------------------------------------------------------------------ grupy znaczników
 #
@@ -192,6 +196,9 @@ SLOT_GROUPS = {
     # więc tenant atakuje w prawo w każdym raporcie. Ślad po kierunku został
     # jeden, w legendzie map, i jest wpisany w szablon.
     "baner": ("__BANER__",),
+    # Baner „N rodzajów zdarzeń nie wliczone" (v21, golden layout W3). Pusty,
+    # gdy wszystko jest w słowniku klubu — baner stały przestaje być czytany.
+    "baner_niewliczone": ("__BANER_NIEWLICZONE__",),
     # Progi faktów sekcji Przegląd (v21, sesja 4b). Jeden znacznik, cały obiekt.
     "progi": ("__PROGI__",),
     # Nadpisania słownika zmiennych z templatu klubu (v21, sesja 5).
@@ -554,6 +561,83 @@ def kolejnosc_slotow(tenant="us"):
         tenant = "us"
     druga = "them" if tenant == "us" else "us"
     return ((tenant, "HOME"), (druga, "AWAY"))
+
+
+# Słownik wbudowany szablonu v21: `const VARS = { 'STRZAŁ': {…}, … };`.
+_VARS_RE = re.compile(r"const VARS = \{(.*?)\n\};", re.S)
+_KLUCZ_VARS_RE = re.compile(r"'([^']+)'\s*:\s*\{")
+
+
+def wbudowane_tagi(szablon_html):
+    """Tagi, które szablon liczy SAM, bez słownika klubu (klucze `VARS`).
+
+    JEDNO ŹRÓDŁO: szablon. SKUTECZNY/NISKUTECZNY liczy pressing, DRUGI KONTAKT
+    — pojedynki, choćby klub nie miał ich w templacie; baner nazywający je
+    „nie wliczonymi" mówiłby nieprawdę o liczbach pod spodem. Szablon bez
+    `VARS` (v17) — pusta krotka. Panel ma kopię listy w
+    `app/src/data/tagi_wbudowane.json` (open_basedir), pilnowaną testem.
+    """
+    m = _VARS_RE.search(szablon_html or "")
+    return tuple(_KLUCZ_VARS_RE.findall(m.group(1))) if m else ()
+
+
+def niewliczone_tagi(frame, template=None, wbudowane=()):
+    """[(tag, liczba)] zdarzeń, których tag NIE jest liczony w raporcie.
+
+    Golden layout W3: raport mówi wprost, że część zdarzeń nie weszła do
+    analizy, zamiast udawać kompletność. Znane są: surowe nazwy zmiennych-tagów,
+    ich aliasy, tagi wbudowane szablonu (`wbudowane_tagi`) i aliasy silnika
+    prowadzące do którejkolwiek z nich (szablon je przemianowuje).
+    Bez templatu — pusta lista: słownik domyślny nie jest decyzją klubu.
+
+    Kolejność: od najczęstszego, przy remisie alfabetycznie — wyjście powtarzalne.
+    """
+    zmienne = (template or {}).get("variables")
+    if not isinstance(zmienne, list):
+        return []
+    znane = set(wbudowane)
+    for z in zmienne:
+        if not isinstance(z, dict):
+            continue
+        zrodlo = z.get("source") or {}
+        if zrodlo.get("type") not in (None, "tag"):
+            continue
+        raw = str(zrodlo.get("raw") or "").strip()
+        if raw:
+            znane.add(raw)
+        znane.update(str(a).strip() for a in (z.get("aliases") or ()) if str(a or "").strip())
+    from . import aliasy
+    for glowna, lista in aliasy.domyslne().items():
+        if glowna in znane:
+            znane.update(lista)
+    licznik = {}
+    for e in frame.get("events") or []:
+        tag = e.get("tag")
+        if tag and tag not in znane:
+            licznik[tag] = licznik.get(tag, 0) + 1
+    return sorted(licznik.items(), key=lambda kv: (-kv[1], kv[0]))
+
+
+# Adres Słownika klubu w panelu — stała ścieżka, nie zależy od meczu.
+ADRES_SLOWNIKA = "/klub/ustawienia?zakladka=slownik"
+
+
+def baner_niewliczone_slot(frame, template=None, wbudowane=()):
+    """`{'__BANER_NIEWLICZONE__': '…'}` — baner albo pusty napis (W3)."""
+    tagi = niewliczone_tagi(frame, template, wbudowane)
+    if not tagi:
+        return {"__BANER_NIEWLICZONE__": ""}
+    nazwy = ", ".join(
+        "{} ({})".format(html_mod.escape(t), n) for t, n in tagi[:6]
+    ) + (", …" if len(tagi) > 6 else "")
+    rodzaje = len(tagi)
+    slowo = "rodzaj zdarzeń nie wliczony" if rodzaje == 1 else (
+        "rodzaje zdarzeń nie wliczone" if 2 <= rodzaje % 10 <= 4 and not 12 <= rodzaje % 100 <= 14
+        else "rodzajów zdarzeń nie wliczonych")
+    return {"__BANER_NIEWLICZONE__": (
+        '<div class="baner baner--niewliczone tylko-analityk" role="status">'
+        '{} {}: {} → <a href="{}">Wlicz w Słowniku klubu</a></div>'
+    ).format(rodzaje, slowo, nazwy, ADRES_SLOWNIKA)}
 
 
 def baner_slot(ostrzezenia=None):
@@ -1167,8 +1251,11 @@ def stamp_block(template_version, generated_at):
     opis = "templat v{}".format(int(template_version))
     if generated_at:
         opis += " · wygenerowano {}".format(html_mod.escape(str(generated_at)))
+    # `data-tylko-op` (golden layout W3): wersja templatu to informacja techniczna —
+    # szablon v21 pokazuje ją wyłącznie administratorowi (`data-tryb="op"`).
+    # Atrybut, NIE klasa: doklejka ma nie zależeć od klas szablonu.
     return (
-        '<div style="margin:24px 0 8px;text-align:center;font:11px/1.4 system-ui,sans-serif;'
+        '<div data-tylko-op="1" style="margin:24px 0 8px;text-align:center;font:11px/1.4 system-ui,sans-serif;'
         'opacity:.45">{}</div>'.format(opis)
     )
 
@@ -1209,6 +1296,8 @@ def render(frame, palette=None, metrics=None, canon_result=None, config=None,
     slots, teams_defaulted = team_slots(frame, teams, tenant=tenant)
     slots.update(match_slots(config))
     slots.update(baner_slot((direction or {}).get("warnings")))
+    wbudowane = wbudowane_tagi(template)
+    slots.update(baner_niewliczone_slot(frame, report_template, wbudowane))
     slots.update(progi_slot(report_template))
     slots.update(vars_slot(report_template))
     slots.update(roster_slot(config, pokaz=pokaz_zawodnikow))
@@ -1234,6 +1323,15 @@ def render(frame, palette=None, metrics=None, canon_result=None, config=None,
     # GENEROWANIE NIGDY NIE PADA Z TEGO POWODU: brak danych na sekcje to stan
     # normalny (pulapka 3 — III STREFA bywa bez wspolrzednych), a nie awaria.
     html, sekcje_usuniete = drop_sections(html, (config or {}).get("drop_sections"))
+
+    # „INNE ZDARZENIA" TYLKO GDY SĄ (golden layout W3): przy komplecie tagów
+    # w słowniku klubu sekcja nie ma czego pokazać. Bez templatu — bez zmian.
+    # Wyłącznie przy układzie schematu 2 — o tej sekcji decyduje ekran Układu
+    # raportu; templat schematu 1 ma dawać raport bez zmian w kolejności.
+    if (report_template is not None and report_template_layout(report_template)
+            and not niewliczone_tagi(frame, report_template, wbudowane)):
+        html, dodatkowo = drop_sections(html, ["siatka"])
+        sekcje_usuniete = list(sekcje_usuniete) + [s for s in dodatkowo if s not in sekcje_usuniete]
 
     # UKLAD SEKCJI Z TEMPLATU (schemat 2). Po wycieciu, nie przed: przestawiamy
     # to, co faktycznie zostalo w dokumencie.

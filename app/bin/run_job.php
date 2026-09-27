@@ -46,6 +46,7 @@ use CoachAnalyze\RedisClient;
 use CoachAnalyze\Roster;
 use CoachAnalyze\Stats;
 use CoachAnalyze\Storage;
+use CoachAnalyze\Users;
 use CoachAnalyze\View;
 
 require dirname(__DIR__) . '/src/bootstrap.php';
@@ -845,7 +846,12 @@ function powiadomOPartii(string $partia, int $matchId, int $clubId): void
     $bledy = (int) $stan['failed'];
 
     // Adres partii, żeby z chmurki dało się wejść wprost w listę błędów per mecz.
-    $url = $clubId > 0 ? '/klub/' . $clubId . '/przelicz?partia=' . $partia : null;
+    // Ekran przeliczenia jest [op] (golden layout W2) — konto klubowe dostaje
+    // wskaźnik partii w Ustawieniach klubu (W3), a nie 404.
+    $wlasciciel = Users::find((int) $match['owner_id']);
+    $url = $clubId <= 0 ? null : (Users::isAdmin($wlasciciel)
+        ? '/klub/' . $clubId . '/przelicz?partia=' . $partia
+        : '/klub/ustawienia?partia=' . $partia);
 
     Notifications::create((int) $match['owner_id'], [
         // Odmiana chmurki idzie za NAJGORSZYM wynikiem w partii: jedna nieudana

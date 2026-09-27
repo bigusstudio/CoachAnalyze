@@ -447,7 +447,7 @@ $nowe = Db::all('SELECT title, url, type FROM notifications WHERE read_at IS NUL
 check('partia dała DOKŁADNIE JEDNĄ chmurkę', count($nowe) === 1,
     'jest ' . count($nowe) . ': ' . json_encode(array_column($nowe, 'title'), JSON_UNESCAPED_UNICODE));
 check('chmurka podsumowuje wynik partii',
-    count($nowe) === 1 && str_contains((string) $nowe[0]['title'], 'Przeliczono'),
+    count($nowe) === 1 && str_contains((string) $nowe[0]['title'], 'Odświeżono'),
     count($nowe) === 1 ? (string) $nowe[0]['title'] : '');
 check('chmurka oznaczona jako niepowodzenie, bo jedna pozycja padła',
     count($nowe) === 1 && (string) $nowe[0]['type'] === 'report.failed');

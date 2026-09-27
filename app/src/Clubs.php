@@ -351,6 +351,42 @@ final class Clubs
         return $out;
     }
 
+    /**
+     * Kluby PODOBNE do nazwy — ostrzeżenie na ekranie Wgraj (golden layout W3):
+     * normalizacja + ZAWIERANIE nazwy („Hetman" / „HETMAN ZAMOŚĆ").
+     *
+     * To jest PODPOWIEDŹ dla człowieka, nie dopasowanie: zawieranie łapie też
+     * „Pogoń" w „Pogoń II", więc nigdy nie przypisuje meczu samo — od tego jest
+     * `matchByExportName` z równością (pułapka 7). Nazwy krótsze niż 4 znaki
+     * pomijamy: „KS" jest wewnątrz połowy polskich klubów.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public static function podobne(string $nazwa, ?int $pomin = null): array
+    {
+        $szukana = self::normalize($nazwa);
+        if (mb_strlen($szukana) < 4) {
+            return [];
+        }
+        $out = [];
+        foreach (self::all() as $club) {
+            if ($pomin !== null && (int) $club['id'] === $pomin) {
+                continue;
+            }
+            $kandydaci = array_merge([(string) $club['name'], (string) ($club['short_name'] ?? '')],
+                self::decodeAliases($club['aliases_json'] ?? null));
+            foreach ($kandydaci as $k) {
+                $n = self::normalize($k);
+                if (mb_strlen($n) >= 4 && $n !== $szukana
+                    && (str_contains($n, $szukana) || str_contains($szukana, $n))) {
+                    $out[] = $club;
+                    break;
+                }
+            }
+        }
+        return $out;
+    }
+
     public static function normalize(string $value): string
     {
         return mb_strtolower(trim(preg_replace('/\s+/u', ' ', $value) ?? $value), 'UTF-8');

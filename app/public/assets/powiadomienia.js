@@ -599,3 +599,71 @@
     Array.prototype.forEach.call(wskazniki, uruchomWskaznik);
     Array.prototype.forEach.call(partie, uruchomPartie);
 })();
+
+/*
+ * Walidacja pliku na ekranie WGRAJ (golden layout W3) — trzeci punkt wyjątku
+ * z CLAUDE.md §9, uzgodniony razem z jednym ekranem importu.
+ *
+ * TYLKO PRZYSPIESZA: `accept` na polu i `Upload::accept` na serwerze sprawdzają
+ * to samo. Skrypt oszczędza jedynie wysyłki kilku megabajtów pod zły adres.
+ * Komunikaty czyta z `data-*` formularza — w tym pliku nie ma ani jednego zdania.
+ */
+(function () {
+    'use strict';
+
+    if (typeof document.querySelectorAll !== 'function') {
+        return;   // Bardzo stara przeglądarka — zostaje `accept` i serwer.
+    }
+    var forms = document.querySelectorAll('form[data-wgraj]');
+
+    function rozszerzenie(nazwa) {
+        var i = nazwa.lastIndexOf('.');
+        return i < 0 ? '' : nazwa.slice(i + 1).toLowerCase();
+    }
+
+    function bladPola(form, pole) {
+        if (!pole.files || pole.files.length === 0) {
+            return '';
+        }
+        var plik = pole.files[0];
+        var oczekiwane = pole.getAttribute('data-rozszerzenie') || '';
+        if (oczekiwane && rozszerzenie(plik.name) !== oczekiwane) {
+            return form.getAttribute('data-blad-typu-' + oczekiwane) || '';
+        }
+        var limit = parseInt(form.getAttribute('data-limit') || '0', 10);
+        if (limit > 0 && plik.size > limit) {
+            return form.getAttribute('data-blad-rozmiar') || '';
+        }
+        return '';
+    }
+
+    function sprawdz(form) {
+        var komunikat = form.querySelector('[data-komunikat]');
+        var pierwszy = '';
+        var pola = form.querySelectorAll('input[type="file"][data-rozszerzenie]');
+        Array.prototype.forEach.call(pola, function (pole) {
+            var blad = bladPola(form, pole);
+            var ramka = pole.parentNode;
+            if (ramka && ramka.className !== undefined) {
+                ramka.className = ramka.className.replace(/\s*upuszczenie--zle/g, '') + (blad ? ' upuszczenie--zle' : '');
+            }
+            if (blad && !pierwszy) {
+                pierwszy = blad;
+            }
+        });
+        if (komunikat) {
+            komunikat.textContent = pierwszy;
+            komunikat.hidden = pierwszy === '';
+        }
+        return pierwszy === '';
+    }
+
+    Array.prototype.forEach.call(forms, function (form) {
+        form.addEventListener('change', function () { sprawdz(form); });
+        form.addEventListener('submit', function (e) {
+            if (!sprawdz(form)) {
+                e.preventDefault();
+            }
+        });
+    });
+})();

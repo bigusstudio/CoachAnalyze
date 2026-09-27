@@ -244,9 +244,9 @@ http('POST', '/import/' . $importId . '/meta', ['form' => [
 ]]);
 
 /*
- * OD SESJI 8 ZMIENNE POWSTAJĄ SAME przy imporcie, więc ekran różnic nie pyta
- * „dodać?" — pyta, czy zostawić. PRESSING WYSOKI zostawiamy jak weszło,
- * DOŚRODKOWANIE każemy wyrzucić z templatu i nie pytać o nie więcej.
+ * OD W3 IMPORT NIE DOPISUJE ZMIENNYCH SAM (w sesji 8 dopisywał), więc ekran
+ * różnic [op] pyta „dodać?". PRESSING WYSOKI pomijamy (wróci w rewizji),
+ * DOŚRODKOWANIE każemy zignorować na stałe.
  */
 $kluczPress = TemplateDiff::kluczHtml('tag', 'PRESSING WYSOKI');
 $kluczDosr  = TemplateDiff::kluczHtml('tag', 'DOŚRODKOWANIE');
@@ -254,11 +254,11 @@ $kluczDosr  = TemplateDiff::kluczHtml('tag', 'DOŚRODKOWANIE');
 ca_test_db($baza);
 check('ekran nowych tagów odpowiada',
     http('GET', '/import/' . $importId . '/diff')['status'] === 200);
-check('import dopisał zmienne SAM', ReportTemplates::currentVersion(1) === 2,
+check('import NIE dopisał zmiennych (W3)', ReportTemplates::currentVersion(1) === 1,
     'wersja: ' . ReportTemplates::currentVersion(1));
 
-$diff = http('GET', '/import/' . $importId . '/diff?rewizja=1');
-http('POST', '/import/' . $importId . '/diff?rewizja=1', ['form' => [
+$diff = http('GET', '/import/' . $importId . '/diff');
+http('POST', '/import/' . $importId . '/diff', ['form' => [
     'csrf' => csrfZ($diff['body']),
     'decyzja' => [
         $kluczPress => TemplateDiff::POMIN,
@@ -267,8 +267,8 @@ http('POST', '/import/' . $importId . '/diff?rewizja=1', ['form' => [
 ]]);
 
 ca_test_db($baza);
-check('„zostaw jak jest" niczego nie rusza, „nie analizuj" podbija wersję',
-    ReportTemplates::currentVersion(1) === 3,
+check('zatwierdzenie ekranu różnic zapisuje wersję 2',
+    ReportTemplates::currentVersion(1) === 2,
     'wersja: ' . ReportTemplates::currentVersion(1));
 check('DOŚRODKOWANIE zignorowane na stałe',
     !empty(IgnoredTags::lookup(1)['tag']['DOŚRODKOWANIE']));
@@ -292,9 +292,9 @@ check('chip zignorowanego na stałe jest klikalny',
     'chip ma prowadzić wprost do tej pozycji, nie do listy');
 check('chip prowadzi do kotwicy pozycji',
     str_contains($pokrycie['body'], '#poz-' . $kluczDosr));
-check('tag ZOSTAWIONY w templacie NIE jest „poza templatem"',
-    !str_contains($pokrycie['body'], 'tag=' . $kluczPress),
-    'jest zmienną i liczy się w raporcie — wymienianie go tutaj byłoby nieprawdą');
+check('tag POMINIĘTY jest „poza templatem" z klikalnym chipem',
+    str_contains($pokrycie['body'], 'tag=' . $kluczPress),
+    'nie liczy się w raporcie — i ekran mówi to wprost');
 
 /*
  * SEKCJE NIEDOSTĘPNE Z BRAKU DANYCH NIE DOSTAJĄ AKCJI — nie ma tam czego
@@ -315,7 +315,7 @@ $rew = http('GET', '/import/' . $importId . '/diff?rewizja=1&tag=' . $kluczPress
 check('rewizja odpowiada', $rew['status'] === 200, 'status ' . $rew['status']);
 check('tytuł mówi o rewizji', str_contains($rew['body'], 'Rewizja mapowania'));
 
-check('pozycja dodana automatycznie jest na liście',
+check('pozycja pominięta jest na liście',
     str_contains($rew['body'], 'PRESSING WYSOKI')
     && str_contains($rew['body'], 'name="decyzja[' . $kluczPress . ']"'),
     'to o nie operator przychodzi: zignorować albo oznaczyć jako kontynuację');
@@ -325,8 +325,7 @@ check('pozycja zignorowana NA STAŁE też jest na liście',
     'zwykły diff ją pomija — o to właśnie prosił operator; tu przychodzi sam');
 
 check('widać obecny stan pozycji',
-    str_contains($rew['body'], 'zignorowana na stałe')
-    && str_contains($rew['body'], 'dodana automatycznie'),
+    str_contains($rew['body'], 'zignorowana na stałe'),
     'stan pozycji rozstrzyga o tym, co wolno z nią zrobić');
 // Licznik stoi w główce pozycji, zaraz za nazwą i typem źródła.
 check('widać licznik zdarzeń',
@@ -350,14 +349,16 @@ $csrfR = csrfZ($rew['body']);
 preg_match_all('/name="decyzja\[([a-f0-9]+)\]"/', $rew['body'], $mr);
 $dec = [];
 foreach (array_unique($mr[1]) as $k) { $dec[$k] = TemplateDiff::POMIN; }
-// PRESSING WYSOKI jest już zmienną (import dopisał go sam) — zostawiamy.
-// DOŚRODKOWANIE cofamy z „na stałe", żeby wróciło do pytania.
+// PRESSING WYSOKI dopisujemy teraz; DOŚRODKOWANIE cofamy z „na stałe".
+$dec[$kluczPress] = TemplateDiff::DODAJ;
 $dec[$kluczDosr] = TemplateDiff::COFNIJ;
 
 $zapis = http('POST', '/import/' . $importId . '/diff?rewizja=1', ['form' => [
     'csrf'      => $csrfR,
     'decyzja'   => $dec,
     'canon'     => [$kluczPress => 'press'],
+    'label'     => [$kluczPress => 'PRESSING WYSOKI'],
+    'color'     => [$kluczPress => '#2C6FE8'],
     'vsections' => [$kluczPress => ['bilans', 'tl_bilans']],
 ]]);
 check('zapis rewizji wraca na pokrycie',
@@ -371,13 +372,13 @@ ca_test_db($baza);
  * dopisuje zmienną. Wersja różniąca się od poprzedniej wyłącznie numerem
  * unieważniłaby wszystkie raporty klubu bez żadnego powodu (Sesja 7).
  */
-check('cofnięcie „na stałe" NIE podbija wersji templatu',
+check('zatwierdzenie rewizji = DOKŁADNIE jedna nowa wersja (cofnięcie jej nie dokłada)',
     ReportTemplates::currentVersion(1) === 3,
     'wersja: ' . ReportTemplates::currentVersion(1));
 
 $config2 = ReportTemplates::decodeConfig(ReportTemplates::current(1)['config']);
 $nazwy = array_column(array_column($config2['variables'], 'source'), 'raw');
-check('tag dopisany automatycznie został w templacie',
+check('tag dodany na ekranie różnic został w templacie',
     in_array('PRESSING WYSOKI', $nazwy, true));
 check('zmienne z v1 zostały',
     in_array('STRZAŁ', $nazwy, true) && in_array('STRATA', $nazwy, true));
@@ -402,9 +403,9 @@ check('cofnięty tag wrócił do pytania',
  * więc rady o czymś, co się nie zmieniło, ma NIE BYĆ — rada bez powodu uczy
  * ignorować rady.
  */
-check('bez zmiany templatu nie ma podpowiedzi o przeliczeniu',
-    !str_contains($poRewizji['body'], 'wygeneruj go ponownie'),
-    'wersja templatu się nie zmieniła');
+check('po zmianie templatu jest podpowiedź o przeliczeniu',
+    str_contains($poRewizji['body'], 'wygeneruj go ponownie'),
+    'rewizja dopisała zmienną — raport sprzed niej liczy co innego');
 
 // ============================================================ F. pętla domknięta
 echo "\n== F. Generuj ponownie: zdarzenia dopisanego taga w raporcie ==\n";

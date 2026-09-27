@@ -152,13 +152,16 @@ Panel powstał bez ani jednego skryptu i ta zasada obowiązuje dalej. **Raportu 
 żaden wyjątek**: szablon jest samowystarczalnym HTML-em i to jest cecha, nie brak (§8).
 
 Zatwierdzony wyjątek dotyczy **informowania o pracy, która dzieje się w tle** — i niczego
-poza tym. Obejmuje dwie rzeczy, obsługiwane przez TEN SAM jeden plik:
+poza tym. Obejmuje trzy rzeczy, obsługiwane przez TEN SAM jeden plik:
 
 1. **Chmurki powiadomień.** Powiadomienie o gotowym raporcie, które pojawia się dopiero
    przy następnym przeładowaniu strony, nie jest powiadomieniem.
 2. **Wskaźnik pracy kolejki** (dodany razem z regeneracją raportów). Operacje idą przez
    crona i trwają od kilkunastu sekund do kilku minut; ekran, który tego nie pokazuje,
    każe zgadywać, czy cokolwiek się dzieje.
+3. **Walidacja pliku na ekranie Wgraj** (dodana z jednym ekranem importu, golden layout W3).
+   Zły typ lub za duży plik zgłoszony przed wysyłką kilku megabajtów. `accept` i serwer
+   (`Upload::accept`) sprawdzają to samo — skrypt tylko przyspiesza; komunikaty z `data-*`.
 
 Reszta panelu skryptu nie używa i nie ma używać. **Rozszerzenie tej listy wymaga
 osobnego uzgodnienia** — tak jak wymagało go dopisanie punktu drugiego.

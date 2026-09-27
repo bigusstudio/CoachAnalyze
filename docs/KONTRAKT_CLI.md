@@ -94,6 +94,7 @@ Znaczniki **tylko w generacji v21**, opcjonalne całą grupą (v17 nie ma żadne
 | `__TEAM_*_COLOR_L__` · `__TEAM_*_DIM_L__` | `motyw_jasny` | Barwa klubu dla `data-theme="light"` — `color_light` albo przyciemnienie `color` |
 | `__SEZON__` · `__KOLEJKA__` · `__DATA_MECZU__` | `meta_meczu` | Meta meczu z `config.match`; brak wartości = pusty napis |
 | `__BANER__` | `baner` | Pasek nad raportem. Dziś jeden przypadek: `KIERUNEK_ZMIANA_POLOWY`. Brak powodu = pusty napis |
+| `__BANER_NIEWLICZONE__` | `baner_niewliczone` | Od 0.16.6 (golden layout W3). „N rodzajów zdarzeń nie wliczone: … → Wlicz w Słowniku klubu" — tagi zdarzeń spoza zmiennych templatu (`render.niewliczone_tagi`). Bez templatu albo gdy wszystko wliczone = pusty napis. Odsyłacz stały: `/klub/ustawienia?zakladka=slownik`; w raporcie publicznym i u trenera schowany przez `data-tryb` |
 | `__PROGI__` | `progi` | Progi faktów Przeglądu jako literał obiektu JS — patrz niżej |
 | `__VARS_TEMPLATU__` | `vars_templatu` | Nadpisania słownika zmiennych szablonu (`display`, `aliases`) — patrz niżej |
 
@@ -603,8 +604,11 @@ ani jako `BRAKUJACY_ZNACZNIK` (`render.ZNACZNIKI_SERWOWANIA`).
 | Znacznik | Generacja | Wypełnia | Wartość |
 |---|---|---|---|
 | `__POWROT_URL__` | v21 | `serveReport()` / `servePublicReport()` przez `Powrot::wypelnijRaport` | `/pulpit` (panel, od W1) albo `https://coachanalyze.pl` (link publiczny) |
+| `__TRYB__` | v21, od 0.16.6 | jw., `Powrot::trybDla(rola)` | `op` / `analityk` / `trener` / `publiczny` — atrybut `data-tryb` na `<html>`; CSS chowa `.tylko-op`, `.tylko-analityk`, `.tylko-panel` |
+| `__KARTA_URL__` | v21, od 0.16.6 | jw. | `/mecze/{id}` w panelu (przycisk LINK, zakładka [op] Pokrycie); pusty napis w linku publicznym — element z pustym `href` jest schowany |
 
-Wystąpienie jest dokładnie jedno (atrybut `href` klipsa „← CA"). Raport otwarty
+`__POWROT_URL__` występuje dokładnie raz (atrybut `href` klipsa „← CA").
+Nieznany tryb schodzi na `publiczny` — najwęższy zestaw widocznych elementów. Raport otwarty
 z pliku, poza panelem, ma klips z niewypełnionym adresem — to świadoma cena
 jednego pliku dla obu dróg serwowania.
 

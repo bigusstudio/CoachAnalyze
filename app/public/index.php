@@ -454,6 +454,21 @@ switch (true) {
         handleImport((int) $user['id'], $klubImportu !== null ? (int) $klubImportu['id'] : null);
         break;
 
+    // Ścieżka importu (golden layout W3): Wgraj → Przygotuj → Postęp → Raport.
+    case preg_match('#^/import/(\d+)/przygotuj$#', $path, $m) === 1 && $method === 'GET':
+        showImportPrepare((int) $m[1]);
+        break;
+
+    case preg_match('#^/import/(\d+)/przygotuj$#', $path, $m) === 1 && $method === 'POST':
+        requireCan($user, 'upload');
+        requireCsrf();
+        saveImportPrepare((int) $m[1], (int) $user['id']);
+        break;
+
+    case preg_match('#^/import/(\d+)/postep$#', $path, $m) === 1 && $method === 'GET':
+        showImportProgress((int) $m[1]);
+        break;
+
     case preg_match('#^/import/(\d+)$#', $path, $m) === 1 && $method === 'GET':
         showCoverage((int) $m[1]);
         break;
@@ -974,6 +989,20 @@ switch (true) {
 
     case $path === '/klub/ustawienia' && $method === 'GET':
         showClubSettings($user);
+        break;
+
+    // Golden layout W3: zapis Układu raportu i Słownika klubu — każdy to nowa
+    // wersja templatu i partia przeliczeń raportów klubu w tle.
+    case $path === '/klub/ustawienia/uklad' && $method === 'POST':
+        requireCan($user, 'mappings');
+        requireCsrf();
+        saveClubLayout($user);
+        break;
+
+    case $path === '/klub/ustawienia/slownik' && $method === 'POST':
+        requireCan($user, 'mappings');
+        requireCsrf();
+        saveClubDictionary($user);
         break;
 
     case $path === '/zawodnicy' && $method === 'GET':
@@ -1513,7 +1542,12 @@ function serveReport(int $id): void
     // Klips „← CA" prowadzi na PULPIT (decyzja z odbioru W0 na produkcji):
     // raport otwiera się z wielu miejsc, a pulpit jest jedynym punktem, który
     // zawsze ma sens. Do karty meczu prowadzi nazwa meczu na pulpicie.
-    echo \CoachAnalyze\Powrot::wypelnijRaport((string) file_get_contents($file), '/pulpit');
+    echo \CoachAnalyze\Powrot::wypelnijRaport(
+        (string) file_get_contents($file),
+        '/pulpit',
+        \CoachAnalyze\Powrot::trybDla(Auth::currentUser()),
+        '/mecze/' . (int) $report['match_id']
+    );
 }
 
 /**
@@ -1595,7 +1629,96 @@ function handleImport(int $userId, ?int $clubId = null, string $formPath = '/imp
         ]);
     }
 
-    redirect(celPracy($jobId));
+    // Golden layout W3: analityk zostaje na ścieżce „Wgraj → Postęp → Raport";
+    // administrator — jak dotąd, na stronie zadania.
+    redirect(\CoachAnalyze\Zakres::op(Auth::currentUser())
+        ? celPracy($jobId)
+        : '/import/' . $importId . '/przygotuj');
+}
+
+/** WGRAJ, dokończenie kroku 1 — rywal, data, wynik (golden layout W3). */
+function showImportPrepare(int $importId): void
+{
+    $import = Imports::find($importId);
+    $mecz = $import !== null ? Matches::find((int) $import['match_id']) : null;
+    if ($import === null || $mecz === null) {
+        tenantNotFound();
+        return;
+    }
+    $gotowe = !empty($import['coverage_json']);
+    $inspekcja = $gotowe ? null : Imports::latestJob($importId, 'inspect');
+
+    $rywal = $mecz['club_away_id'] !== null ? Clubs::find((int) $mecz['club_away_id']) : null;
+    $podobne = [];
+    if ($rywal !== null && isset(Clubs::decodeDetails($rywal['details'] ?? null)[\CoachAnalyze\AutoImport::ZNACZNIK_AUTO])) {
+        $podobne = Clubs::podobne((string) $rywal['name'], (int) $rywal['id']);
+    }
+
+    View::page('import_przygotuj', [
+        'title'     => View::t('import.title'),
+        'active'    => 'import',
+        'okruszki'  => [[View::t('nav.dashboard'), '/pulpit'], [View::t('import.nav'), '/import']],
+        'crumb'     => View::t('import.step.upload'),
+        'refresh'   => $gotowe ? null : 3,
+        'import'    => $import,
+        'mecz'      => $mecz,
+        'gotowe'    => $gotowe,
+        'inspekcja' => $inspekcja,
+        'rywale'    => Clubs::rivals(),
+        'podobne'   => $podobne,
+        'error'     => Session::flash('error'),
+    ]);
+}
+
+/**
+ * „Wgraj i przygotuj raport": meta meczu + zadanie renderu, bez ekranu różnic.
+ * Data wymagana — mecz bez daty nie ma miejsca w sezonie ani w kalendarzu.
+ */
+function saveImportPrepare(int $importId, int $userId): void
+{
+    $import = Imports::find($importId);
+    if ($import === null) {
+        tenantNotFound();
+        return;
+    }
+    $powrot = '/import/' . $importId . '/przygotuj';
+    if (trim((string) ($_POST['played_at'] ?? '')) === '') {
+        Session::flash('error', View::t('import.err.date'));
+        redirect($powrot);
+    }
+    if (!zapiszMetaMeczu((int) $import['match_id'], $userId, $powrot)) {
+        return;
+    }
+    Imports::queueBuild($importId, $userId);
+    redirect('/import/' . $importId . '/postep');
+}
+
+/** POSTĘP — „czytam plik → buduję raport", potem raport (golden layout W3). */
+function showImportProgress(int $importId): void
+{
+    $import = Imports::find($importId);
+    $mecz = $import !== null ? Matches::find((int) $import['match_id']) : null;
+    if ($import === null || $mecz === null) {
+        tenantNotFound();
+        return;
+    }
+    $zadanie = Imports::latestJob($importId, 'build_report');
+    // Bez skryptu: po „Gotowe" następne odświeżenie przenosi na raport.
+    if ($zadanie !== null && (string) $zadanie['status'] === 'done') {
+        $cel = Jobs::resultUrl($zadanie);
+        if ($cel !== null) {
+            redirect($cel);
+        }
+    }
+    View::page('import_postep', [
+        'title'    => View::t('import.progress.title'),
+        'active'   => 'import',
+        'okruszki' => [[View::t('nav.dashboard'), '/pulpit'], [View::t('import.nav'), '/import']],
+        'crumb'    => View::t('import.progress.title'),
+        'refresh'  => $zadanie !== null && in_array((string) $zadanie['status'], ['queued', 'running'], true) ? 5 : null,
+        'mecz'     => $mecz,
+        'zadanie'  => $zadanie,
+    ]);
 }
 
 function showCoverage(int $importId): void
@@ -2648,7 +2771,9 @@ function servePublicReport(string $clubKey, string $token): void
     // produktu, a nie do panelu, w którym zobaczyłby ekran logowania.
     echo \CoachAnalyze\Powrot::wypelnijRaport(
         (string) file_get_contents($path),
-        \CoachAnalyze\Powrot::STRONA_PUBLICZNA
+        \CoachAnalyze\Powrot::STRONA_PUBLICZNA,
+        'publiczny',
+        ''
     );
     exit;
 }
@@ -4615,12 +4740,165 @@ function showClubSettings(array $user): void
         tenantNotFound();
         return;
     }
+    $id = (int) $club['id'];
+    $op = \CoachAnalyze\Zakres::op($user);
+
+    $zakladki = $op ? ['uklad', 'slownik', 'zaawansowane'] : ['uklad', 'slownik'];
+    $zakladka = (string) ($_GET['zakladka'] ?? 'uklad');
+    if (!in_array($zakladka, $zakladki, true)) {
+        $zakladka = 'uklad';
+    }
+
+    $templat = \CoachAnalyze\ReportTemplates::current($id);
+    $config = $templat !== null ? \CoachAnalyze\ReportTemplates::decodeConfig($templat['config']) : [];
+    $nierozpoznane = $templat !== null ? \CoachAnalyze\UstawieniaKlubu::nierozpoznane($id, $config) : [];
+
+    $sekcje = \CoachAnalyze\UstawieniaKlubu::przegladPierwszy(
+        \CoachAnalyze\ReportLayout::draft($id) ?? \CoachAnalyze\ReportLayout::zConfigu($config)
+    );
+
+    // Partia przeliczeń po zapisie — wskaźnik pracy, jak na ekranie przeliczenia.
+    $partia = isset($_GET['partia']) && preg_match('/^[0-9a-f]{16}$/', (string) $_GET['partia']) === 1
+        ? (string) $_GET['partia'] : null;
+    $postep = $partia !== null ? \CoachAnalyze\Rebuilds::batchProgress($partia) : null;
+
+    $zmienne = (array) ($config['variables'] ?? []);
+    $martwe = $op && $templat !== null ? \CoachAnalyze\NaprawaTemplatu::martwe($id, array_values($zmienne)) : null;
+
     View::page('club_settings', [
-        'title'  => View::t('nav.club_settings'),
-        'active' => 'settings',
-        'club'   => $club,
-        'op'     => \CoachAnalyze\Zakres::op($user),
+        'title'     => View::t('nav.club_settings'),
+        'active'    => 'settings',
+        'club'      => $club,
+        'op'        => $op,
+        'zakladki'  => $zakladki,
+        'zakladka'  => $zakladka,
+        'templat'   => $templat,
+        'sekcje'    => $sekcje,
+        'ukryte'    => \CoachAnalyze\UstawieniaKlubu::ukryte($sekcje, $nierozpoznane !== []),
+        'roboczy'   => \CoachAnalyze\ReportLayout::draft($id) !== null,
+        'wliczane'  => \CoachAnalyze\UstawieniaKlubu::wliczane($config),
+        'nierozpoznane' => $nierozpoznane,
+        'historia'  => $op ? \CoachAnalyze\ReportTemplates::history($id) : [],
+        'martwe'    => $martwe === null ? null : array_map(
+            static fn(int $i): string => (string) ($zmienne[$i]['source']['raw'] ?? ''), $martwe
+        ),
+        'partia'    => $partia,
+        'postep'    => $postep,
+        'refresh'   => $postep !== null && $postep['working'] > 0 ? 10 : null,
+        'csrf'      => Session::csrfToken(),
+        'notice'    => Session::flash('notice'),
+        'error'     => Session::flash('error'),
     ]);
+}
+
+/**
+ * Zapis nowej wersji templatu z Ustawień klubu + przeliczenie raportów w tle.
+ * Wspólne dla Układu i Słownika — jedna droga zapisu, jeden komunikat.
+ *
+ * @param array<string,mixed>       $config bieżąca wersja
+ * @param list<array<string,mixed>> $zmienne
+ * @param list<array<string,mixed>> $sekcje
+ */
+function zapiszUstawieniaKlubu(int $id, int $userId, array $config, array $zmienne, array $sekcje, string $zakladka): void
+{
+    $powrot = '/klub/ustawienia?zakladka=' . $zakladka;
+    $bledy = \CoachAnalyze\ReportLayout::bledy($sekcje);
+    $nowy = \CoachAnalyze\Configurator::config(
+        $zmienne,
+        array_values((array) ($config['sections_enabled'] ?? \CoachAnalyze\Configurator::SEKCJE)),
+        array_values((array) ($config['team_us_rule']['markers'] ?? ['NASZA', 'MASZA'])),
+        $sekcje,
+        (array) ($config['thresholds'] ?? [])
+    );
+    $bledy = array_merge($bledy, \CoachAnalyze\Configurator::bledyConfigu($nowy));
+    if ($bledy !== []) {
+        Session::flash('error', implode(' ', array_map(static fn(string $k): string => View::t($k), array_unique($bledy))));
+        redirect($powrot);
+    }
+
+    $wersja = \CoachAnalyze\ReportTemplates::saveNewVersion($id, $nowy, $userId);
+    \CoachAnalyze\ReportLayout::clearDraft();
+
+    $wynik = \CoachAnalyze\Rebuilds::queueClub($id, $userId);
+    Session::flash('notice', $wynik['queued'] > 0
+        ? View::t('ust.zapisano.przelicz', $wersja, $wynik['queued'])
+        : View::t('ust.zapisano', $wersja));
+    redirect($powrot . ($wynik['batch'] !== null ? '&partia=' . $wynik['batch'] : ''));
+}
+
+/** Układ raportu: strzałki, ukryj/pokaż (stan roboczy) i zapis. */
+function saveClubLayout(array $user): void
+{
+    $club = \CoachAnalyze\Zakres::biezacy($user);
+    if ($club === null) {
+        tenantNotFound();
+        return;
+    }
+    $id = (int) $club['id'];
+    $templat = \CoachAnalyze\ReportTemplates::current($id);
+    if ($templat === null) {
+        Session::flash('error', View::t('ust.brak_templatu'));
+        redirect('/klub/ustawienia');
+    }
+    $config = \CoachAnalyze\ReportTemplates::decodeConfig($templat['config']);
+    $sekcje = \CoachAnalyze\ReportLayout::draft($id) ?? \CoachAnalyze\ReportLayout::zConfigu($config);
+
+    $akcja = (string) ($_POST['akcja'] ?? '');
+    if ($akcja === 'porzuc') {
+        \CoachAnalyze\ReportLayout::clearDraft();
+        redirect('/klub/ustawienia?zakladka=uklad');
+    }
+    if ($akcja !== 'zapisz') {
+        $sekcje = \CoachAnalyze\UstawieniaKlubu::operacja($sekcje, $akcja, (string) ($_POST['widget'] ?? ''));
+        \CoachAnalyze\ReportLayout::saveDraft($id, $sekcje);
+        redirect('/klub/ustawienia?zakladka=uklad');
+    }
+
+    zapiszUstawieniaKlubu(
+        $id, (int) $user['id'], $config,
+        array_values((array) ($config['variables'] ?? [])),
+        \CoachAnalyze\UstawieniaKlubu::przegladPierwszy($sekcje),
+        'uklad'
+    );
+}
+
+/** Słownik klubu: etykiety i sekcje zmiennych + „Wlicz jako…" dla nierozpoznanych. */
+function saveClubDictionary(array $user): void
+{
+    $club = \CoachAnalyze\Zakres::biezacy($user);
+    if ($club === null) {
+        tenantNotFound();
+        return;
+    }
+    $id = (int) $club['id'];
+    $templat = \CoachAnalyze\ReportTemplates::current($id);
+    if ($templat === null) {
+        Session::flash('error', View::t('ust.brak_templatu'));
+        redirect('/klub/ustawienia?zakladka=slownik');
+    }
+    $config = \CoachAnalyze\ReportTemplates::decodeConfig($templat['config']);
+
+    $nierozpoznane = [];
+    foreach (\CoachAnalyze\UstawieniaKlubu::nierozpoznane($id, $config) as $n) {
+        $nierozpoznane[$n['name']] = $n['color'];
+    }
+
+    $zmienne = \CoachAnalyze\UstawieniaKlubu::zastosujSlownik(
+        array_values((array) ($config['variables'] ?? [])),
+        $nierozpoznane,
+        (array) ($_POST['etykieta'] ?? []),
+        (array) ($_POST['sekcje'] ?? []),
+        (array) ($_POST['wlicz'] ?? []),
+        (array) ($_POST['wlicz_nazwa'] ?? []),
+        (array) ($_POST['wlicz_etykieta'] ?? []),
+        array_values(array_filter([$club['color_primary'] ?? null, $club['color_secondary'] ?? null]))
+    );
+
+    zapiszUstawieniaKlubu(
+        $id, (int) $user['id'], $config, $zmienne,
+        \CoachAnalyze\UstawieniaKlubu::przegladPierwszy(\CoachAnalyze\ReportLayout::zConfigu($config)),
+        'slownik'
+    );
 }
 
 /** ZAWODNICY — skład scalony ze zdarzeniami po pełnej nazwie. */
@@ -4862,7 +5140,10 @@ function cloneTemplateVersion(int $id, int $wersja, int $userId): void
     \CoachAnalyze\ReportLayout::clearDraft();
 
     Session::flash('notice', View::t('tpl.clone.done', $wersja, $nowa));
-    redirect('/klub/' . $id . '/templaty');
+    // Z Ustawień klubu (golden layout W3, [op] Zaawansowane) — wracamy tam.
+    redirect(($_POST['powrot'] ?? '') === 'ustawienia'
+        ? '/klub/ustawienia?zakladka=zaawansowane'
+        : '/klub/' . $id . '/templaty');
 }
 
 /** Porzucenie stanu roboczego. Import i mecz ZOSTAJĄ — skasowane byłyby utratą danych. */

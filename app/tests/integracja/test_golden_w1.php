@@ -94,8 +94,9 @@ $m = (int) Db::pdo()->lastInsertId();
 Db::run('INSERT INTO imports (match_id, csv_path, checksum_csv, coverage_json) VALUES (:m, :c, :s, :j)',
     ['m' => $m, 'c' => '/dev/null', 's' => 'x', 'j' => json_encode($meta, JSON_UNESCAPED_UNICODE)]);
 $imp = (int) Db::pdo()->lastInsertId();
-AutoImport::autoZmienne($imp, Imports::find($imp));
-$zmienne = ReportTemplates::decodeConfig(ReportTemplates::current(1)['config'])['variables'];
+// Od W3 import nie dopisuje zmiennych sam — reguła etykiety dotyczy propozycji
+// `Configurator::autoZmienne` (konfigurator klubu bez templatu).
+$zmienne = array_merge($konfig['variables'], Configurator::autoZmienne($meta, $konfig));
 $bledne = [];
 foreach ($zmienne as $z) {
     if ($z['display_label'] !== $z['source']['raw']) {

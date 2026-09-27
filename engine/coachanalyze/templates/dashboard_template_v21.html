@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="pl">
+<html lang="pl" data-tryb="__TRYB__">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -43,8 +43,35 @@
   font:600 11px 'IBM Plex Sans',system-ui,sans-serif;letter-spacing:.06em;text-decoration:none}
 .ca-klips:hover{color:var(--ink);border-color:var(--ink3)}
 .ca-klips[href^="http"] .ca-klips__strz{display:none}
+/* v28 (golden layout W3): TRYB ODBIORCY — znacznik serwowania wypełniany przez
+   panel (op | analityk | trener | publiczny). Plik otwarty poza panelem ma
+   wartość surową i zachowuje się jak publiczny bez elementów [op]. */
+html:not([data-tryb="op"]) .tylko-op,html:not([data-tryb="op"]) [data-tylko-op]{display:none!important}
+html[data-tryb="publiczny"] .tylko-panel,html[data-tryb="publiczny"] .tylko-analityk,
+html[data-tryb="trener"] .tylko-analityk{display:none!important}
+.tylko-panel[href=""]{display:none!important}
+/* cienki pasek u góry: nazwa meczu, k., data, PDF, Slajdy, Link, motyw */
+#pasek{position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:8px;min-height:40px;
+  margin:0 -20px;padding:6px 20px 6px 74px;background:var(--nav-bg);backdrop-filter:blur(8px);
+  border-bottom:1px solid var(--line);font:600 12px 'IBM Plex Sans',system-ui,sans-serif;color:var(--ink2)}
+#pasek .pasek__mecz{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink)}
+#pasek .pasek__mecz small{color:var(--ink3);font-weight:500;margin-left:6px}
+#pasek a.tb{text-decoration:none}
+/* zakładki sekcji numerowane 01–07, przewijane poziomo, z cieniem na krawędziach */
+#topbar{top:52px;-webkit-mask-image:linear-gradient(90deg,transparent 0,#000 18px,#000 calc(100% - 18px),transparent 100%);
+  mask-image:linear-gradient(90deg,transparent 0,#000 18px,#000 calc(100% - 18px),transparent 100%)}
+#topbar a .nr,section>h2 .nr{font-family:'IBM Plex Mono',monospace;color:var(--ink3);margin-right:6px;font-weight:500}
+/* opis sekcji: jedno zdanie, reszta pod „i" */
+.sub details.wiecej{display:inline}
+.sub details.wiecej>summary{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;margin-left:4px;
+  border:1px solid var(--line);border-radius:50%;font:600 10px 'IBM Plex Mono',monospace;color:var(--ink3);cursor:pointer;list-style:none}
+.sub details.wiecej>summary::-webkit-details-marker{display:none}
+.sub details.wiecej[open]>summary{color:var(--ink)}
+.baner.baner--niewliczone{background:var(--panel2);border:1px solid var(--line);border-left:4px solid var(--ink3);border-radius:10px;padding:10px 14px;margin:10px 0;
+  font-size:13px;color:var(--ink2)}
+.baner--niewliczone a{color:var(--ink)}
 @media print{
-  #theme-toggle,#topbar,#btn-pdf,#btn-slides,.pngbtn,.ca-klips{display:none!important}
+  #theme-toggle,#topbar,#btn-pdf,#btn-slides,.pngbtn,.ca-klips,#pasek,.baner--niewliczone{display:none!important}
   :root{--bg:#fff;--panel:#fff;--panel2:#f1f3f1;--line:#d5dcd6;--ink:#111;--ink2:#444;--ink3:#777;--pitch:#eef2ee;--pitchline:#b5c2b8;--ok:#1F8A4C;--bad:#C6423A;--neut:#7C8F86;--ctx-poz:#1F8A4C;--ctx-pre:#C6423A;--ctx-kon:#7A4BD6;--ctx-sfg:#0B7FA8;--stroke:#fff;--stripe:#000;--sel:#1E4D3A;--sel-ink:#fff;--nav-bg:#fff;--tip-bg:#fff}
   body{background:#fff;font-size:11px}
   .wrap{max-width:none;padding:0}
@@ -266,7 +293,16 @@ svg text{font-family:'IBM Plex Mono',monospace}
 <body>
 <a class="ca-klips" href="__POWROT_URL__" title="CoachAnalyze"><span class="ca-klips__strz" aria-hidden="true">←</span>CA</a>
 <div class="wrap">
+<div id="pasek">
+  <span class="pasek__mecz">__TEAM_HOME_LABEL__ – __TEAM_AWAY_LABEL__<small id="pasek-meta"></small></span>
+  <button id="btn-pdf" class="tb" type="button" title="Zapisz jako PDF (A4 poziomo, układ ciągły)">⎙ PDF</button>
+  <button id="btn-slides" class="tb" type="button" title="Pobierz slajdy 16:9 jako pliki PNG (1920×1080)">▭ SLAJDY PNG</button>
+  <a class="tb tylko-panel" href="__KARTA_URL__" title="Link publiczny i dane meczu — karta meczu w panelu">⧉ LINK</a>
+  <button id="theme-toggle" type="button" aria-label="Przełącz motyw">◐ JASNY</button>
+  <span id="slides-progress" class="st" style="display:none"></span>
+</div>
 __BANER__
+__BANER_NIEWLICZONE__
 <header id="hdr2"></header>
 
 <nav id="topbar" aria-label="Nawigacja sekcji">
@@ -279,10 +315,6 @@ __BANER__
   <a href="#sec-duels">Pojedynki</a>
   <a href="#sec-noteam">Bez druż.</a>
   <button id="fsum" title="Aktywne filtry map — kliknij, by przejść do fragmentatorów"></button>
-  <button id="theme-toggle" type="button" aria-label="Przełącz motyw">◐ JASNY</button>
-  <button id="btn-pdf" class="tb" type="button" title="Zapisz jako PDF (A4 poziomo, układ ciągły)">⎙ PDF</button>
-  <button id="btn-slides" class="tb" type="button" title="Pobierz slajdy 16:9 jako pliki PNG (1920×1080)">▭ SLAJDY PNG</button>
-  <span id="slides-progress" class="st" style="display:none"></span>
   <style id="pagesize"></style>
 </nav>
 
@@ -1513,7 +1545,7 @@ const WIDGETS={
   tl_bilans: {label:'Oś czasu — bilans',          nav:'Oś bilansu',live:false, slide:true,  render:()=>renderMasterTimeline()},
   duels:     {label:'Pojedynki, straty, odbiory', nav:'Pojedynki', live:false, slide:true,  render:()=>renderDuels()},
   zawodnicy: {label:'Zawodnicy',                  nav:'Zawodnicy', live:true,  slide:true,  render:renderZawodnicy},
-  siatka:    {label:'Siatka ilości',              nav:'Siatka',    live:true,  slide:false, render:renderSiatka},
+  siatka:    {label:'Inne zdarzenia',             nav:'Inne zdarzenia', live:true, slide:false, render:renderSiatka},
   noteam:    {label:'Bez przypisania drużyny',    nav:'Bez druż.', live:false, slide:true,  render:()=>renderNoteam()},
 };
 
@@ -1526,12 +1558,43 @@ const WIDGETS={
   const nav=document.getElementById('topbar'); if(!nav) return;
   const pierwszyPrzycisk=nav.querySelector('button');
   nav.querySelectorAll('a').forEach(a=>a.remove());
+  /* v28 (golden layout W3): NUMERY 01–07 w kolejności z Układu raportu — czyli
+     w kolejności sekcji w dokumencie, bo tak ustawia je silnik. Sekcja ukryta
+     nie istnieje w DOM-ie, więc numeracja nie ma dziury. Ten sam numer trafia
+     do nagłówka sekcji, a stamtąd do PDF i do tytułu slajdu. */
+  let nr=0;
   document.querySelectorAll('[data-widget]').forEach(el=>{
     const w=WIDGETS[el.dataset.widget];
     if(!w||!w.nav||!el.id) return;
+    const numer=String(++nr).padStart(2,'0');
     const a=document.createElement('a');
-    a.href='#'+el.id; a.textContent=w.nav;
+    a.href='#'+el.id;
+    const n=document.createElement('span'); n.className='nr'; n.textContent=numer;
+    a.appendChild(n); a.appendChild(document.createTextNode(w.nav));
     nav.insertBefore(a, pierwszyPrzycisk);
+    const h=el.querySelector('h2');
+    if(h&&!h.querySelector('.nr')){const hn=document.createElement('span');hn.className='nr';hn.textContent=numer+' ';h.insertBefore(hn,h.firstChild);}
+  });
+  /* [op] zakładka Pokrycie — odsyłacz do karty meczu w panelu. */
+  const karta=document.querySelector('#pasek a.tylko-panel');
+  if(karta&&karta.getAttribute('href')){
+    const p=document.createElement('a');
+    p.className='tylko-op'; p.href=karta.getAttribute('href')+'?zakladka=pokrycie'; p.textContent='Pokrycie';
+    nav.insertBefore(p, pierwszyPrzycisk);
+  }
+  /* Meta meczu w pasku: k. N · data — z tych samych znaczników co nagłówek. */
+  const pm=document.getElementById('pasek-meta');
+  if(pm) pm.textContent=metaLinia(metaCzesc('k.','__KOLEJKA__'),metaCzesc('','__DATA_MECZU__'));
+  /* OPIS SEKCJI JEDNYM ZDANIEM, reszta pod „i" (<details>, bez biblioteki). */
+  document.querySelectorAll('section[data-widget]>.sub').forEach(sub=>{
+    if(sub.children.length) return;
+    const t=sub.textContent.trim(), k=t.search(/[.!?](\s|$)/);
+    if(k<0||k>=t.length-2) return;
+    sub.textContent=t.slice(0,k+1)+' ';
+    const d=document.createElement('details'); d.className='wiecej';
+    const sm=document.createElement('summary'); sm.textContent='i'; sm.title='Więcej o tej sekcji';
+    d.appendChild(sm); d.appendChild(document.createTextNode(' '+t.slice(k+1).trim()));
+    sub.appendChild(d);
   });
 })();
 

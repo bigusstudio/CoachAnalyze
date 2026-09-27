@@ -74,11 +74,32 @@ final class Powrot
     }
 
     /**
-     * Raport z wypełnionym klipsem „← CA". Raport sprzed tej zmiany znacznika
-     * nie ma — `str_replace` bez trafienia zostawia go nietkniętego.
+     * Raport z wypełnionymi ZNACZNIKAMI SERWOWANIA (docs/KONTRAKT_CLI.md):
+     * cel klipsa „← CA", tryb odbiorcy i adres karty meczu (golden layout W3).
+     * Raport sprzed zmiany znaczników ich nie ma — `str_replace` bez trafienia
+     * zostawia go nietkniętego.
+     *
+     * @param string $tryb  op | analityk | trener | publiczny
      */
-    public static function wypelnijRaport(string $html, string $cel): string
+    public static function wypelnijRaport(string $html, string $cel, string $tryb = 'publiczny', string $karta = ''): string
     {
-        return str_replace(self::ZNACZNIK_RAPORTU, htmlspecialchars($cel, ENT_QUOTES, 'UTF-8'), $html);
+        $e = static fn(string $v): string => htmlspecialchars($v, ENT_QUOTES, 'UTF-8');
+        $tryb = in_array($tryb, ['op', 'analityk', 'trener', 'publiczny'], true) ? $tryb : 'publiczny';
+        return str_replace(
+            [self::ZNACZNIK_RAPORTU, '__TRYB__', '__KARTA_URL__'],
+            [$e($cel), $tryb, $e($karta)],
+            $html
+        );
+    }
+
+    /** Tryb odbiorcy raportu dla zalogowanego — z roli (golden layout W3). */
+    public static function trybDla(?array $user): string
+    {
+        return match ((string) ($user['role'] ?? '')) {
+            'admin'    => 'op',
+            'operator' => 'analityk',
+            'viewer'   => 'trener',
+            default    => 'publiczny',
+        };
     }
 }

@@ -1,0 +1,21 @@
+{
+  "_opis": "Kopia kluczy VARS z engine/coachanalyze/templates/dashboard_template_v21.html (render.wbudowane_tagi). Panel nie czyta silnika (open_basedir). Zgodność pilnuje test_nazwy_zmiennych.php.",
+  "tagi": [
+    "STRZAŁ",
+    "Gol",
+    "ZDOBYCIE SBZ",
+    "SBZ OTRZYMUJĄCY",
+    "III STREFA",
+    "III STREFA OTRZYMUJĄCY",
+    "ODBIÓR",
+    "STRATA",
+    "1x1 OFF",
+    "1x1 DEF.",
+    "PIERWSZY KONTAKT",
+    "DRUGI KONTAKT",
+    "SKUTECZNY",
+    "NISKUTECZNY",
+    "AKCJA DEFENSYWNA",
+    "ASYSTA"
+  ]
+}

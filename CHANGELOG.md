@@ -3,6 +3,72 @@
 Format: [wersja silnika] — data — opis.
 Każda zmiana, która modyfikuje wyjście silnika, MUSI mieć tu wpis wraz z powodem.
 
+## [0.16.6] + aplikacja — 2026-09-27 · Golden layout W3: Wgraj → Postęp → Raport, Ustawienia klubu
+
+### Silnik 0.16.6 — zmiana wyjścia v21 (v17 i test złoty nietknięte)
+- **Baner niewliczonych** `__BANER_NIEWLICZONE__` (nowa grupa `baner_niewliczone`):
+  „N rodzajów zdarzeń nie wliczone: TAG (n), … → Wlicz w Słowniku klubu" — tylko przy
+  templacie klubu. „Nie wliczone" = tag zdarzenia, który NIE jest zmienną templatu,
+  jej aliasem, **tagiem wbudowanym szablonu** (klucze `VARS`: SKUTECZNY, DRUGI KONTAKT…,
+  `render.wbudowane_tagi`) ani aliasem silnika którejś z nich. Powód: raport mówił
+  „komplet", gdy część zdarzeń nie wchodziła do żadnej liczby.
+- **Znaczniki serwowania** `__TRYB__` (`op`/`analityk`/`trener`/`publiczny`, atrybut
+  `data-tryb`) i `__KARTA_URL__` — wypełnia PHP (`Powrot::wypelnijRaport`), silnik
+  zostawia je nietknięte. CSS chowa elementy `.tylko-op`, `.tylko-analityk`, `.tylko-panel`.
+- **Cienki pasek** (mecz, k., data, PDF, SLAJDY PNG, LINK, motyw) zamiast górnej
+  belki; zakładki **numerowane 01–NN** w kolejności Układu, przewijane z cieniem;
+  numer także przy nagłówku sekcji; opis sekcji — pierwsze zdanie, reszta pod „i".
+  [op] zakładka „Pokrycie" (karta meczu) i stopka „templat vN" tylko w trybie op.
+  Pasek, klips i baner niewliczonych — ukryte w druku i slajdach.
+- **„Inne zdarzenia"** (dawna „Siatka ilości") znika z raportu, gdy wszystko
+  jest wliczone (tylko przy układzie schematu 2).
+- `docs/KONTRAKT_CLI.md` — nowe znaczniki i slot.
+
+### Import: jeden ekran, bez diffu na ścieżce analityka
+- **`/import`** — kroki „1 Wgraj · 2 Raport", strefy upuszczenia CSV/JSON, podpowiedź
+  „LiveTag.Pro → Eksport → CSV", „Wstecz" jako odnośnik. Walidacja typu i rozmiaru
+  pliku w `powiadomienia.js` (**trzeci punkt wyjątku §9**, komunikaty z `pl.php`
+  przez `data-*`; `accept` i serwer sprawdzają to samo).
+- **`/import/{id}/przygotuj`** — po odczycie pliku: rywal podpowiedziany z kolumny
+  drużyn (lista + „nowy"), ostrzeżenie **„Podobny klub już istnieje"**
+  (`Clubs::podobne` — normalizacja + zawieranie, min. 4 znaki; podpowiedź, nie
+  dopasowanie), data wymagana, wynik opcjonalny („z tagów"), skład poza ścieżką.
+  Jeden przycisk „Wgraj i przygotuj raport" + „Raport będzie gotowy za około 2 minuty…".
+- **`/import/{id}/postep`** — „Czytam plik → Buduję raport", nagłówek meczu,
+  wskaźnik pracy; po gotowym raporcie przekierowanie na raport; „Wróć na pulpit".
+  Administrator po wgraniu — jak dotąd, strona zadania.
+- **ZMIANA ZACHOWANIA: import nie dopisuje już nowych zmiennych do templatu**
+  (w sesji 8 `AutoImport` robił to sam). Słownik klubu zapisuje się wyłącznie
+  w Ustawieniach klubu („Wlicz jako…") albo — [op] — na ekranie różnic. Import
+  nadal dopisuje ALIASY wariantów pisowni istniejących zmiennych („INNE" przy
+  „Inne", 0.16.3). Przestawione testy: `test_auto_import_http`, `test_import_n1_http`,
+  `test_rewizja_http`, `test_nazwy_zmiennych`, `test_golden_w1`.
+
+### Ustawienia klubu (`/klub/ustawienia`)
+- **Układ raportu** — kolejność (strzałki), Ukryj/Pokaż, numery bez luk, **Przegląd
+  zawsze pierwszy i widoczny** (`UstawieniaKlubu::operacja`), „Inne zdarzenia" do
+  pokazania tylko przy nierozpoznanych tagach.
+- **Słownik klubu** — „Wliczane" (tag z eksportu → nazwa w raporcie → sekcje,
+  „kontynuacja: X" przy aliasach) i „Nierozpoznane" z liczbą zdarzeń i meczów
+  (katalog tagów minus templat minus tagi wbudowane) z „Wlicz jako…": nowa
+  zmienna albo kontynuacja zmiennej X. Zmienna = surowa nazwa; klub zmienia
+  tylko etykietę i sekcje.
+- Każdy zapis = **nowa wersja templatu + odświeżenie raportów klubu w tle**
+  (`Rebuilds::queueClub`), wskaźnik partii na ekranie i chmurka po zakończeniu.
+  Chmurka partii prowadzi konto klubowe do Ustawień, nie na ekran [op] (404).
+- **[op] Zaawansowane** — historia wersji z „Przywróć" (klon wersji jako
+  najnowszej), zmienne martwe (`NaprawaTemplatu::martwe`), odsyłacze do
+  konfiguratora (typ, barwa, kanon), mapowań, szerokości kafli i danych klubu.
+- Teksty dla kont klubowych: „odświeża/odświeżono" zamiast „przelicza/przeliczono".
+
+### Testy
+- `test_golden_w3_http.php` (port 9081, w `uruchom.sh`): Wgraj → Przygotuj →
+  Postęp → Raport bez diffu i bez pustej mety; baner z wymyślonym tagiem →
+  „Wlicz jako…" → brak banera po odświeżeniu; sekcja 04 → 02 zmienia zakładki
+  raportu; trener 404 na Wgraj/Ustawieniach, raport w trybie „trener".
+- pytest: baner, tagi wbudowane, „Inne zdarzenia", znaczniki trybu.
+- Zrzuty: `docs/zrzuty/W3/`.
+
 ## Aplikacja — 2026-09-27 · Golden layout W2: role i porządek
 
 ### Role (bez nowej kolumny roli — `users.role` z migracji 001)

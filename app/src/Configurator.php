@@ -463,6 +463,18 @@ final class Configurator
      * @param array<string,mixed> $paleta
      * @param list<string> $barwyKlubu
      */
+    /**
+     * Barwa zmiennej dopisanej w Słowniku klubu (golden layout W3): barwa
+     * z katalogu tagów (plik projektu LiveTag), a bez niej — kolejka barw klubu.
+     *
+     * @param list<string> $barwyKlubu
+     */
+    public static function barwaZapasowa(array $barwyKlubu, int $nr, ?string $zKatalogu = null): string
+    {
+        $paleta = $zKatalogu !== null ? ['tags' => ['' => $zKatalogu]] : [];
+        return self::barwa(Suggester::TAG, '', $paleta, $barwyKlubu, $nr);
+    }
+
     private static function barwa(string $typ, string $raw, array $paleta, array $barwyKlubu, int $nr): string
     {
         $grupa = $typ === Suggester::TAG ? 'tags' : 'labels';

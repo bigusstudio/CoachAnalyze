@@ -90,6 +90,9 @@ def test_render_nie_zmienia_niczego_poza_placeholderami(generacja):
         },
         "match": {"season": "ZzSezon", "round": "ZzKolejka", "date": "ZzData"},
     }
+    # TAG SPOZA SŁOWNIKA I SPOZA `VARS` szablonu — baner niewliczonych musi być
+    # NIEPUSTY, z tego samego powodu co `__BANER__` niżej (golden layout W3).
+    ramka = dict(RAMKA, events=[dict(RAMKA["events"][0], tag="ZzNiewliczony")])
     # KIERUNEK PODANY JAWNIE, a nie wykryty z `RAMKA`: znaczniki grupy `kierunek`
     # przy nieznanym kierunku są PUSTYMI napisami, a pustego napisu nie da się
     # odwrócić z powrotem w znacznik — test przestałby cokolwiek sprawdzać.
@@ -112,21 +115,22 @@ def test_render_nie_zmienia_niczego_poza_placeholderami(generacja):
          "is_starter": True},
     ]))
     html, _ = render.render(
-        RAMKA, palette={"tags": {}, "labels": {}}, config=config, template_path=sciezka,
+        ramka, palette={"tags": {}, "labels": {}}, config=config, template_path=sciezka,
         direction=kierunek, report_template=templat,
     )
 
     # v21 niesie kafelek zawodnikow, wiec `DATA` dostaje pole `player` — a v17 nie.
     # Test odwraca render, wiec musi serializowac dokladnie to, co render wstrzyknal.
     z_zawodnikami = render.WIDGET_ZAWODNICY in szablon
-    dane = json.dumps(render.view_data(RAMKA, players=z_zawodnikami),
+    dane = json.dumps(render.view_data(ramka, players=z_zawodnikami),
                       ensure_ascii=False, separators=(",", ":"))
     paleta = json.dumps({"tags": {}, "labels": {}}, ensure_ascii=False)
     odwrocone = html.replace(dane + ";", "/*__DATA__*/;").replace(paleta + ";", "/*__PAL__*/;")
 
-    slots, _ = render.team_slots(RAMKA, config["teams"])
+    slots, _ = render.team_slots(ramka, config["teams"])
     slots.update(render.match_slots(config))
     slots.update(render.baner_slot(kierunek.get("warnings")))
+    slots.update(render.baner_niewliczone_slot(ramka, templat, render.wbudowane_tagi(szablon)))
     slots.update(render.progi_slot())
     slots.update(render.vars_slot(templat))
     slots.update(render.roster_slot(config))
@@ -734,3 +738,79 @@ def test_v17_nie_ma_klipsa():
     """Test złoty stoi na v17 — klips jest wyłącznie w v21."""
     html, _ = render.render(RAMKA, template_path="v17")
     assert "__POWROT_URL__" not in html and "ca-klips" not in html
+
+
+# ------------------------------------------------------------------ golden layout W3
+def _templat_w3(zmienne=("STRZAŁ",), uklad=("przeglad", "makro", "siatka")):
+    return {
+        "schema_version": 2,
+        "sections": [{"id": "s%d" % (i + 1), "size": "1", "widgets": [w], "title": ""}
+                     for i, w in enumerate(uklad)],
+        "variables": [{"id": "v_%03d" % (i + 1), "source": {"type": "tag", "raw": z},
+                       "display_label": z, "color": "#112233", "sections": ["bilans"],
+                       "visible": True, "aliases": []} for i, z in enumerate(zmienne)],
+    }
+
+
+def test_niewliczone_tagi_od_najczestszego():
+    ramka = {"events": [{"tag": t} for t in ("STRZAŁ", "WYMYŚLONY", "WYMYŚLONY", "ZZZ", "AAA")]}
+    assert render.niewliczone_tagi(ramka, _templat_w3()) == [("WYMYŚLONY", 2), ("AAA", 1), ("ZZZ", 1)]
+
+
+def test_niewliczone_bez_templatu_puste():
+    """Słownik domyślny nie jest decyzją klubu — bez templatu banera nie ma."""
+    assert render.niewliczone_tagi(RAMKA, None) == []
+
+
+def test_alias_zmiennej_jest_wliczony():
+    t = _templat_w3()
+    t["variables"][0]["aliases"] = ["STRZAL STARY"]
+    assert render.niewliczone_tagi({"events": [{"tag": "STRZAL STARY"}]}, t) == []
+
+
+def test_baner_niewliczone_tylko_gdy_cos_nie_wliczone():
+    html, raport = render.render(RAMKA, template_path="v21", report_template=_templat_w3())
+    assert 'class="baner baner--niewliczone' not in html
+    assert "__BANER_NIEWLICZONE__" not in html
+    assert raport["unresolved_placeholders"] == []
+
+    ramka = dict(RAMKA, events=RAMKA["events"] + [dict(RAMKA["events"][0], tag="WYMYŚLONY")])
+    html, _ = render.render(ramka, template_path="v21", report_template=_templat_w3())
+    assert html.count('class="baner baner--niewliczone') == 1
+    assert "WYMYŚLONY" in html and render.ADRES_SLOWNIKA in html
+
+
+def test_inne_zdarzenia_znikaja_gdy_wszystko_wliczone():
+    """Kafel „Inne zdarzenia" (siatka) ma sens tylko przy nierozpoznanych tagach."""
+    html, _ = render.render(RAMKA, template_path="v21", report_template=_templat_w3())
+    assert 'data-widget="siatka"' not in html
+    ramka = dict(RAMKA, events=RAMKA["events"] + [dict(RAMKA["events"][0], tag="WYMYŚLONY")])
+    html, _ = render.render(ramka, template_path="v21", report_template=_templat_w3())
+    assert 'data-widget="siatka"' in html
+
+
+def test_znaczniki_trybu_i_karty_przechodza_nietkniete():
+    html, raport = render.render(RAMKA, template_path="v21")
+    assert html.count('data-tryb="__TRYB__"') == 1
+    assert "__KARTA_URL__" in html
+    for z in render.ZNACZNIKI_SERWOWANIA:
+        assert z not in raport["unresolved_placeholders"]
+
+
+def test_v17_bez_znacznikow_w3():
+    html, _ = render.render(RAMKA, template_path="v17")
+    assert "__TRYB__" not in html and "__KARTA_URL__" not in html and 'class="baner baner--niewliczone' not in html
+
+
+def test_tagi_wbudowane_szablonu_nie_sa_niewliczone():
+    """NISKUTECZNY liczy pressing, DRUGI KONTAKT — pojedynki, bez słownika klubu.
+    Baner nazywający je „nie wliczonymi" kłamałby o liczbach pod spodem."""
+    wbud = render.wbudowane_tagi(render.load_template(render.template_path_for("v21")))
+    assert "NISKUTECZNY" in wbud and "DRUGI KONTAKT" in wbud
+    assert render.wbudowane_tagi(render.load_template(render.template_path_for("v17"))) == ()
+    ramka = dict(RAMKA, events=RAMKA["events"] + [dict(RAMKA["events"][0], tag=t)
+                                                  for t in ("NISKUTECZNY", "SBZ PODAJĄCY", "WYMYŚLONY")])
+    assert render.niewliczone_tagi(ramka, _templat_w3(), wbud) == [("WYMYŚLONY", 1)]
+    html, _ = render.render(ramka, template_path="v21", report_template=_templat_w3())
+    baner = re.search(r'<div class="baner baner--niewliczone[^>]*>(.*?)</div>', html, re.S).group(1)
+    assert "WYMYŚLONY" in baner and "NISKUTECZNY" not in baner and "SBZ PODAJĄCY" not in baner
