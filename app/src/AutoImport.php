@@ -261,11 +261,26 @@ final class AutoImport
             self::BARWY
         );
 
-        if ($nowe === []) {
-            return [[], null];
+        $zmienne = array_merge(array_values((array) $config['variables']), $nowe);
+
+        /*
+         * ALIAS ZAMIAST DRUGIEJ ZMIENNEJ (0.16.3). Nazwa, która po normalizacji
+         * JEST zmienną templatu („INNE" przy „Inne"), albo alias silnika
+         * (`SBZ PODAJĄCY` przy `ZDOBYCIE SBZ`), dopisuje się do `aliases`
+         * istniejącej zmiennej. Liczone PO dołożeniu nowych: wariant zapisu
+         * nazwy, która właśnie weszła, trafia do niej, a nie w próżnię.
+         */
+        $aliasy = Configurator::autoAliasy($meta, ['variables' => $zmienne]);
+        foreach ($aliasy as $i => $nazwyAliasow) {
+            $zmienne[$i]['aliases'] = array_values(array_unique(array_merge(
+                array_map('strval', (array) ($zmienne[$i]['aliases'] ?? [])),
+                $nazwyAliasow
+            )));
         }
 
-        $zmienne = array_merge(array_values((array) $config['variables']), $nowe);
+        if ($nowe === [] && $aliasy === []) {
+            return [[], null];
+        }
 
         // Układ, progi i markery przenoszą się z poprzedniej wersji. Import
         // dokłada ZMIENNE, a nie przestawia raport — klub, który poukładał
@@ -289,6 +304,8 @@ final class AutoImport
             $clubId,
             $nowyConfig,
             null,                                   // created_by NULL: zapis systemowy
+            // Notka BEZ dopisków: `ReportTemplates::autoForImport()` szuka jej
+            // przez równość, a ekran pokrycia stoi na tym dopasowaniu.
             'auto: import #' . $importId
         );
 

@@ -1,0 +1,14 @@
+{
+  "_opis": "Aliasy domyślne: inne nazwy TEJ SAMEJ zmiennej w eksportach LiveTag.",
+
+  "_dlaczego_plik": "Do sesji 7 ta lista siedziała WYŁĄCZNIE w szablonie v21, w słowniku VARS. Skutek zobaczyliśmy na eksporcie JDRZ: raport liczył wejścia w SBZ (11:20), bo szablon znał alias, a silnik wycinał całą sekcję osi SBZ, bo go nie znał. Ta sama liczba, dwa źródła prawdy, dwie różne odpowiedzi w jednym pliku HTML.",
+
+  "_kto_czyta": "coverage (dostępność sekcji i liczniki), canon (profil mapowań) i render (wstrzyknięcie do VARS szablonu jako wartości DOMYŚLNE). Templat klubu nadpisuje to, co tu stoi — `variables[].aliases`, sesja 5.",
+
+  "_klucz_to_nazwa_glowna": "Klucz jest nazwą, pod którą zmienna występuje w raporcie; lista to nazwy, które znaczą to samo. Nigdy odwrotnie — odwrócenie kierunku dałoby dwa wpisy wskazujące na siebie nawzajem.",
+
+  "_zasada": "Alias to TA SAMA ZMIENNA POD INNĄ NAZWĄ, a nie tag podobny. `SBZ OTRZYMUJĄCY` nie jest aliasem `ZDOBYCIE SBZ`: to osobne zdarzenie, tagowane na drugim zawodniku, i policzone razem podwoiłoby wejścia w SBZ.",
+
+  "ZDOBYCIE SBZ": ["SBZ PODAJĄCY"],
+  "III STREFA": ["III STREFA PODAJĄCY/OTRZYMUJĄCY"]
+}

@@ -95,24 +95,25 @@ final class TemplateDiff
      */
     public static function policz(array $meta, ?array $config, array $ignorowane): array
     {
-        $wTemplacie = [];
-        foreach ((array) ($config['variables'] ?? []) as $z) {
-            $typ = (string) ($z['source']['type'] ?? '');
-            $raw = (string) ($z['source']['raw'] ?? '');
-            if ($raw !== '') {
-                $wTemplacie[self::klucz($typ, $raw)] = $z;
-            }
-        }
+        /*
+         * „ZNANA" ZNACZY TO SAMO CO W IMPORCIE (0.16.3) — `Configurator::indeksNazw`,
+         * czyli równość po `NazwaZmiennej::klucz`, aliasy zmiennej i aliasy
+         * silnika. Do 0.16.2 porównywaliśmy tu dosłownie, a import po
+         * normalizacji: „INNE" przy zmiennej „Inne" import uznał za znaną, a ten
+         * ekran za nową — i operator dodał drugą zmienną na tę samą etykietę.
+         */
+        $zmienne = array_values((array) ($config['variables'] ?? []));
+        $indeks = Configurator::indeksNazw(['variables' => $zmienne]);
 
         $znane = [];
         $nowe = [];
         $pominiete = [];
 
         foreach (self::pozycjeSlownika($meta) as $poz) {
-            $klucz = self::klucz($poz['type'], $poz['name']);
+            $i = Configurator::dopasuj((string) $poz['type'], (string) $poz['name'], $indeks);
 
-            if (isset($wTemplacie[$klucz])) {
-                $poz['variable'] = $wTemplacie[$klucz];
+            if ($i !== null) {
+                $poz['variable'] = $zmienne[$i];
                 $znane[] = $poz;
                 continue;
             }

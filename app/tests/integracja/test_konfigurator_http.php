@@ -463,10 +463,14 @@ if ($configPliki !== []) {
      * Ze meta Z BAZY faktycznie dojezdza do configu, sprawdza
      * `test_meta_sezon_http.php` — tam mecz ma date i sezon.
      */
-    foreach (['date', 'season', 'round'] as $pole) {
+    foreach (['date', 'round'] as $pole) {
         check("brak mety daje pusty napis, nie null ({$pole})",
             ($metaMeczu[$pole] ?? null) === '', var_export($metaMeczu[$pole] ?? null, true));
     }
+    // SEZON NIE JEST JUŻ PUSTY (0.16.3): mecz z importu dostaje sezon bieżący
+    // klubu (`Imports::create` → `Seasons::suggestFor`). Kolejki nie zgadujemy.
+    check('mecz z importu dostaje sezon bieżący',
+        ($metaMeczu['season'] ?? null) === '2026/2027', var_export($metaMeczu['season'] ?? null, true));
     /*
      * Tenant leci do configu dla sesji 4 (lewa strona raportu, STAN_PIVOTU §7.7d).
      * Render go dzis nie uzywa — pole ma byc na miejscu, zanim bedzie potrzebne.

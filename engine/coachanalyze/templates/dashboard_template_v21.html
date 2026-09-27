@@ -423,6 +423,13 @@ Object.keys(PAL.tags).forEach(k=>{ if(ALIAS[k]&&!PAL.tags[ALIAS[k]]) PAL.tags[AL
 (()=>{const sh=DATA.events.filter(e=>e.tag==='STRZAŁ');DATA.events.filter(e=>e.tag==='Gol').forEach(g=>{if(!sh.length)return;const s=sh.reduce((a,b)=>Math.abs(b.b-g.b)<Math.abs(a.b-g.b)?b:a);g.team=s.team;});})();
 const E = DATA.events, HS = DATA.half_split;
 const HUT='__TEAM_HOME__', POG='__TEAM_AWAY__';
+/* PERSPEKTYWA KLUBU-TENANTA. Od sesji 4a lewy slot (HOME/HUT) to klub, dla którego
+   powstaje raport (render.kolejnosc_slotow). Tagi bez drużyny (odbiór, strata, 1x1,
+   pressing, akcja defensywna) taguje analityk tenanta — więc liczą się TENANTOWI,
+   a rywalowi tylko to, co z nich wynika (nasza strata = jego odbiór).
+   Do 0.16.2 stało tu `USK=POG` i te liczby lądowały w PRAWEJ kolumnie, przy
+   nazwie rywala. Jedna stała, jedno miejsce — nie wpisuj POG jako „my". */
+const TENANT=HUT, RIVAL=POG;
 const has=(e,l)=>e.labels.includes(l);
 const fmt=(n,d=0)=>n.toLocaleString('pl-PL',{minimumFractionDigits:d,maximumFractionDigits:d});
 const mmss=s=>{const m=Math.max(0,Math.floor(s/60));return m+"'";};
@@ -686,7 +693,6 @@ function budujSzkieletMap(){
 }
 
 /* v20: liczniki bazowe dla nagłówka i przeglądu */
-const USK=POG; // klub-tenant (perspektywa tagów bez drużyny)
 function ovStats(Ev){
   const R={};for(const t of [HUT,POG]){const ss=Ev.filter(e=>e.tag==='STRZAŁ'&&e.team===t);const sbz=Ev.filter(e=>e.tag==='ZDOBYCIE SBZ'&&e.team===t);const p3=Ev.filter(e=>e.tag==='III STREFA'&&e.team===t);
     R[t]={gole:Ev.filter(e=>e.tag==='Gol'&&e.team===t).length,xg:ss.reduce((a,e)=>a+(e.xg||0),0),strzaly:ss.length,celne:ss.filter(e=>has(e,'CELNY')).length,sbz:sbz.length,sbz_shot:sbz.filter(e=>has(e,'STRZAŁ')).length,p3:p3.length,p3ok:p3.filter(e=>has(e,'UDANA')).length};}
@@ -721,18 +727,18 @@ function renderHeader2(){
 function mcLabel(){const q=MC.qs,all=ALLQ.every(x=>q.has(x));if(all)return 'CAŁY MECZ';if(['q1','q2','q3'].every(x=>q.has(x))&&!['q4','q5','q6'].some(x=>q.has(x)))return 'I POŁOWA';if(['q4','q5','q6'].every(x=>q.has(x))&&!['q1','q2','q3'].some(x=>q.has(x)))return 'II POŁOWA';return ALLQ.filter(x=>q.has(x)).map(x=>QLBL[x]).join(' · ');}
 function renderOverview(){
   if(!document.getElementById('ov-kpi')) return;
-  const Ev=E.filter(e=>inSet(MC.qs,e)&&(e.team?MC.teams.has(e.team):MC.teams.has(USK)));
+  const Ev=E.filter(e=>inSet(MC.qs,e)&&(e.team?MC.teams.has(e.team):MC.teams.has(TENANT)));
   const A=ovStats(Ev),h=A[HUT],p=A[POG],u=A.us,them=A.them,pc=(a,b)=>b?Math.round(100*a/b)+'%':'–';
   const k=(l,a,b,f=x=>x)=>`<div class="kpi"><div class="l">${l}</div><div class="v"><span class="h">${f(a)}</span><span class="sep">:</span><span class="p">${f(b)}</span></div></div>`;
-  document.getElementById('ov-kpi').innerHTML=`<h3>Kluczowe liczby<span class="hint">${mcLabel()} · __TEAM_HOME_SHORT__ : __TEAM_AWAY_SHORT__</span></h3><div class="kpis">${k('Gole',h.gole,p.gole)}${k('xG',h.xg,p.xg,x=>fmt(x,2))}${k('Strzały',h.strzaly,p.strzaly)}${k('Celne',h.celne,p.celne)}${k('Zdobycie SBZ',h.sbz,p.sbz)}${k('Odbiory',them.odb,u.odb)}${k('1x1 wygrane',them.won,u.won)}${k('III strefa (udane)',h.p3ok,p.p3ok)}</div>`;
-  const f=[],push=(c,b,t)=>f.push({c,b,t}),[pok,pno]=u.pr,pn=pok+pno,me=A[USK],ry=A[USK===HUT?POG:HUT],short='__TEAM_AWAY_SHORT__';
+  document.getElementById('ov-kpi').innerHTML=`<h3>Kluczowe liczby<span class="hint">${mcLabel()} · __TEAM_HOME_SHORT__ : __TEAM_AWAY_SHORT__</span></h3><div class="kpis">${k('Gole',h.gole,p.gole)}${k('xG',h.xg,p.xg,x=>fmt(x,2))}${k('Strzały',h.strzaly,p.strzaly)}${k('Celne',h.celne,p.celne)}${k('Zdobycie SBZ',h.sbz,p.sbz)}${k('Odbiory',u.odb,them.odb)}${k('1x1 wygrane',u.won,them.won)}${k('III strefa (udane)',h.p3ok,p.p3ok)}</div>`;
+  const f=[],push=(c,b,t)=>f.push({c,b,t}),[pok,pno]=u.pr,pn=pok+pno,me=A[TENANT],ry=A[RIVAL],short='__TEAM_HOME_SHORT__';
   if(pn)push(pok/pn>=PROGI.pressing/100?'ok':'bad',pc(pok,pn),`pressingów skutecznych (${pok} z ${pn})`);
   if(me.sbz)push(me.sbz_shot/me.sbz>=PROGI.sbz_strzal/100?'ok':'bad',`${me.sbz_shot}/${me.sbz}`,`wejść w SBZ zakończonych strzałem (${pc(me.sbz_shot,me.sbz)}); rywal ${ry.sbz_shot}/${ry.sbz}`);
   if(u.str)push(u.str_re/u.str>=PROGI.reakcja/100?'ok':'bad',pc(u.str_re,u.str),`strat z reakcją (${u.str_re} z ${u.str})`);
   push(me.xg-me.gole>0.5?'bad':'neu',`${fmt(me.xg,2)} → ${me.gole}`,`xG → gole ${short}; rywal ${fmt(ry.xg,2)} → ${ry.gole}`);
   if(u.def[1])push(u.def[0]/u.def[1]>=PROGI.duel_def/100?'ok':'bad',pc(u.def[0],u.def[1]),`1x1 w defensywie wygranych (${u.def[0]}/${u.def[1]})`);
   if(me.p3)push(me.p3ok/me.p3>=PROGI.p3/100?'ok':'bad',`${me.p3ok}/${me.p3}`,`udanych wejść w III strefę (${pc(me.p3ok,me.p3)})`);
-  document.getElementById('ov-facts').innerHTML=`<h3>Fakty z fragmentu<span class="hint">perspektywa ${short} · ${mcLabel()}</span></h3><div class="facts">${f.slice(0,6).map(x=>`<div class="fact ${x.c}"><div class="big">${x.b}</div><div class="t">${x.t}</div></div>`).join('')}</div>`;
+  document.getElementById('ov-facts').innerHTML=`<h3>Fakty z fragmentu<span class="hint">perspektywa __TEAM_HOME_LABEL__ · ${mcLabel()}</span></h3><div class="facts">${f.slice(0,6).map(x=>`<div class="fact ${x.c}"><div class="big">${x.b}</div><div class="t">${x.t}</div></div>`).join('')}</div>`;
 }
 /* v22: mapa bez wspolrzednych pokazuje POWOD, nie puste boisko.
    Eksport referencyjny ma 35 tagow III STREFA bez pos_* — bilans je liczy (20:15),
@@ -1257,7 +1263,7 @@ function renderNoteam(){
 /* Zdarzenia wybranego fragmentu — wspólne wejście wszystkich nowych kafli. */
 function widgetCtx(){
   const Ev=E.filter(e=>inSet(MC.qs,e));
-  return {E, Ev, MC, HUT, POG, USK, PROGI, fragment:mcLabel()};
+  return {E, Ev, MC, HUT, POG, TENANT, RIVAL, PROGI, fragment:mcLabel()};
 }
 
 const pctTxt=(n,tot)=>tot?Math.round(100*n/tot)+'%':'–';

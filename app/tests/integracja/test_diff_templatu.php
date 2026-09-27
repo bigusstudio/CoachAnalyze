@@ -174,6 +174,9 @@ $synt = ca_test_csv([
     ['STRZAŁ',              '10',  '20',  'KLUB A', 'POZYCYJNIE, CELNY',   'X 0,5',   '88', '31'],
     ['AKCJA DEFENSYWNA',    '30',  '40',  'KLUB A', 'UDANA',               '',        '50', '30'],
     ['SBZ PODAJĄCY',        '45',  '55',  'KLUB A', 'STRZAŁ',              'xG 0,22', '85', '33'],
+    // Nowy tag spoza aliasów silnika — to on przechodzi przez „dodaj do templatu".
+    // `SBZ PODAJĄCY` od 0.16.3 jest ZNANY przez alias silnika (ZDOBYCIE SBZ).
+    ['WEJŚCIE W POLE',      '46',  '56',  'KLUB A', 'STRZAŁ',              '',        '86', '34'],
     // `1x1 DEF` bez kropki — wariant nazwy, który ma NIE zlać się z `1x1 DEF.`
     ['1x1 DEF',             '60',  '70',  'KLUB A', 'WYGRANY',             '',        '40', '20'],
     ['PRESSING WYSOKI',     '75',  '85',  'KLUB A', 'SKUTECZNY',           '',        '60', '25'],
@@ -196,7 +199,9 @@ $znaneNazwy = array_column(array_filter($diff['znane'], fn($p) => $p['type'] ===
 check('STRZAŁ znany templatowi — mapuje się cicho', in_array('STRZAŁ', $znaneNazwy, true));
 check('STRATA znana templatowi', in_array('STRATA', $znaneNazwy, true));
 check('PRESSING WYSOKI jest nowy', in_array('PRESSING WYSOKI', $noweNazwy, true));
-check('SBZ PODAJĄCY jest nowy', in_array('SBZ PODAJĄCY', $noweNazwy, true));
+check('SBZ PODAJĄCY znany przez alias silnika, nie nowy',
+    in_array('SBZ PODAJĄCY', $znaneNazwy, true) && !in_array('SBZ PODAJĄCY', $noweNazwy, true));
+check('WEJŚCIE W POLE jest nowy', in_array('WEJŚCIE W POLE', $noweNazwy, true));
 
 /*
  * PUŁAPKA 7 na poziomie diffu: `1x1 DEF` i `1x1 DEF.` to DWIE RÓŻNE pozycje.
@@ -231,14 +236,14 @@ $klucz = fn(string $t, string $n) => TemplateDiff::klucz($t, $n);
 
 $decyzje = [
     $klucz('tag', 'PRESSING WYSOKI')     => TemplateDiff::DODAJ,
-    $klucz('tag', 'SBZ PODAJĄCY')        => TemplateDiff::DODAJ,
+    $klucz('tag', 'WEJŚCIE W POLE')      => TemplateDiff::DODAJ,
     $klucz('tag', 'DOŚRODKOWANIE')       => TemplateDiff::POMIN,
     $klucz('tag', 'STAŁY FRAGMENT')      => TemplateDiff::NA_STALE,
 ];
 $pola = [
     $klucz('tag', 'PRESSING WYSOKI') => ['canon' => 'press', 'display_label' => 'Pressing wysoki',
                                          'color' => '#112233', 'sections' => ['bilans', 'tl_bilans']],
-    $klucz('tag', 'SBZ PODAJĄCY')    => ['canon' => 'entry_sbz', 'display_label' => '',
+    $klucz('tag', 'WEJŚCIE W POLE')  => ['canon' => 'entry_sbz', 'display_label' => '',
                                          'color' => null, 'sections' => ['bilans', 'mapy']],
 ];
 
@@ -248,7 +253,7 @@ $nowyConfig = TemplateDiff::nowyConfig($config, $diff['nowe'], $decyzje, $pola);
 $nazwyWConfigu = array_column(array_column($nowyConfig['variables'], 'source'), 'raw');
 
 check('dopisano PRESSING WYSOKI', in_array('PRESSING WYSOKI', $nazwyWConfigu, true));
-check('dopisano SBZ PODAJĄCY', in_array('SBZ PODAJĄCY', $nazwyWConfigu, true));
+check('dopisano WEJŚCIE W POLE', in_array('WEJŚCIE W POLE', $nazwyWConfigu, true));
 check('NIE dopisano pominiętego DOŚRODKOWANIE',
     !in_array('DOŚRODKOWANIE', $nazwyWConfigu, true));
 check('NIE dopisano zignorowanego na stałe STAŁY FRAGMENT',
@@ -276,12 +281,12 @@ check('dopisana zmienna niesie barwę z formularza', ($dodany['color'] ?? '') ==
 
 $bezEtykiety = null;
 foreach ($nowyConfig['variables'] as $z) {
-    if ($z['source']['raw'] === 'SBZ PODAJĄCY') {
+    if ($z['source']['raw'] === 'WEJŚCIE W POLE') {
         $bezEtykiety = $z;
     }
 }
-check('pusta etykieta zastąpiona propozycją z nazwy',
-    ($bezEtykiety['display_label'] ?? '') !== '',
+check('pusta etykieta zastąpiona propozycją z nazwy — surową, bez zmiany wielkości liter',
+    ($bezEtykiety['display_label'] ?? '') === 'WEJŚCIE W POLE',
     'templat bez etykiety nie przeszedłby walidacji');
 
 check('nowy config przechodzi twardą walidację',

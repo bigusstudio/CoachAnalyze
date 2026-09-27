@@ -3,6 +3,74 @@
 Format: [wersja silnika] — data — opis.
 Każda zmiana, która modyfikuje wyjście silnika, MUSI mieć tu wpis wraz z powodem.
 
+## [0.16.3] — 2026-09-27 · Poprawka: perspektywa tenanta w v21, auto-etykiety, sezon domyślny
+
+### Silnik (szablon v21) — perspektywa klubu-tenanta w LEWYM slocie
+
+**POWÓD: raport 27 (Pogoń vs JDRZ) pokazywał liczby tenanta przy nazwie rywala.**
+Tagi bez drużyny (odbiór, strata, 1x1, pressing, akcja defensywna) taguje analityk
+tenanta. Od sesji 4a lewy slot (HOME/HUT) to tenant, ale szablon miał `USK=POG`:
+„odbiory 8 : 23", „1x1 wygrane 19 : 14", „perspektywa JDRZ", „xG → gole JDRZ".
+
+- **Jedna stała `TENANT=HUT, RIVAL=POG`** w miejsce `USK`. KPI Przeglądu: lewa
+  kolumna = tenant (`u.*`), prawa = to, co z tagów tenanta wynika dla rywala
+  (nasza strata = jego odbiór). Fakty liczone tenantowi; nagłówek „perspektywa"
+  z pełną nazwą lewego slotu, „xG → gole" ze skrótem.
+- **Raport 27 po poprawce:** odbiory 23 : 8, 1x1 wygrane 14 : 19, „xG → gole
+  Pogoń 0,99 → 1; rywal 1,45 → 2" — zweryfikowane `engine/tools/przeglad_liczby.py`
+  na kopii raportu.
+- **Tabela makro bez zmian** — kolumna „bez drużyny" zostaje. Slajdy są klonami
+  DOM, więc idą za Przeglądem.
+- **`przeglad_liczby.py`** liczy odbiory, straty i 1x1 wygrane (perspektywa
+  tenanta), niezależnie od szablonu. Test `engine/tests/test_perspektywa_tenanta.py`:
+  syntetyczny mecz przez CLI na v21, tenant 3 odbiory / rywal 0 → lewa kolumna = 3.
+- **v17 i test złoty nietknięte.**
+
+### Aplikacja — jedna definicja „ta sama nazwa zmiennej"
+
+**POWÓD: etykieta INNE (Pogoń, mecz 26) nie weszła automatycznie i wisiała
+w „Poza templatem klubu".** Templat miał od wersji 2 etykietę „Inne" (v_030, zestaw
+startowy). `AutoImport` porównywał po normalizacji → uznał „INNE" za znaną i nie
+dodał; `TemplateDiff` porównywał dosłownie → pokazał jako nową. Operator dodał ją
+ręcznie (v_078) — templat ma dwie zmienne na jedną etykietę. Hipoteza „etykieta
+wyłącznie na tagach bez drużyny" się nie potwierdziła; test i tak pokrywa ten kształt.
+
+- **`app/src/NazwaZmiennej.php`** — klucz porównania (wielkość liter, spacje,
+  łączniki) dla `AutoImport`, `TemplateDiff`, `Configurator` i pokrycia. Nadal
+  RÓWNOŚĆ, nigdy fragment (pułapka 7).
+- **Kolizja po normalizacji = alias, nie nowa zmienna.** „INNE" przy „Inne"
+  dopisuje się do `aliases` istniejącej zmiennej (`Configurator::autoAliasy`).
+- **Aliasy silnika czytane przez panel.** `SBZ PODAJĄCY` / `III STREFA
+  PODAJĄCY/OTRZYMUJĄCY` przy zmiennych `ZDOBYCIE SBZ` / `III STREFA` dostają
+  alias zamiast osobnej zmiennej (Pogoń: v_060, v_062). Kopia `aliasy.json`
+  w `app/src/data/` — PHP-FPM nie czyta `engine/` (open_basedir); test porównuje
+  ją bajt w bajt z plikiem silnika.
+- **Etykieta = surowa nazwa, bez zmiany wielkości liter.** `etykietaZNazwy`
+  nie robi już „Zdobycie Sbz" / „Iii Strefa" / „1X1 Off". **Źródłem nie był
+  AutoImport** (wersja auto v4 ma surowe nazwy), tylko domyślna wartość formularza
+  ekranu różnic — wersja 3 Pogoni jest RĘCZNA.
+- **`app/repairs/napraw_auto_etykiety.php`** (podgląd domyślnie, `--zapisz`):
+  scala zmienne-aliasy silnika i duplikaty po normalizacji (zostaje najstarsza,
+  sekcje sumowane), poprawia etykiety w wielkości tytułowej, których nikt nie
+  zmieniał — domyślnie tylko z wersji auto, `--takze-reczne` także z ręcznych
+  (na Pogoni potrzebne, patrz wyżej). `--wykaz-martwych` / `--usun-martwe`:
+  zmienne, których nazwa nie wystąpiła w `tag_catalog` klubu (zestaw startowy
+  z innego klubu: „Posiadanie Stal", „K1P"…) — tylko na wyraźne polecenie; pusty
+  katalog = „brak podstaw", nie „wszystko martwe". Zapis jako wersja z notką
+  (nie unieważnia raportów — żadna operacja nie zmienia liczb). Powtórzenie
+  bezpieczne.
+
+### Aplikacja — sezon domyślny meczu z importu
+
+- `Imports::create` wpisuje `Seasons::suggestFor(null, null)`: sezon bieżący,
+  a bez niego najnowszy. Bez sezonów — NULL jak dotąd. Kolejka bez zmian (ręcznie).
+
+### Testy
+- nowy `app/tests/integracja/test_nazwy_zmiennych.php` (39 asercji, w `uruchom.sh`),
+- zaktualizowane oczekiwania: `test_konfigurator` (etykieta surowa),
+  `test_diff_templatu` (`SBZ PODAJĄCY` znany przez alias; „dodaj" na innym tagu),
+  `test_konfigurator_http` (mecz z importu ma sezon).
+
 ## Aplikacja — 2026-09-25 · sesja 8 „Import bez tarcia"
 ### Zmienne i rywal zakładane automatycznie, ekran różnic bez bramki
 

@@ -16,36 +16,79 @@ CZEGO NIE ZASTĘPUJE: wyglądu. Układ, barwy i czytelność trzeba obejrzeć.
 DUBLOWANIE RACHUNKU JEST TU CELOWE i nie jest tym samym, co zakazane dublowanie
 w silniku (render nie powtarza atrybucji gola po szablonie). Narzędzie odbioru,
 które liczy TĄ SAMĄ funkcją co sprawdzany kod, nie sprawdza niczego.
-"""
-import json, re, sys
 
-html = open(sys.argv[1], encoding="utf-8").read()
-DATA = json.loads(re.search(r"const DATA = (.*?);\n", html, re.S).group(1))
-HOME = re.search(r"const HUT='(.*?)', POG='(.*?)'", html).group(1)
-AWAY = re.search(r"const HUT='(.*?)', POG='(.*?)'", html).group(2)
+PERSPEKTYWA TENANTA (0.16.3). Tagi bez drużyny — odbiór, strata, 1x1 — taguje
+analityk klubu-tenanta, więc należą do LEWEJ kolumny (HOME = tenant). Rywal
+dostaje z nich tylko to, co wynika: nasza strata to jego odbiór, nasz odbiór to
+jego strata, nasz przegrany pojedynek to jego wygrany. Do 0.16.2 szablon
+przypinał je do prawej kolumny; to narzędzie liczy je niezależnie od szablonu,
+żeby rozjazd był widoczny.
+"""
+import json
+import re
+import sys
 
 ALIAS = {"SBZ PODAJĄCY": "ZDOBYCIE SBZ",
          "III STREFA PODAJĄCY/OTRZYMUJĄCY": "III STREFA"}
-ev = DATA["events"]
-for e in ev:
-    e["tag"] = ALIAS.get(e["tag"], e["tag"])
 
-shots = [e for e in ev if e["tag"] == "STRZAŁ"]
-for g in [e for e in ev if e["tag"] == "Gol"]:
-    if shots:
-        g["team"] = min(shots, key=lambda s: abs(s["b"] - g["b"]))["team"]
 
-# Od sesji 4a HOME to KLUB-TENANT, a nie „drużyna atakująca w lewo"
-# (docs/STAN_PIVOTU.md §7.7 a). Kierunek ataku wyprowadza silnik z danych
-# i zapisuje w `meta.direction` — nagłówek nie ma prawa go zgadywać.
-print(f"{'':22} {'HOME (tenant)':>16} {'AWAY (rywal)':>16}")
-print(f"{'drużyna':22} {HOME[:16]:>16} {AWAY[:16]:>16}")
-for etykieta, fn in [
-    ("gole",          lambda t: sum(1 for e in ev if e["tag"] == "Gol" and e["team"] == t)),
-    ("xG",            lambda t: round(sum(e.get("xg") or 0 for e in shots if e["team"] == t), 2)),
-    ("strzały",       lambda t: sum(1 for e in shots if e["team"] == t)),
-    ("celne",         lambda t: sum(1 for e in shots if e["team"] == t and "CELNY" in e["labels"])),
-    ("zdobycie SBZ",  lambda t: sum(1 for e in ev if e["tag"] == "ZDOBYCIE SBZ" and e["team"] == t)),
-    ("III strefa",    lambda t: sum(1 for e in ev if e["tag"] == "III STREFA" and e["team"] == t)),
-]:
-    print(f"{etykieta:22} {fn(HOME)!s:>16} {fn(AWAY)!s:>16}")
+def wczytaj(html):
+    """(zdarzenia, tenant, rywal) z wyrenderowanego raportu v21."""
+    data = json.loads(re.search(r"const DATA = (.*?);\n", html, re.S).group(1))
+    druzyny = re.search(r"const HUT='(.*?)', POG='(.*?)'", html)
+    ev = data["events"]
+    for e in ev:
+        e["tag"] = ALIAS.get(e["tag"], e["tag"])
+    shots = [e for e in ev if e["tag"] == "STRZAŁ"]
+    for g in [e for e in ev if e["tag"] == "Gol"]:
+        if shots:
+            g["team"] = min(shots, key=lambda s: abs(s["b"] - g["b"]))["team"]
+    return ev, druzyny.group(1), druzyny.group(2)
+
+
+def liczby(html):
+    """[(etykieta, tenant, rywal)] — w kolejności wydruku.
+
+    Etykiety dopasowane RÓWNOŚCIĄ na liście (`"WYGRANY" in e["labels"]`, gdzie
+    `labels` to lista) — pułapka 7, `CELNY` wewnątrz `NIECELNY`.
+    """
+    ev, tenant, rywal = wczytaj(html)
+    shots = [e for e in ev if e["tag"] == "STRZAŁ"]
+    # Jak `ovStats` w szablonie: po tagu, bez patrzenia na `team` — te tagi
+    # w eksportach referencyjnych drużyny nie mają, a gdy mają, v21 i tak
+    # liczy je tenantowi. Narzędzie ma pokazać TĘ SAMĄ liczbę co raport.
+    tag = lambda t: [e for e in ev if e["tag"] == t]
+    wyg = lambda arr: sum(1 for e in arr if "WYGRANY" in e["labels"])
+    odb, strata = tag("ODBIÓR"), tag("STRATA")
+    duele = tag("1x1 OFF") + tag("1x1 DEF.")
+
+    wiersze = []
+    for etykieta, fn in [
+        ("gole",          lambda t: sum(1 for e in ev if e["tag"] == "Gol" and e["team"] == t)),
+        ("xG",            lambda t: round(sum(e.get("xg") or 0 for e in shots if e["team"] == t), 2)),
+        ("strzały",       lambda t: sum(1 for e in shots if e["team"] == t)),
+        ("celne",         lambda t: sum(1 for e in shots if e["team"] == t and "CELNY" in e["labels"])),
+        ("zdobycie SBZ",  lambda t: sum(1 for e in ev if e["tag"] == "ZDOBYCIE SBZ" and e["team"] == t)),
+        ("III strefa",    lambda t: sum(1 for e in ev if e["tag"] == "III STREFA" and e["team"] == t)),
+    ]:
+        wiersze.append((etykieta, fn(tenant), fn(rywal)))
+    # Tagi bez drużyny: tenant liczy wprost, rywal — to, co z nich wynika.
+    wiersze.append(("odbiory",       len(odb), len(strata)))
+    wiersze.append(("straty",        len(strata), len(odb)))
+    wiersze.append(("1x1 wygrane",   wyg(duele), len(duele) - wyg(duele)))
+    return tenant, rywal, wiersze
+
+
+def main(argv):
+    tenant, rywal, wiersze = liczby(open(argv[1], encoding="utf-8").read())
+    # Od sesji 4a HOME to KLUB-TENANT, a nie „drużyna atakująca w lewo"
+    # (docs/STAN_PIVOTU.md §7.7 a). Kierunek ataku wyprowadza silnik z danych
+    # i zapisuje w `meta.direction` — nagłówek nie ma prawa go zgadywać.
+    print(f"{'':22} {'HOME (tenant)':>16} {'AWAY (rywal)':>16}")
+    print(f"{'drużyna':22} {tenant[:16]:>16} {rywal[:16]:>16}")
+    for etykieta, a, b in wiersze:
+        print(f"{etykieta:22} {a!s:>16} {b!s:>16}")
+
+
+if __name__ == "__main__":
+    main(sys.argv)

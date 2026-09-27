@@ -51,15 +51,26 @@ final class Imports
             );
         }
 
+        /*
+         * SEZON DOMYŚLNY (0.16.3). Mecz z importu nie ma jeszcze daty, więc
+         * `Seasons::suggestFor()` schodzi od razu na sezon bieżący, a bez niego
+         * na najnowszy — ten sam łańcuch, którym podpowiada formularz meczu.
+         * Bez tego mecz wisiał poza menu sezonowym, dopóki ktoś nie otworzył
+         * formularza mety. Kolejki NIE zgadujemy: nie ma jej skąd wziąć.
+         * Brak sezonów w bazie daje NULL, jak dotąd.
+         */
+        $sezon = Seasons::suggestFor(null, null);
+
         $pdo = Db::pdo();
         $pdo->beginTransaction();
         try {
             Db::run(
                 'INSERT INTO matches (owner_id, club_id, season_id, status, created_at)
-                 VALUES (:owner, :club, NULL, :status, :now)',
+                 VALUES (:owner, :club, :season, :status, :now)',
                 [
                     'owner'  => $ownerId,
                     'club'   => $clubId,
+                    'season' => $sezon,
                     'status' => 'draft',
                     'now'    => Stats::now(),
                 ]
@@ -736,7 +747,7 @@ final class Imports
         $nierozpoznane = array_values(array_filter(
             $nierozpoznane,
             static fn(string $tag) => !isset($zdecydowane[$tag])
-                && !isset($wTemplacie[Clubs::normalize($tag)])
+                && !isset($wTemplacie[NazwaZmiennej::klucz($tag)])
         ));
 
         /*

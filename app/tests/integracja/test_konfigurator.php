@@ -185,8 +185,9 @@ check('identyfikatory są unikalne',
 check('domyślne sekcje nowej zmiennej to bilans i oś czasu',
     $poNazwie['TAG WŁASNY']['sections'] === Configurator::SEKCJE_GENERYCZNE,
     'to PROPOZYCJA startowa, nie limit — od sesji 1 pivotu nic nie blokuje reszty');
-check('etykieta wyświetlana proponowana z nazwy',
-    ($poNazwie['STRZAŁ']['display_label'] ?? '') === 'Strzał',
+// 0.16.3: propozycja = SUROWA NAZWA. Wielkość tytułowa dawała „Zdobycie Sbz".
+check('etykieta wyświetlana proponowana z nazwy, bez zmiany wielkości liter',
+    ($poNazwie['STRZAŁ']['display_label'] ?? '') === 'STRZAŁ',
     (string) ($poNazwie['STRZAŁ']['display_label'] ?? ''));
 check('barwa z barw klubu przy braku palety',
     preg_match('/^#[0-9A-F]{6}$/', (string) $poNazwie['STRZAŁ']['color']) === 1);

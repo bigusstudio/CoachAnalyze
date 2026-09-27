@@ -202,7 +202,7 @@ final class Configurator
         array $barwyKlubu = []
     ): array {
         $slownik = is_array($meta['dictionary'] ?? null) ? $meta['dictionary'] : [];
-        $obsluzone = self::obsluzoneNazwy($config);
+        $indeks = self::indeksNazw($config);
 
         // Numerację ciągniemy od najwyższego istniejącego `id`, nie od count():
         // usunięcie zmiennej w konfiguratorze zostawia dziurę, a powtórzony
@@ -223,12 +223,17 @@ final class Configurator
                 if ($raw === '') {
                     continue;
                 }
-                if (isset($obsluzone[$typ][Clubs::normalize($raw)])) {
+                // Znana po normalizacji albo przez alias silnika — nie zakładamy
+                // drugiej zmiennej. Dopisaniem aliasu zajmuje się `autoAliasy()`.
+                if (self::dopasuj($typ, $raw, $indeks) !== null) {
                     continue;
                 }
                 if (!empty($ignorowane[$typ][$raw])) {
                     continue;
                 }
+                // Dwa warianty jednej nazwy w TYM SAMYM eksporcie („INNE" i „Inne")
+                // to też jedna zmienna — pierwsza wygrywa, druga czeka na alias.
+                $indeks[$typ][NazwaZmiennej::klucz($raw)] = -1;
 
                 $nowe[] = [
                     'id'     => sprintf('v_%03d', ++$nr),
@@ -293,20 +298,43 @@ final class Configurator
     }
 
     /**
-     * Nazwy, o których templat już wie: zmienne i ich aliasy.
+     * Nazwy, o których templat już wie: zmienne, ich aliasy i aliasy silnika.
      *
-     * Klucze znormalizowane (`Clubs::normalize`), bo eksport potrafi zmienić
-     * wielkość liter między przejściami tagowania, a dwie zmienne różniące się
-     * wyłącznie nią to ta sama zmienna zapisana dwa razy.
+     * Klucze z `NazwaZmiennej::klucz` — tą samą funkcją porównuje ekran różnic
+     * i pokrycie. Dwie definicje „ta sama nazwa" dały na Pogoni zmienną,
+     * którą import uznał za znaną, a ekran różnic za nową (0.16.3).
      *
      * @param array<string,mixed> $config
      * @return array{tag:array<string,bool>,label:array<string,bool>}
      */
     public static function obsluzoneNazwy(array $config): array
     {
+        $out = [];
+        foreach (self::indeksNazw($config) as $typ => $mapa) {
+            $out[$typ] = array_map(static fn(): bool => true, $mapa);
+        }
+        return $out;
+    }
+
+    /**
+     * {typ: {klucz nazwy: indeks zmiennej w `variables`}}.
+     *
+     * Wchodzą: nazwa surowa, aliasy zmiennej (kontynuacja, sesja 5) i — dla
+     * tagów — aliasy SILNIKA prowadzące do nazwy zmiennej. `SBZ PODAJĄCY` przy
+     * zmiennej `ZDOBYCIE SBZ` jest więc znany, choć nikt go nie wpisał: szablon
+     * i tak liczy go jako `ZDOBYCIE SBZ`, a osobna zmienna byłaby pustym wierszem.
+     *
+     * Przy kolizji wygrywa PIERWSZA zmienna — ta sama, którą zostawia skrypt
+     * naprawczy przy scalaniu duplikatów.
+     *
+     * @param array<string,mixed> $config
+     * @return array{tag:array<string,int>,label:array<string,int>}
+     */
+    public static function indeksNazw(array $config): array
+    {
         $out = [Suggester::TAG => [], Suggester::ETYKIETA => []];
 
-        foreach ((array) ($config['variables'] ?? []) as $z) {
+        foreach (array_values((array) ($config['variables'] ?? [])) as $i => $z) {
             if (!is_array($z)) {
                 continue;
             }
@@ -314,17 +342,76 @@ final class Configurator
             if (!isset($out[$typ])) {
                 continue;
             }
-            $raw = trim((string) ($z['source']['raw'] ?? ''));
-            if ($raw !== '') {
-                $out[$typ][Clubs::normalize($raw)] = true;
+            $nazwy = array_merge(
+                [(string) ($z['source']['raw'] ?? '')],
+                array_map('strval', (array) ($z['aliases'] ?? []))
+            );
+            foreach ($nazwy as $nazwa) {
+                $klucz = NazwaZmiennej::klucz($nazwa);
+                if ($klucz !== '' && !isset($out[$typ][$klucz])) {
+                    $out[$typ][$klucz] = $i;
+                }
             }
-            // ALIASY LICZĄ SIĘ JAK NAZWA GŁÓWNA. Operator oznaczył je jako
-            // „kontynuacja zmiennej" (Sesja 5) — założenie dla nich osobnej
-            // zmiennej rozbiłoby jedną serię na dwie, czyli cofnęło tę decyzję.
-            foreach ((array) ($z['aliases'] ?? []) as $alias) {
-                $alias = trim((string) $alias);
-                if ($alias !== '') {
-                    $out[$typ][Clubs::normalize($alias)] = true;
+        }
+
+        // Aliasy silnika dopiero po wszystkich zmiennych: zmienna o nazwie
+        // aliasu (dziś `SBZ PODAJĄCY` jako v_060) ma pierwszeństwo przed
+        // przekierowaniem, dopóki naprawa jej nie scali.
+        foreach (NazwaZmiennej::aliasySilnika() as $kluczAliasu => $glowna) {
+            $cel = $out[Suggester::TAG][NazwaZmiennej::klucz($glowna)] ?? null;
+            if ($cel !== null && !isset($out[Suggester::TAG][$kluczAliasu])) {
+                $out[Suggester::TAG][$kluczAliasu] = $cel;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Indeks zmiennej, którą jest ta nazwa, albo null.
+     *
+     * @param array{tag:array<string,int>,label:array<string,int>} $indeks z `indeksNazw()`
+     */
+    public static function dopasuj(string $typ, string $raw, array $indeks): ?int
+    {
+        return $indeks[$typ][NazwaZmiennej::klucz($raw)] ?? null;
+    }
+
+    /**
+     * Aliasy do dopisania po imporcie: {indeks zmiennej: [surowe nazwy]}.
+     *
+     * Nazwa, która JEST zmienną templatu, ale inaczej zapisana („INNE" przy
+     * „Inne") albo jako alias silnika (`SBZ PODAJĄCY` przy `ZDOBYCIE SBZ`),
+     * dostaje wpis w `aliases` istniejącej zmiennej — a nie drugą zmienną.
+     * Dosłowny zapis trafia do templatu, więc templat mówi wprost, jakie nazwy
+     * w eksportach klubu znaczą tę zmienną.
+     *
+     * @param array<string,mixed> $meta
+     * @param array<string,mixed> $config
+     * @return array<int,list<string>>
+     */
+    public static function autoAliasy(array $meta, array $config): array
+    {
+        $slownik = is_array($meta['dictionary'] ?? null) ? $meta['dictionary'] : [];
+        $zmienne = array_values((array) ($config['variables'] ?? []));
+        $indeks = self::indeksNazw($config);
+        $out = [];
+
+        foreach ([Suggester::TAG => 'tags', Suggester::ETYKIETA => 'labels'] as $typ => $klucz) {
+            foreach ((array) ($slownik[$klucz] ?? []) as $poz) {
+                $raw = trim((string) ($poz[$typ] ?? $poz['name'] ?? ''));
+                $i = $raw !== '' ? self::dopasuj($typ, $raw, $indeks) : null;
+                if ($i === null) {
+                    continue;
+                }
+                $z = (array) $zmienne[$i];
+                $doslownie = array_merge(
+                    [(string) ($z['source']['raw'] ?? '')],
+                    array_map('strval', (array) ($z['aliases'] ?? [])),
+                    $out[$i] ?? []
+                );
+                if (!in_array($raw, $doslownie, true)) {
+                    $out[$i][] = $raw;
                 }
             }
         }
@@ -333,19 +420,19 @@ final class Configurator
     }
 
     /**
-     * Nazwa wyświetlana proponowana z nazwy surowej.
+     * Nazwa wyświetlana proponowana z nazwy surowej: TA SAMA NAZWA, bez zmiany
+     * wielkości liter (0.16.3). Zdejmujemy wyłącznie nadmiarowe spacje.
      *
-     * Eksporty piszą wersalikami („STRZAŁ"), a raport czyta zarząd klubu.
-     * Zamiana na „Strzał" jest propozycją do poprawienia, nie regułą —
-     * dlatego siedzi tu, a nie w renderze.
+     * Do 0.16.2 była tu zamiana na wielkość tytułową („STRZAŁ" → „Strzał").
+     * Na nazwach klubu dawała „Zdobycie Sbz", „Iii Strefa", „1X1 Off" —
+     * a formularz ekranu różnic podsuwał ją jako wartość domyślną, więc
+     * trafiała do templatu bez niczyjej decyzji (Pogoń, templat v3).
+     * Analityk szuka w raporcie nazwy, którą sam wpisał w LiveTag.
      */
     public static function etykietaZNazwy(string $raw): string
     {
         $czysta = trim(preg_replace('/\s+/u', ' ', $raw) ?? $raw);
-        if ($czysta === '') {
-            return $raw;
-        }
-        return mb_convert_case(mb_strtolower($czysta, 'UTF-8'), MB_CASE_TITLE, 'UTF-8');
+        return $czysta === '' ? $raw : $czysta;
     }
 
     /**
