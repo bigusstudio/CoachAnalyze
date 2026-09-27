@@ -3,6 +3,32 @@
 Format: [wersja silnika] — data — opis.
 Każda zmiana, która modyfikuje wyjście silnika, MUSI mieć tu wpis wraz z powodem.
 
+## Aplikacja — 2026-09-27 · Porządki: `app/repairs/usun_mecz.php`
+
+**POWÓD: mecze i klub testowy z odbioru UX na produkcji, mecze podpięte pod zły
+klub.** Dotąd jedyną drogą był ręczny SQL po kilkunastu tabelach — z kluczami
+obcymi, które na MySQL-u nie kaskadują (`tag_catalog.*_seen_import_id`,
+`events.import_id`, `match_players.match_id`, templaty klubu) i plikami raportów
+i uploadów, o których SQL nie wie.
+
+- `--match N` (wiele razy) — mecz z raportami (+ pliki, linki publiczne,
+  powiadomienia), importami (+ pliki uploadów), zadaniami kolejki (+ katalogi
+  robocze), zdarzeniami, składem i notatkami. Katalog tagów klubu ZOSTAJE
+  (historia tagowania) — traci tylko wskazanie na usunięty import. Strzały
+  z kalkulatora xG zostają, odpięte od meczu.
+- `--przepnij-klub N --na K` — `matches.club_id` oraz `club_home_id`/`club_away_id`,
+  jeśli wskazywały stary klub. Raporty i skład zostają przy starym klubie
+  (zgodnie z zamówieniem) i podgląd mówi o tym wprost.
+- `--usun-klub K` — tylko klub bez meczów, raportów, linków i składu; mecze
+  usuwane i przepinane w tym samym przebiegu się nie liczą (rywal testowy
+  wisi zwykle właśnie na meczu do usunięcia).
+- `--raporty-tylko-najnowszy N` — najnowszy raport meczu zostaje, reszta idzie.
+- **Podgląd = plan zapisu** (`app/src/PorzadkiMeczow.php`): każde zapytanie
+  z liczbą wierszy, każdy plik, ostrzeżenie o aktywnych linkach publicznych,
+  komenda `mysqldump`. Zapis wymaga `--zapisz --mam-zrzut`; zapytania w jednej
+  transakcji, pliki po commicie i wyłącznie wewnątrz STORAGE_PATH.
+- Test `app/tests/integracja/test_usun_mecz.php` (34 asercje, w `uruchom.sh`).
+
 ## Aplikacja — 2026-09-27 · Regresja naprawy templatu (Pogoń v6, raport 28)
 
 **POWÓD: `napraw_auto_etykiety.php` wyzerował strzały na produkcji.** Scalenie

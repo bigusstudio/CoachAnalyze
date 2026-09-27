@@ -154,7 +154,7 @@ naglowek "1. Modele na SQLite (bez zależności)"
 
 for nazwa in test_4a test_4b test_4c test_7 test_indeks test_kluby_templaty \
              test_konfigurator test_diff_templatu test_mapowania test_metryki \
-             test_powiadomienia test_remember test_xg test_nazwy_zmiennych; do
+             test_powiadomienia test_remember test_xg test_nazwy_zmiennych test_usun_mecz; do
   [ -f "$TUTAJ/$nazwa.php" ] || continue
   zestaw "$nazwa" php "$TUTAJ/$nazwa.php"
 done
