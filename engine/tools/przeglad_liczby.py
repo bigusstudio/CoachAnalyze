@@ -28,8 +28,37 @@ import json
 import re
 import sys
 
+# Zapas dla raportów sprzed wstrzykiwania `VARS` z templatu (silnik < 0.14).
 ALIAS = {"SBZ PODAJĄCY": "ZDOBYCIE SBZ",
          "III STREFA PODAJĄCY/OTRZYMUJĄCY": "III STREFA"}
+
+
+def aliasy_raportu(html):
+    """{alias: nazwa zmiennej} — TE SAME, które zastosuje szablon (`ALIAS` w v21).
+
+    Szablon przemianowuje zdarzenie na surową nazwę zmiennej, której alias
+    pasuje. Narzędzie z własną, stałą listą nie widziało tego przemianowania
+    i przy raporcie 28 (templat Pogoni v6: „STRZAŁ" jako alias „Strzał")
+    liczyło strzały, których raport nie pokazywał. Czytamy więc literał
+    wstrzyknięty przez `render.vars_slot`.
+    """
+    znacznik = "Object.entries("
+    koniec = html.find("}).forEach(([k,v])=>{VARS[k]")
+    start = html.rfind(znacznik, 0, koniec) if koniec >= 0 else -1
+    if start < 0:
+        return dict(ALIAS)
+    obiekt, _ = json.JSONDecoder().raw_decode(html[start + len(znacznik):])
+    # Jak `Object.assign` per klucz w szablonie: wpis z templatu z polem
+    # `aliases` zastępuje aliasy TEJ zmiennej, reszta zostaje. Raporty sprzed
+    # 0.14 mają tu pusty obiekt, a aliasy w samym szablonie — stąd punkt wyjścia.
+    out = dict(ALIAS)
+    for nazwa, wpis in obiekt.items():
+        if "aliases" not in (wpis or {}):
+            continue
+        out = {a: n for a, n in out.items() if n != nazwa}
+        for alias in wpis["aliases"] or []:
+            out[alias] = nazwa
+    return out
 
 
 def wczytaj(html):
@@ -37,8 +66,9 @@ def wczytaj(html):
     data = json.loads(re.search(r"const DATA = (.*?);\n", html, re.S).group(1))
     druzyny = re.search(r"const HUT='(.*?)', POG='(.*?)'", html)
     ev = data["events"]
+    alias = aliasy_raportu(html)
     for e in ev:
-        e["tag"] = ALIAS.get(e["tag"], e["tag"])
+        e["tag"] = alias.get(e["tag"], e["tag"])
     shots = [e for e in ev if e["tag"] == "STRZAŁ"]
     for g in [e for e in ev if e["tag"] == "Gol"]:
         if shots:

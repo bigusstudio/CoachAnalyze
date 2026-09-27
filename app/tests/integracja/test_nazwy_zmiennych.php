@@ -221,7 +221,7 @@ function naprawa(string ...$argi): array
 check('podgląd kończy się zerem', $kod === 0, $out);
 check('podgląd niczego nie zapisuje', ReportTemplates::currentVersion($klub) === 2);
 check('podgląd wymienia oba scalenia',
-    str_contains($out, 'v_004 „SBZ PODAJĄCY"') && str_contains($out, 'v_005 „INNE"'), $out);
+    str_contains($out, 'v_004 „SBZ PODAJĄCY"') && str_contains($out, 'v_001 „Inne"'), $out);
 
 [$kod, $out] = naprawa('--club', (string) $klub, '--zapisz');
 check('zapis tworzy wersję 3', $kod === 0 && ReportTemplates::currentVersion($klub) === 3, $out);
@@ -231,9 +231,10 @@ check('SBZ PODAJĄCY scalony w ZDOBYCIE SBZ, sekcja mapy przeszła',
     !isset($z['tag|SBZ PODAJĄCY'])
     && in_array('SBZ PODAJĄCY', $z['tag|ZDOBYCIE SBZ']['aliases'] ?? [], true)
     && in_array('mapy', $z['tag|ZDOBYCIE SBZ']['sections'] ?? [], true));
-check('„INNE" (v_005) scalone w „Inne" (v_001) — zostaje najstarsza',
-    !isset($z['label|INNE']) && ($z['label|Inne']['id'] ?? '') === 'v_001'
-    && in_array('INNE', $z['label|Inne']['aliases'] ?? [], true));
+// Zostaje ŻYWA (nazwa w katalogu), nie najstarsza — regresja v6 Pogoni.
+check('martwe „Inne" (v_001) scalone w żywe „INNE" (v_005)',
+    !isset($z['label|Inne']) && ($z['label|INNE']['id'] ?? '') === 'v_005'
+    && in_array('Inne', $z['label|INNE']['aliases'] ?? [], true));
 check('etykieta zmiennej z wersji AUTO poprawiona na surową',
     ($z['tag|STRATA NA PP']['display_label'] ?? '') === 'STRATA NA PP');
 check('etykieta zmiennej z wersji RĘCZNEJ nietknięta bez --takze-reczne',

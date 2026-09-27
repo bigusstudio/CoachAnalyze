@@ -14,13 +14,20 @@ declare(strict_types=1);
  *   --wykaz-martwych   wypisz zmienne, których nazwa nie wystąpiła w żadnym
  *                      imporcie klubu (`tag_catalog`) — do decyzji człowieka
  *   --usun-martwe      usuń je z templatu (wymaga --zapisz, żeby zadziałało)
+ *   --przywroc N       nowa wersja = kopia wersji N (created_by NULL, bez
+ *                      unieważniania raportów). Działa od razu, bez --zapisz —
+ *                      to wyjście awaryjne, np. cofnięcie Pogoni z v6 do v5:
+ *                      `--club 2 --przywroc 5`. Raporty wygenerowane na złej
+ *                      wersji trzeba potem przeliczyć (`regeneruj_raporty.php`).
  *
  * ═══════════════════════════════════════════════════════════════════════════
  * CO ROBI — w tej kolejności (logika: `app/src/NaprawaTemplatu.php`):
  *
  *   1. zmienna o nazwie aliasu silnika (`SBZ PODAJĄCY`) → alias zmiennej
  *      głównej (`ZDOBYCIE SBZ`),
- *   2. duplikaty po normalizacji („Inne" / „INNE") → alias najstarszej,
+ *   2. duplikaty po normalizacji („Inne" / „INNE") → alias zmiennej ŻYWEJ
+ *      (nazwa w katalogu tagów), potem z kanonem, potem najstarszej. Dwie żywe
+ *      nie są scalane — idą do wykazu „do decyzji",
  *   3. etykieta w wielkości tytułowej („Zdobycie Sbz"), której nikt nie
  *      zmieniał → surowa nazwa („ZDOBYCIE SBZ"),
  *   4. opcjonalnie: wykaz / usunięcie zmiennych martwych.
@@ -31,6 +38,10 @@ declare(strict_types=1);
  * skrypt tych etykiet nie ruszy. Etykiety zmienionej przez człowieka nie
  * rusza nigdy: poprawiamy wyłącznie tekst równy dawnej propozycji maszyny.
  * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * KONTROLA CIĄGŁOŚCI PRZED ZAPISEM (po regresji v6 Pogoni, raport 28): każdy
+ * kanon sprzed naprawy jest po niej, a każda żywa zmienna zostaje zmienną z tym
+ * samym kanonem. Naruszenie = PRZERWANIE BEZ ZAPISU, kod wyjścia 1.
  *
  * ZAPIS = NOWA WERSJA TEMPLATU z notką (`NaprawaTemplatu::NOTKA`), jak wersja
  * automatyczna — nie unieważnia raportów, bo żadna operacja nie zmienia liczb.
@@ -62,6 +73,7 @@ $zapisz = false;
 $takzeReczne = false;
 $wykazMartwych = false;
 $usunMartwe = false;
+$przywroc = null;
 
 $argumenty = $argv ?? [];
 for ($i = 1; $i < count($argumenty); $i++) {
@@ -76,6 +88,10 @@ for ($i = 1; $i < count($argumenty); $i++) {
         $wykazMartwych = true;
     } elseif ($a === '--usun-martwe') {
         $usunMartwe = $wykazMartwych = true;
+    } elseif ($a === '--przywroc') {
+        $przywroc = isset($argumenty[$i + 1]) ? (int) $argumenty[++$i] : 0;
+    } elseif (preg_match('/^--przywroc=(\d+)$/', $a, $m) === 1) {
+        $przywroc = (int) $m[1];
     } elseif ($a === '--club') {
         $clubId = isset($argumenty[$i + 1]) ? (int) $argumenty[++$i] : 0;
     } elseif (preg_match('/^--club=(\d+)$/', $a, $m) === 1) {
@@ -89,6 +105,29 @@ for ($i = 1; $i < count($argumenty); $i++) {
 if (($clubId === null || $clubId <= 0) && !$wszystkie) {
     fwrite(STDERR, "Podaj --club ID albo --all.\n");
     exit(2);
+}
+
+// ─────────────────────────────────────────────────────────── przywrócenie
+if ($przywroc !== null) {
+    if ($wszystkie || $clubId === null || $clubId <= 0 || $przywroc <= 0) {
+        fwrite(STDERR, "--przywroc wymaga jednego klubu (--club ID) i numeru wersji.\n");
+        exit(2);
+    }
+    $zrodlo = ReportTemplates::version((int) $clubId, $przywroc);
+    if ($zrodlo === null) {
+        fwrite(STDERR, "Klub {$clubId} nie ma wersji {$przywroc}.\n");
+        exit(1);
+    }
+    $config = ReportTemplates::decodeConfig($zrodlo['config']);
+    // Notka wersji źródłowej nie jedzie z kopią — nowa wersja dostaje własną.
+    unset($config[ReportTemplates::KLUCZ_AUTO]);
+    $wersja = ReportTemplates::saveNewVersion(
+        (int) $clubId, $config, null, 'przywrócenie v' . $przywroc . ' (napraw_auto_etykiety)'
+    );
+    printf("klub %d: zapisano v%d = kopia v%d (%d zmiennych)\n",
+        $clubId, $wersja, $przywroc, count((array) ($config['variables'] ?? [])));
+    echo "Raporty wygenerowane na wersjach pomiędzy przelicz: php app/repairs/regeneruj_raporty.php --club {$clubId}\n";
+    exit(0);
 }
 
 $kluby = $wszystkie
@@ -109,8 +148,13 @@ foreach ($kluby as $klub) {
     $zmienne = array_values((array) ($config['variables'] ?? []));
     echo "\nklub {$klub}: templat v{$templat['version']}, zmiennych " . count($zmienne) . "\n";
 
+    $przed = $zmienne;
+    $katalog = NaprawaTemplatu::katalog($klub);
     [$zmienne, $z1] = NaprawaTemplatu::scalAliasySilnika($zmienne);
-    [$zmienne, $z2] = NaprawaTemplatu::scalDuplikaty($zmienne);
+    [$zmienne, $z2, $doDecyzji] = NaprawaTemplatu::scalDuplikaty($zmienne, $katalog);
+    foreach ($doDecyzji as $opis) {
+        echo "  ! do decyzji: {$opis}\n";
+    }
     [$zmienne, $z3] = NaprawaTemplatu::poprawEtykiety(
         $zmienne, NaprawaTemplatu::zWersjiAuto($klub), $takzeReczne
     );
@@ -142,6 +186,16 @@ foreach ($kluby as $klub) {
     }
     foreach ($zmiany as $opis) {
         echo "  - {$opis}\n";
+    }
+
+    $ciaglosc = NaprawaTemplatu::sprawdzCiaglosc($przed, $zmienne, $katalog);
+    if ($ciaglosc !== []) {
+        echo "  PRZERWANO BEZ ZAPISU — naprawa zmieniłaby liczby:\n";
+        foreach ($ciaglosc as $blad) {
+            echo "    · {$blad}\n";
+        }
+        $kodWyjscia = 1;
+        continue;
     }
 
     [$nowy, $bledy] = NaprawaTemplatu::nowyConfig($config, $zmienne);

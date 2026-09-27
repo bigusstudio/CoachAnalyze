@@ -405,6 +405,24 @@ final class Configurator
                     continue;
                 }
                 $z = (array) $zmienne[$i];
+                /*
+                 * TAG DOSTAJE ALIAS WYŁĄCZNIE PRZEZ ALIAS SILNIKA, I TO DO ZMIENNEJ
+                 * O DOKŁADNIE TEJ NAZWIE GŁÓWNEJ (regresja v6 Pogoni, raport 28).
+                 *
+                 * Alias tagu PRZEMIANOWUJE zdarzenia na surową nazwę zmiennej
+                 * (`ALIAS[e.tag]` w szablonie), a silnik mapuje kanon tylko po
+                 * surowej nazwie. „STRZAŁ" jako alias zmiennej „Strzał" zamienia
+                 * wszystkie strzały na „Strzał" — Przegląd liczy „STRZAŁ" i widzi
+                 * zero. Wariant zapisu tagu zostaje więc „znany" (bez drugiej
+                 * zmiennej), ale bez aliasu. Etykiety nie są przemianowywane
+                 * (nie wchodzą do `VARS`), więc dla nich alias jest bezpieczny.
+                 */
+                if ($typ === Suggester::TAG) {
+                    $glowna = NazwaZmiennej::aliasySilnika()[NazwaZmiennej::klucz($raw)] ?? null;
+                    if ($glowna === null || (string) ($z['source']['raw'] ?? '') !== $glowna) {
+                        continue;
+                    }
+                }
                 $doslownie = array_merge(
                     [(string) ($z['source']['raw'] ?? '')],
                     array_map('strval', (array) ($z['aliases'] ?? [])),

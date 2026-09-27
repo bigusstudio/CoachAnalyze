@@ -207,9 +207,12 @@ if [ -x "$PYTHON" ]; then
   # Paczka bywa w venv niezainstalowana — silnik dostaje PYTHONPATH na engine/,
   # tak samo jak robi to sam test.
   zestaw "test_kolejka" env PYTHONPATH="$KORZEN/engine" php "$TUTAJ/test_kolejka.php"
+  # Regresja v6 Pogoni: naprawa templatu z przelotem przez silnik (raport v21).
+  zestaw "test_naprawa_pogon" env PYTHONPATH="$KORZEN/engine" php "$TUTAJ/test_naprawa_pogon.php"
 else
   pomin "pytest silnika" "brak $PYTHON"
   pomin "test_kolejka" "brak $PYTHON"
+  pomin "test_naprawa_pogon" "brak $PYTHON"
 fi
 
 # --------------------------------------------------------------------------

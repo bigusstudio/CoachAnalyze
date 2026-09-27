@@ -1,0 +1,1303 @@
+{
+ "_opis": "Templat klubu 2 (Pogoń) w wersji 5 — przepisany z wyniku SQL z 2026-09-27 (club_report_templates, id 14). Nazwy tagów, nie zdarzenia meczowe. Katalog: nazwy z importu meczu 26 oraz pozycje, które weszły przez ekran różnic (v3) i automat (v4); zestaw startowy v2 (v_001–v_034) pochodzi z innego klubu.",
+ "sections_enabled": [
+  "bilans",
+  "mapy",
+  "tl_sbz",
+  "tl_iii",
+  "tl_bilans",
+  "duels",
+  "noteam"
+ ],
+ "variables": [
+  {
+   "id": "v_001",
+   "source": {
+    "type": "tag",
+    "raw": "Posiadanie Stal"
+   },
+   "canon": null,
+   "display_label": "Posiadanie Stal",
+   "color": "#ffffff",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_002",
+   "source": {
+    "type": "tag",
+    "raw": "Posiadanie Wiązownica"
+   },
+   "canon": null,
+   "display_label": "Posiadanie Wiązownica",
+   "color": "#0000ff",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_003",
+   "source": {
+    "type": "tag",
+    "raw": "Strzał"
+   },
+   "canon": "shot",
+   "display_label": "Strzał",
+   "color": "#ffffff",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_004",
+   "source": {
+    "type": "tag",
+    "raw": "Strata na PP"
+   },
+   "canon": "loss",
+   "display_label": "Strata Na Pp",
+   "color": "#0000ff",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_005",
+   "source": {
+    "type": "tag",
+    "raw": "Odbiór na WP"
+   },
+   "canon": "recovery",
+   "display_label": "Odbiór Na Wp",
+   "color": "#ffffff",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_006",
+   "source": {
+    "type": "tag",
+    "raw": "P2 Podanie"
+   },
+   "canon": null,
+   "display_label": "P2 Podanie",
+   "color": "#0000ff",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_007",
+   "source": {
+    "type": "tag",
+    "raw": "P2 Przyjmujący"
+   },
+   "canon": null,
+   "display_label": "P2 Przyjmujący",
+   "color": "#ffffff",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_008",
+   "source": {
+    "type": "tag",
+    "raw": "Strata na WP"
+   },
+   "canon": "loss",
+   "display_label": "Strata Na Wp",
+   "color": "#0000ff",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_009",
+   "source": {
+    "type": "tag",
+    "raw": "Odbiór na PP"
+   },
+   "canon": "recovery",
+   "display_label": "Odbiór Na Pp",
+   "color": "#ffffff",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_010",
+   "source": {
+    "type": "tag",
+    "raw": "PK Podanie"
+   },
+   "canon": null,
+   "display_label": "Pk Podanie",
+   "color": "#0000ff",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_011",
+   "source": {
+    "type": "tag",
+    "raw": "PK Przyjmujący"
+   },
+   "canon": null,
+   "display_label": "Pk Przyjmujący",
+   "color": "#ffffff",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_012",
+   "source": {
+    "type": "tag",
+    "raw": "SFG"
+   },
+   "canon": "set_piece",
+   "display_label": "Sfg",
+   "color": "#0000ff",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_013",
+   "source": {
+    "type": "tag",
+    "raw": "Akcja def. PK"
+   },
+   "canon": null,
+   "display_label": "Akcja Def. Pk",
+   "color": "#ffffff",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_014",
+   "source": {
+    "type": "tag",
+    "raw": "Odbiór do 5 sekund"
+   },
+   "canon": "recovery",
+   "display_label": "Odbiór Do 5 Sekund",
+   "color": "#0000ff",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_015",
+   "source": {
+    "type": "tag",
+    "raw": "P2 Wprowadzenie"
+   },
+   "canon": null,
+   "display_label": "P2 Wprowadzenie",
+   "color": "#ffffff",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_016",
+   "source": {
+    "type": "tag",
+    "raw": "PK Wprowadzenie"
+   },
+   "canon": null,
+   "display_label": "Pk Wprowadzenie",
+   "color": "#0000ff",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_017",
+   "source": {
+    "type": "tag",
+    "raw": "PK Odbiór"
+   },
+   "canon": "recovery",
+   "display_label": "Pk Odbiór",
+   "color": "#ffffff",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_018",
+   "source": {
+    "type": "tag",
+    "raw": "P2 Odbiór"
+   },
+   "canon": "recovery",
+   "display_label": "P2 Odbiór",
+   "color": "#0000ff",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_019",
+   "source": {
+    "type": "label",
+    "raw": "Utrzymanie"
+   },
+   "canon": null,
+   "display_label": "Utrzymanie",
+   "color": "#ffffff",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_020",
+   "source": {
+    "type": "label",
+    "raw": "Przechwyt"
+   },
+   "canon": null,
+   "display_label": "Przechwyt",
+   "color": "#0000ff",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_021",
+   "source": {
+    "type": "label",
+    "raw": "1x1"
+   },
+   "canon": null,
+   "display_label": "1X1",
+   "color": "#ffffff",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_022",
+   "source": {
+    "type": "label",
+    "raw": "Faza przejściowa"
+   },
+   "canon": null,
+   "display_label": "Faza Przejściowa",
+   "color": "#0000ff",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_023",
+   "source": {
+    "type": "label",
+    "raw": "Pozycyjny"
+   },
+   "canon": null,
+   "display_label": "Pozycyjny",
+   "color": "#ffffff",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_024",
+   "source": {
+    "type": "label",
+    "raw": "Brak"
+   },
+   "canon": null,
+   "display_label": "Brak",
+   "color": "#0000ff",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_025",
+   "source": {
+    "type": "label",
+    "raw": "Finalizacja"
+   },
+   "canon": null,
+   "display_label": "Finalizacja",
+   "color": "#ffffff",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_026",
+   "source": {
+    "type": "label",
+    "raw": "K1P"
+   },
+   "canon": null,
+   "display_label": "K1P",
+   "color": "#0000ff",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_027",
+   "source": {
+    "type": "label",
+    "raw": "Rzut rożny"
+   },
+   "canon": null,
+   "display_label": "Rzut Rożny",
+   "color": "#ffffff",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_028",
+   "source": {
+    "type": "label",
+    "raw": "SFG"
+   },
+   "canon": "set_piece",
+   "display_label": "Sfg",
+   "color": "#0000ff",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_029",
+   "source": {
+    "type": "label",
+    "raw": "K2P"
+   },
+   "canon": null,
+   "display_label": "K2P",
+   "color": "#ffffff",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_030",
+   "source": {
+    "type": "label",
+    "raw": "Inne"
+   },
+   "canon": null,
+   "display_label": "Inne",
+   "color": "#0000ff",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_031",
+   "source": {
+    "type": "label",
+    "raw": "K1L"
+   },
+   "canon": null,
+   "display_label": "K1L",
+   "color": "#ffffff",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_032",
+   "source": {
+    "type": "label",
+    "raw": "K2L"
+   },
+   "canon": null,
+   "display_label": "K2L",
+   "color": "#0000ff",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_033",
+   "source": {
+    "type": "label",
+    "raw": "PK"
+   },
+   "canon": null,
+   "display_label": "Pk",
+   "color": "#ffffff",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_034",
+   "source": {
+    "type": "label",
+    "raw": "K3"
+   },
+   "canon": null,
+   "display_label": "K3",
+   "color": "#0000ff",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_035",
+   "source": {
+    "type": "tag",
+    "raw": "ODBIÓR"
+   },
+   "canon": "recovery",
+   "display_label": "Odbiór",
+   "color": "#8899aa",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_036",
+   "source": {
+    "type": "tag",
+    "raw": "STRATA"
+   },
+   "canon": "loss",
+   "display_label": "Strata",
+   "color": "#8899aa",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_037",
+   "source": {
+    "type": "tag",
+    "raw": "III STREFA"
+   },
+   "canon": "entry_third",
+   "display_label": "Iii Strefa",
+   "color": "#8899aa",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_038",
+   "source": {
+    "type": "tag",
+    "raw": "ZDOBYCIE SBZ"
+   },
+   "canon": "entry_sbz",
+   "display_label": "Zdobycie Sbz",
+   "color": "#8899aa",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_039",
+   "source": {
+    "type": "tag",
+    "raw": "AKCJA DEFENSYWNA"
+   },
+   "canon": "transition",
+   "display_label": "Akcja Defensywna",
+   "color": "#8899aa",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_040",
+   "source": {
+    "type": "tag",
+    "raw": "PIERWSZY KONTAKT"
+   },
+   "canon": "duel",
+   "display_label": "Pierwszy Kontakt",
+   "color": "#8899aa",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_041",
+   "source": {
+    "type": "tag",
+    "raw": "STRZAŁ"
+   },
+   "canon": "shot",
+   "display_label": "Strzał",
+   "color": "#8899aa",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_042",
+   "source": {
+    "type": "tag",
+    "raw": "1x1 DEF."
+   },
+   "canon": "duel",
+   "display_label": "1X1 Def.",
+   "color": "#8899aa",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_043",
+   "source": {
+    "type": "tag",
+    "raw": "1x1 OFF"
+   },
+   "canon": "duel",
+   "display_label": "1X1 Off",
+   "color": "#8899aa",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_044",
+   "source": {
+    "type": "tag",
+    "raw": "SKUTECZNY"
+   },
+   "canon": "press",
+   "display_label": "Skuteczny",
+   "color": "#8899aa",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_045",
+   "source": {
+    "type": "tag",
+    "raw": "NISKUTECZNY"
+   },
+   "canon": "press",
+   "display_label": "Niskuteczny",
+   "color": "#8899aa",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_046",
+   "source": {
+    "type": "label",
+    "raw": "POŁOWA RYWALA"
+   },
+   "canon": null,
+   "display_label": "Połowa Rywala",
+   "color": "#8899aa",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_047",
+   "source": {
+    "type": "label",
+    "raw": "PRZEGRANY"
+   },
+   "canon": null,
+   "display_label": "Przegrany",
+   "color": "#8899aa",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_048",
+   "source": {
+    "type": "label",
+    "raw": "NASZA POŁOWA"
+   },
+   "canon": null,
+   "display_label": "Nasza Połowa",
+   "color": "#8899aa",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_049",
+   "source": {
+    "type": "label",
+    "raw": "WYGRANY"
+   },
+   "canon": null,
+   "display_label": "Wygrany",
+   "color": "#8899aa",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_050",
+   "source": {
+    "type": "label",
+    "raw": "BEZ REAKCJI"
+   },
+   "canon": null,
+   "display_label": "Bez Reakcji",
+   "color": "#8899aa",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_051",
+   "source": {
+    "type": "label",
+    "raw": "Z REAKCJĄ"
+   },
+   "canon": null,
+   "display_label": "Z Reakcją",
+   "color": "#8899aa",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_052",
+   "source": {
+    "type": "label",
+    "raw": "UDANE"
+   },
+   "canon": null,
+   "display_label": "Udane",
+   "color": "#8899aa",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_053",
+   "source": {
+    "type": "label",
+    "raw": "NIEUDANE"
+   },
+   "canon": null,
+   "display_label": "Nieudane",
+   "color": "#8899aa",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_054",
+   "source": {
+    "type": "label",
+    "raw": "CELNY"
+   },
+   "canon": null,
+   "display_label": "Celny",
+   "color": "#8899aa",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_055",
+   "source": {
+    "type": "label",
+    "raw": "NIECELNY"
+   },
+   "canon": null,
+   "display_label": "Niecelny",
+   "color": "#8899aa",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_056",
+   "source": {
+    "type": "label",
+    "raw": "ZABLOKOWANY"
+   },
+   "canon": null,
+   "display_label": "Zablokowany",
+   "color": "#8899aa",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_057",
+   "source": {
+    "type": "label",
+    "raw": "GOL"
+   },
+   "canon": null,
+   "display_label": "Gol",
+   "color": "#8899aa",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_058",
+   "source": {
+    "type": "tag",
+    "raw": "DRUGI KONTAKT"
+   },
+   "canon": null,
+   "display_label": "DRUGI KONTAKT",
+   "color": "#FFFFFF",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_059",
+   "source": {
+    "type": "tag",
+    "raw": "SBZ OTRZYMUJĄCY"
+   },
+   "canon": null,
+   "display_label": "SBZ OTRZYMUJĄCY",
+   "color": "#F7B731",
+   "sections": [
+    "bilans",
+    "mapy",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_060",
+   "source": {
+    "type": "tag",
+    "raw": "SBZ PODAJĄCY"
+   },
+   "canon": null,
+   "display_label": "SBZ PODAJĄCY",
+   "color": "#F7B731",
+   "sections": [
+    "bilans",
+    "mapy",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_061",
+   "source": {
+    "type": "tag",
+    "raw": "III STREFA OTRZYMUJĄCY"
+   },
+   "canon": null,
+   "display_label": "III STREFA OTRZYMUJĄCY",
+   "color": "#FFFFFF",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_062",
+   "source": {
+    "type": "tag",
+    "raw": "III STREFA PODAJĄCY/OTRZYMUJĄCY"
+   },
+   "canon": null,
+   "display_label": "III STREFA PODAJĄCY/OTRZYMUJĄCY",
+   "color": "#FFFFFF",
+   "sections": [
+    "bilans",
+    "mapy",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_063",
+   "source": {
+    "type": "tag",
+    "raw": "Gol"
+   },
+   "canon": null,
+   "display_label": "Gol",
+   "color": "#FED330",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_064",
+   "source": {
+    "type": "tag",
+    "raw": "ASYSTA"
+   },
+   "canon": null,
+   "display_label": "ASYSTA",
+   "color": "#FFFFFF",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_065",
+   "source": {
+    "type": "label",
+    "raw": "POZYCYJNIE"
+   },
+   "canon": null,
+   "display_label": "POZYCYJNIE",
+   "color": "#4B2E74",
+   "sections": [
+    "bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_066",
+   "source": {
+    "type": "label",
+    "raw": "STRZAŁ"
+   },
+   "canon": null,
+   "display_label": "STRZAŁ",
+   "color": "#686F7A",
+   "sections": [
+    "bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_067",
+   "source": {
+    "type": "label",
+    "raw": "ICH POŁOWA"
+   },
+   "canon": null,
+   "display_label": "ICH POŁOWA",
+   "color": "#4B6584",
+   "sections": [
+    "bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_068",
+   "source": {
+    "type": "label",
+    "raw": "POSIADANIE"
+   },
+   "canon": null,
+   "display_label": "POSIADANIE",
+   "color": "#FFFFFF",
+   "sections": [
+    "bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_069",
+   "source": {
+    "type": "label",
+    "raw": "KONTRATAK"
+   },
+   "canon": null,
+   "display_label": "KONTRATAK",
+   "color": "#4B2E74",
+   "sections": [
+    "bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_070",
+   "source": {
+    "type": "label",
+    "raw": "BRAK STRZAŁU"
+   },
+   "canon": null,
+   "display_label": "BRAK STRZAŁU",
+   "color": "#686F7A",
+   "sections": [
+    "bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_071",
+   "source": {
+    "type": "label",
+    "raw": "BRAK REAKCJI"
+   },
+   "canon": null,
+   "display_label": "BRAK REAKCJI",
+   "color": "#EB3B5A",
+   "sections": [
+    "bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_072",
+   "source": {
+    "type": "label",
+    "raw": "NIEUDANA"
+   },
+   "canon": null,
+   "display_label": "NIEUDANA",
+   "color": "#FFFFFF",
+   "sections": [
+    "bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_073",
+   "source": {
+    "type": "label",
+    "raw": "BRAK PODANIA"
+   },
+   "canon": null,
+   "display_label": "BRAK PODANIA",
+   "color": "#FFFFFF",
+   "sections": [
+    "bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_074",
+   "source": {
+    "type": "label",
+    "raw": "PRESSING"
+   },
+   "canon": null,
+   "display_label": "PRESSING",
+   "color": "#4B2E74",
+   "sections": [
+    "bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_075",
+   "source": {
+    "type": "label",
+    "raw": "UDANA"
+   },
+   "canon": null,
+   "display_label": "UDANA",
+   "color": "#FD9644",
+   "sections": [
+    "bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_076",
+   "source": {
+    "type": "label",
+    "raw": "REAKCJA"
+   },
+   "canon": null,
+   "display_label": "REAKCJA",
+   "color": "#106236",
+   "sections": [
+    "bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_077",
+   "source": {
+    "type": "label",
+    "raw": "ZDOBYCIE SBZ"
+   },
+   "canon": null,
+   "display_label": "ZDOBYCIE SBZ",
+   "color": "#106236",
+   "sections": [
+    "bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  },
+  {
+   "id": "v_078",
+   "source": {
+    "type": "label",
+    "raw": "INNE"
+   },
+   "canon": null,
+   "display_label": "Inne",
+   "color": "#8899aa",
+   "sections": [
+    "bilans",
+    "tl_bilans"
+   ],
+   "aliases": [],
+   "visible": true
+  }
+ ],
+ "katalog": {
+  "tag": [
+   "ODBIÓR",
+   "STRATA",
+   "III STREFA",
+   "ZDOBYCIE SBZ",
+   "AKCJA DEFENSYWNA",
+   "PIERWSZY KONTAKT",
+   "STRZAŁ",
+   "1x1 DEF.",
+   "1x1 OFF",
+   "SKUTECZNY",
+   "NISKUTECZNY",
+   "DRUGI KONTAKT",
+   "SBZ OTRZYMUJĄCY",
+   "SBZ PODAJĄCY",
+   "III STREFA OTRZYMUJĄCY",
+   "III STREFA PODAJĄCY/OTRZYMUJĄCY",
+   "Gol",
+   "ASYSTA"
+  ],
+  "label": [
+   "BEZ REAKCJI",
+   "BRAK PODANIA",
+   "BRAK REAKCJI",
+   "BRAK STRZAŁU",
+   "CELNY",
+   "GOL",
+   "ICH POŁOWA",
+   "INNE",
+   "KONTRATAK",
+   "NASZA POŁOWA",
+   "NIECELNY",
+   "NIEUDANA",
+   "NIEUDANE",
+   "POSIADANIE",
+   "POZYCYJNIE",
+   "POŁOWA RYWALA",
+   "PRESSING",
+   "PRZEGRANY",
+   "REAKCJA",
+   "SFG",
+   "STRZAŁ",
+   "UDANA",
+   "UDANE",
+   "WYGRANY",
+   "Z REAKCJĄ",
+   "ZABLOKOWANY",
+   "ZDOBYCIE SBZ"
+  ]
+ }
+}

@@ -3,6 +3,50 @@
 Format: [wersja silnika] — data — opis.
 Każda zmiana, która modyfikuje wyjście silnika, MUSI mieć tu wpis wraz z powodem.
 
+## Aplikacja — 2026-09-27 · Regresja naprawy templatu (Pogoń v6, raport 28)
+
+**POWÓD: `napraw_auto_etykiety.php` wyzerował strzały na produkcji.** Scalenie
+„ta sama nazwa" zostawiało zmienną o niższym `id`: martwy „Strzał" (v_003, zestaw
+startowy innego klubu) wchłonął żywy „STRZAŁ" (v_041), a „Inne" (v_030) — „INNE"
+(v_078). Raport 28 (mecz 26): STRZAŁY 0:0, xG 0,00, GOLE 3:0.
+
+**Mechanizm, którego wpis 0.16.3 nie uwzględnił: alias PRZEMIANOWUJE zdarzenia.**
+Szablon zamienia tag zdarzenia na surową nazwę zmiennej, której alias pasuje
+(`ALIAS[e.tag]`), a silnik mapuje kanon wyłącznie po surowej nazwie. Wszystkie
+strzały stały się „Strzał"; Przegląd liczy „STRZAŁ" i zobaczył zero, gole bez
+strzału zostały po stronie tenanta. Tabela makro idzie po zmiennych, więc
+pokazywała „Strzał 11/24" i sugerowała, że alias działa. Zdanie z 0.16.3
+„żadna operacja nie zmienia liczb" było nieprawdziwe.
+
+- **Żywa zmienna nigdy nie staje się aliasem.** Żywa = jej DOSŁOWNA nazwa jest
+  w `tag_catalog` klubu. Zmienna docelowa scalenia: żywa, potem z kanonem, potem
+  najstarsza. Wchłaniana oddaje alias, sekcje i kanon (gdy docelowa go nie ma).
+  Dwie żywe o tej samej nazwie — bez scalenia, wpis „do decyzji". Pusty katalog —
+  bez scalania duplikatów. Jedyny wyjątek: alias silnika do zmiennej o DOKŁADNIE
+  tej nazwie głównej (`SBZ PODAJĄCY` → `ZDOBYCIE SBZ`), bo szablon i tak go
+  przemianowuje.
+- **Kontrola ciągłości przed zapisem** (`NaprawaTemplatu::sprawdzCiaglosc`): każdy
+  kanon sprzed naprawy jest po niej, każda żywa zmienna zostaje zmienną z tym
+  samym kanonem. Naruszenie = przerwanie bez zapisu, kod 1.
+- **Martwe liczone dosłownie** — „Strzał" nie ożywa dlatego, że eksport ma „STRZAŁ".
+- **AutoImport:** tag dostaje alias WYŁĄCZNIE przez alias silnika do zmiennej
+  o dokładnie tej nazwie głównej. Wariant zapisu tagu („STRZAŁ" przy „Strzał")
+  jest „znany", ale aliasem nie zostaje — zrobiłby przy imporcie to samo, co
+  naprawa zrobiła w v6. Etykiety — bez zmian (szablon ich nie przemianowuje).
+- **`napraw_auto_etykiety.php --club N --przywroc V`** — nowa wersja = kopia V,
+  `created_by NULL`, notka „przywrócenie vV", bez unieważniania raportów. Działa
+  bez `--zapisz`. Raporty z wersji pomiędzy trzeba przeliczyć
+  (`regeneruj_raporty.php --club N`) — na Pogoni raport 28.
+- **`engine/tools/przeglad_liczby.py`** stosuje aliasy z `VARS` raportu (scalane
+  per klucz jak w szablonie), a nie własną stałą listę. Ze stałą listą liczył
+  strzały, których raport 28 nie pokazywał.
+- **Test `app/tests/integracja/test_naprawa_pogon.php`** (sekcja 3 `uruchom.sh`)
+  na prawdziwym templacie Pogoni v5 (`dane/pogon_v5_templat.json`, przepisany
+  z wyniku SQL; nazwy tagów, nie zdarzenia): bramka odrzuca scalenie z v6,
+  naprawa v5 zachowuje żywe zmienne i kanony, raport v21 z naprawionym templatem
+  liczy strzały, a z templatem v6 daje 0:0 (kontrola negatywna), dwie żywe
+  zmienne nie są scalane, `--przywroc` odtwarza wersję.
+
 ## [0.16.3] — 2026-09-27 · Poprawka: perspektywa tenanta w v21, auto-etykiety, sezon domyślny
 
 ### Silnik (szablon v21) — perspektywa klubu-tenanta w LEWYM slocie

@@ -21,10 +21,13 @@ namespace CoachAnalyze;
  *   - zestaw startowy skopiowany z innego klubu („Posiadanie Stal", „K1P"…).
  * ═══════════════════════════════════════════════════════════════════════════
  *
- * ŻADNA OPERACJA NIE ZMIENIA LICZB. Scalenie dopisuje nazwę jako alias zmiennej,
- * która zostaje — zdarzenia liczą się pod nią tak, jak liczyły się dotąd przez
- * alias silnika albo wcale (etykiety nie wchodzą do `VARS` szablonu). Usunięcie
- * dotyczy wyłącznie zmiennych, których nazwa nie wystąpiła w żadnym eksporcie.
+ * ALIAS PRZEMIANOWUJE ZDARZENIA. To zdanie zabrakło w pierwszej wersji tej klasy
+ * i kosztowało raport 28: szablon zamienia tag zdarzenia na surową nazwę zmiennej,
+ * której alias pasuje, a silnik mapuje kanon wyłącznie po surowej nazwie. Scalenie
+ * nie zmienia liczb TYLKO wtedy, gdy wchłaniana zmienna jest martwa (jej nazwa
+ * nie wystąpiła w eksporcie) albo jest aliasem silnika, którego szablon i tak
+ * przemianowuje. `sprawdzCiaglosc()` pilnuje tego po każdej naprawie, a skrypt
+ * przy błędzie nie zapisuje niczego.
  */
 final class NaprawaTemplatu
 {
@@ -73,7 +76,48 @@ final class NaprawaTemplatu
     }
 
     /**
+     * Katalog tagów klubu: {typ: {DOSŁOWNA nazwa: true}}. `null`, gdy pusty.
+     *
+     * DOSŁOWNIE, NIE PO NORMALIZACJI — i to jest sedno regresji z v6 Pogoni.
+     * Szablon przemianowuje zdarzenie na surową nazwę zmiennej, której alias
+     * pasuje (`ALIAS[e.tag]`), a silnik mapuje kanon wyłącznie po surowej nazwie.
+     * „Strzał" i „STRZAŁ" są dla nich DWIEMA nazwami; żywa jest ta, która stoi
+     * w eksporcie.
+     *
+     * @return array{tag:array<string,bool>,label:array<string,bool>}|null
+     */
+    public static function katalog(int $clubId): ?array
+    {
+        $out = [Suggester::TAG => [], Suggester::ETYKIETA => []];
+        $ile = 0;
+        foreach (Db::all('SELECT kind, name FROM tag_catalog WHERE club_id = :c', ['c' => $clubId]) as $w) {
+            if (isset($out[(string) $w['kind']])) {
+                $out[(string) $w['kind']][(string) $w['name']] = true;
+                $ile++;
+            }
+        }
+        return $ile > 0 ? $out : null;
+    }
+
+    /**
+     * Czy surowa nazwa zmiennej wystąpiła w imporcie klubu (dosłownie).
+     *
+     * @param array<string,mixed> $z
+     * @param array{tag:array<string,bool>,label:array<string,bool>}|null $katalog
+     */
+    public static function zywa(array $z, ?array $katalog): bool
+    {
+        return $katalog !== null && isset($katalog[self::typ($z)][self::raw($z)]);
+    }
+
+    /**
      * Zmienna-alias silnika → alias zmiennej głównej (v_060 → ZDOBYCIE SBZ).
+     *
+     * JEDYNE DOPUSZCZONE WCHŁONIĘCIE ŻYWEJ ZMIENNEJ. Szablon przemianowuje
+     * `SBZ PODAJĄCY` na `ZDOBYCIE SBZ` tak czy inaczej (aliasy domyślne), więc
+     * scalenie niczego nie przestawia — POD WARUNKIEM, że zmienna docelowa nosi
+     * DOKŁADNIE nazwę główną z `aliasy.json`. „Zdobycie SBZ" jako cel
+     * przemianowałoby zdarzenia na nazwę, której szablon nie liczy.
      *
      * @param list<array<string,mixed>> $zmienne
      * @return array{0:list<array<string,mixed>>,1:list<string>}
@@ -84,7 +128,7 @@ final class NaprawaTemplatu
         $glowne = [];
         foreach ($zmienne as $i => $z) {
             if (self::typ($z) === Suggester::TAG) {
-                $glowne[NazwaZmiennej::klucz(self::raw($z))] ??= $i;
+                $glowne[self::raw($z)] ??= $i;
             }
         }
 
@@ -94,7 +138,7 @@ final class NaprawaTemplatu
                 continue;
             }
             $cel = $aliasy[NazwaZmiennej::klucz(self::raw($z))] ?? null;
-            $j = $cel !== null ? ($glowne[NazwaZmiennej::klucz($cel)] ?? null) : null;
+            $j = $cel !== null ? ($glowne[$cel] ?? null) : null;
             if ($j === null || $j === $i) {
                 continue;
             }
@@ -107,30 +151,126 @@ final class NaprawaTemplatu
     }
 
     /**
-     * Duplikaty po `NazwaZmiennej::klucz` w obrębie typu. Zostaje PIERWSZA
-     * (najstarsza) zmienna, bo na nią wskazują raporty i ustawienia; kolejne
-     * dopisują się do niej jako aliasy.
+     * Duplikaty po `NazwaZmiennej::klucz` w obrębie typu.
+     *
+     * ═══════════════════════════════════════════════════════════════════════
+     * ŻYWA ZMIENNA NIGDY NIE STAJE SIĘ ALIASEM (regresja v6 Pogoni, raport 28).
+     *
+     * Do tej poprawki zostawała zmienna o niższym `id`. Na Pogoni był nią martwy
+     * „Strzał" z zestawu startowego innego klubu, a żywy „STRZAŁ" został jego
+     * aliasem: szablon przemianował wszystkie strzały na „Strzał", Przegląd
+     * szukał „STRZAŁ" i pokazał 0:0, xG 0,00 i gole bez strzału po stronie
+     * tenanta; silnik stracił kanon `shot`, bo mapuje go po surowej nazwie.
+     *
+     * Kolejność wyboru zmiennej docelowej: ŻYWA (nazwa w katalogu), potem
+     * z KANONEM, potem najstarsza. Dwie żywe w grupie NIE są scalane — każda
+     * scalona byłaby przemianowaniem zdarzeń, czyli zmianą liczb; to decyzja
+     * dla człowieka i idzie do wykazu. Bez katalogu nie wiemy, która jest żywa,
+     * więc nie scalamy niczego.
+     * ═══════════════════════════════════════════════════════════════════════
+     *
+     * Wchłaniana (martwa) oddaje docelowej nazwę jako alias, sekcje, a kanon
+     * wtedy, gdy docelowa go nie ma.
      *
      * @param list<array<string,mixed>> $zmienne
-     * @return array{0:list<array<string,mixed>>,1:list<string>}
+     * @param array{tag:array<string,bool>,label:array<string,bool>}|null $katalog
+     * @return array{0:list<array<string,mixed>>,1:list<string>,2:list<string>} zmienne, zmiany, do decyzji
      */
-    public static function scalDuplikaty(array $zmienne): array
+    public static function scalDuplikaty(array $zmienne, ?array $katalog): array
     {
-        $pierwsza = [];
-        $zmiany = [];
+        $grupy = [];
         foreach ($zmienne as $i => $z) {
-            $k = self::typ($z) . '|' . NazwaZmiennej::klucz(self::raw($z));
-            if (!isset($pierwsza[$k])) {
-                $pierwsza[$k] = $i;
+            $grupy[self::typ($z) . '|' . NazwaZmiennej::klucz(self::raw($z))][] = $i;
+        }
+
+        $zmiany = [];
+        $doDecyzji = [];
+        foreach ($grupy as $indeksy) {
+            if (count($indeksy) < 2) {
                 continue;
             }
-            $j = $pierwsza[$k];
-            $zmienne[$j] = self::wchlon($zmienne[$j], $z);
-            $zmiany[] = sprintf('scalono %s „%s" → alias %s „%s" (ta sama nazwa)',
-                $z['id'] ?? '?', self::raw($z), $zmienne[$j]['id'] ?? '?', self::raw($zmienne[$j]));
-            unset($zmienne[$i]);
+            $opis = implode(', ', array_map(
+                static fn(int $i): string => ($zmienne[$i]['id'] ?? '?') . ' „' . self::raw($zmienne[$i]) . '"',
+                $indeksy
+            ));
+            if ($katalog === null) {
+                $doDecyzji[] = "duplikat {$opis} — katalog tagów pusty, nie wiadomo, która jest żywa";
+                continue;
+            }
+            $zywe = array_values(array_filter($indeksy, static fn(int $i): bool => self::zywa($zmienne[$i], $katalog)));
+            if (count($zywe) > 1) {
+                $doDecyzji[] = "duplikat {$opis} — obie nazwy występują w eksportach; scalenie przemianowałoby zdarzenia";
+                continue;
+            }
+
+            $kolejnosc = $indeksy;
+            usort($kolejnosc, static function (int $a, int $b) use ($zmienne, $katalog): int {
+                $ocena = static fn(int $i): array => [
+                    self::zywa($zmienne[$i], $katalog) ? 0 : 1,
+                    ($zmienne[$i]['canon'] ?? null) !== null ? 0 : 1,
+                    $i,
+                ];
+                return $ocena($a) <=> $ocena($b);
+            });
+            $j = array_shift($kolejnosc);
+
+            foreach ($kolejnosc as $i) {
+                $zmienne[$j] = self::wchlon($zmienne[$j], $zmienne[$i]);
+                $zmiany[] = sprintf('scalono %s „%s" → alias %s „%s" (ta sama nazwa%s)',
+                    $zmienne[$i]['id'] ?? '?', self::raw($zmienne[$i]),
+                    $zmienne[$j]['id'] ?? '?', self::raw($zmienne[$j]),
+                    self::zywa($zmienne[$j], $katalog) ? ', docelowa żywa' : ', obie martwe');
+                unset($zmienne[$i]);
+            }
         }
-        return [array_values($zmienne), $zmiany];
+        return [array_values($zmienne), $zmiany, $doDecyzji];
+    }
+
+    /**
+     * Kontrola po naprawie. Lista błędów; niepusta = PRZERWIJ BEZ ZAPISU.
+     *
+     *  1. każdy kanon obecny przed naprawą jest obecny po niej,
+     *  2. każda ŻYWA zmienna zostaje zmienną (nie aliasem) tego samego typu
+     *     i z tym samym kanonem — wyjątek: alias silnika, którego nazwa główna
+     *     stoi po naprawie jako zmienna (szablon przemianowuje go i tak).
+     *
+     * @param list<array<string,mixed>> $przed
+     * @param list<array<string,mixed>> $po
+     * @param array{tag:array<string,bool>,label:array<string,bool>}|null $katalog
+     * @return list<string>
+     */
+    public static function sprawdzCiaglosc(array $przed, array $po, ?array $katalog): array
+    {
+        $bledy = [];
+        $kanony = static fn(array $zz): array => array_values(array_unique(array_filter(
+            array_map(static fn(array $z): string => (string) ($z['canon'] ?? ''), $zz)
+        )));
+        foreach (array_diff($kanony($przed), $kanony($po)) as $k) {
+            $bledy[] = "kanon „{$k}\" zniknął z templatu";
+        }
+
+        $poNazwie = [];
+        foreach ($po as $z) {
+            $poNazwie[self::typ($z) . '|' . self::raw($z)] = $z;
+        }
+        $aliasy = NazwaZmiennej::aliasySilnika();
+        foreach ($przed as $z) {
+            if (!self::zywa($z, $katalog)) {
+                continue;
+            }
+            $po1 = $poNazwie[self::typ($z) . '|' . self::raw($z)] ?? null;
+            if ($po1 === null) {
+                $glowna = self::typ($z) === Suggester::TAG ? ($aliasy[NazwaZmiennej::klucz(self::raw($z))] ?? null) : null;
+                if ($glowna === null || !isset($poNazwie[Suggester::TAG . '|' . $glowna])) {
+                    $bledy[] = sprintf('żywa zmienna %s „%s" przestała być zmienną', $z['id'] ?? '?', self::raw($z));
+                }
+                continue;
+            }
+            if (($z['canon'] ?? null) !== null && ($po1['canon'] ?? null) !== $z['canon']) {
+                $bledy[] = sprintf('żywa zmienna „%s" straciła kanon „%s"', self::raw($z), (string) $z['canon']);
+            }
+        }
+        return $bledy;
     }
 
     /**
@@ -169,34 +309,29 @@ final class NaprawaTemplatu
      */
     public static function martwe(int $clubId, array $zmienne): ?array
     {
-        $widziane = [];
-        foreach (Db::all('SELECT kind, name FROM tag_catalog WHERE club_id = :c', ['c' => $clubId]) as $w) {
-            $widziane[(string) $w['kind'] . '|' . NazwaZmiennej::klucz((string) $w['name'])] = true;
-        }
-        if ($widziane === []) {
+        $katalog = self::katalog($clubId);
+        if ($katalog === null) {
             return null;
         }
 
+        // DOSŁOWNIE, jak w `katalog()`: „Strzał" nie ożywa dlatego, że w eksporcie
+        // jest „STRZAŁ". Alias silnika ożywia zmienną główną (SBZ PODAJĄCY →
+        // ZDOBYCIE SBZ), bo szablon przemianowuje jego zdarzenia właśnie na nią.
         $doGlownej = [];
-        foreach (NazwaZmiennej::aliasySilnika() as $kluczAliasu => $glowna) {
-            $doGlownej[NazwaZmiennej::klucz($glowna)][] = $kluczAliasu;
+        foreach (array_keys($katalog[Suggester::TAG]) as $nazwa) {
+            $glowna = NazwaZmiennej::aliasySilnika()[NazwaZmiennej::klucz($nazwa)] ?? null;
+            if ($glowna !== null) {
+                $doGlownej[$glowna] = true;
+            }
         }
 
         $out = [];
         foreach ($zmienne as $i => $z) {
             $typ = self::typ($z);
-            $klucze = array_map(
-                [NazwaZmiennej::class, 'klucz'],
-                array_merge([self::raw($z)], array_map('strval', (array) ($z['aliases'] ?? [])))
-            );
-            if ($typ === Suggester::TAG) {
-                foreach ($klucze as $k) {
-                    $klucze = array_merge($klucze, $doGlownej[$k] ?? []);
-                }
-            }
-            $zywa = false;
-            foreach ($klucze as $k) {
-                $zywa = $zywa || isset($widziane[$typ . '|' . $k]);
+            $nazwy = array_merge([self::raw($z)], array_map('strval', (array) ($z['aliases'] ?? [])));
+            $zywa = $typ === Suggester::TAG && isset($doGlownej[self::raw($z)]);
+            foreach ($nazwy as $n) {
+                $zywa = $zywa || isset($katalog[$typ][$n]);
             }
             if (!$zywa) {
                 $out[] = $i;
@@ -246,6 +381,11 @@ final class NaprawaTemplatu
             $nazwy,
             static fn(string $n): bool => trim($n) !== '' && $n !== self::raw($cel)
         )));
+        // Kanon przechodzi, gdy docelowa go nie ma — wchłaniana mogła być
+        // jedyną zmienną tego pojęcia w templacie.
+        if (($cel['canon'] ?? null) === null && ($z['canon'] ?? null) !== null) {
+            $cel['canon'] = $z['canon'];
+        }
         $cel['sections'] = array_values(array_unique(array_merge(
             array_map('strval', (array) ($cel['sections'] ?? [])),
             array_map('strval', (array) ($z['sections'] ?? []))
