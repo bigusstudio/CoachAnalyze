@@ -60,7 +60,11 @@ $chmurki = $zalogowany
 // Liczniki przy pozycjach szyny — WYŁĄCZNIE z danych, które już mamy.
 // Pozycja bez licznika po prostu go nie dostaje; zero obok nazwy wygląda jak
 // awaria danych, a nie jak „nic nie czeka".
-$liczniki = $zalogowany ? \CoachAnalyze\Stats::railCounters() : [];
+$uzytkownikSzyny = $zalogowany ? \CoachAnalyze\Auth::currentUser() : null;
+$klubBiezacy = $zalogowany ? \CoachAnalyze\Zakres::biezacy($uzytkownikSzyny) : null;
+$liczniki = $zalogowany
+    ? \CoachAnalyze\Stats::railCounters($klubBiezacy !== null ? (int) $klubBiezacy['id'] : null)
+    : [];
 $kolejka  = $liczniki['queued'] ?? 0;
 
 $uzytkownik = $zalogowany ? \CoachAnalyze\Auth::currentUser() : null;
@@ -77,11 +81,7 @@ $admin      = $uzytkownik !== null && \CoachAnalyze\Users::isAdmin($uzytkownik);
  * Bez kontekstu trasy bierzemy KLUB-TENANTA (`is_own_team = 1`). To ten sam
  * klub, którego dotyczą metryki pulpitu — więc szyna i liczby mówią o tym samym.
  */
-$klubSzyny = $club;
-if ($klubSzyny === null && $zalogowany) {
-    $idTenanta = \CoachAnalyze\Clubs::tenantDefault();
-    $klubSzyny = $idTenanta !== null ? \CoachAnalyze\Clubs::find($idTenanta) : null;
-}
+$klubSzyny = $club ?? $klubBiezacy;
 
 /** Inicjały do awatara. Nazwa bywa pusta — wtedy znak zastępczy, nie puste kółko. */
 $inicjaly = static function (?array $u): string {
@@ -167,11 +167,23 @@ $pozycja = static function (
       </span>
     </a>
 
+    <?php
+      /*
+       * KONTEKST KLUBU I SEZONU W JEDNEJ LINII (golden layout W2, pkt 12).
+       * Pełna nazwa w `title` — długa nazwa klubu ucina się wielokropkiem,
+       * zamiast łamać szynę na dwie linie. Przełączanie klubu: administrator
+       * i analityk z więcej niż jednym klubem (`/klub/wybierz`); trener ma
+       * dokładnie jeden klub i nie przełącza niczego.
+       */
+      $opSzyny = \CoachAnalyze\Zakres::op($uzytkownikSzyny);
+      $trenerSzyny = \CoachAnalyze\Zakres::trener($uzytkownikSzyny);
+      $dozwoloneSzyny = $zalogowany ? \CoachAnalyze\Zakres::dozwoloneKluby($uzytkownikSzyny) : [];
+      $przelacza = !$trenerSzyny && ($dozwoloneSzyny === null || count($dozwoloneSzyny) > 1);
+      $sezonSzyny = (string) ($liczniki['season'] ?? View::t('dash.all_seasons'));
+    ?>
     <?php if ($klubSzyny !== null): ?>
-      <?php /* Kontekst klubu, sezonu i liczby meczów: pierwsza rzecz, którą
-               trzeba wiedzieć, zanim spojrzy się na jakąkolwiek liczbę niżej. */ ?>
-      <a class="ctx" href="/klub/<?= (int) $klubSzyny['id'] ?>"
-         title="<?= View::e((string) $klubSzyny['name']) ?>">
+      <?php $opisCtx = (string) $klubSzyny['name'] . ' · ' . $sezonSzyny; ?>
+      <<?= $przelacza ? 'a href="/klub/wybierz"' : 'div' ?> class="ctx ctx--linia" title="<?= View::e($opisCtx) ?>">
         <span class="ctx__crest">
           <?php if (!empty($klubSzyny['crest_path'])): ?>
             <img src="/herb/<?= (int) $klubSzyny['id'] ?>" alt="">
@@ -179,61 +191,65 @@ $pozycja = static function (
             <span aria-hidden="true"><?= View::e(mb_substr((string) $klubSzyny['name'], 0, 1)) ?></span>
           <?php endif; ?>
         </span>
-        <span class="ctx__opis">
-          <span class="ctx__name"><?= View::e((string) $klubSzyny['name']) ?></span>
-          <span class="ctx__season">
-            <?= View::e($liczniki['season'] ?? View::t('dash.all_seasons')) ?>
-            <?php if (isset($liczniki['matches'])): ?>
-              · <?= View::e(View::t('nav.matches_count', (int) $liczniki['matches'])) ?>
-            <?php endif; ?>
-          </span>
-        </span>
-        <span class="ctx__sw" aria-hidden="true">⇄</span>
-      </a>
+        <?php /* Skrót klubu, gdy jest — długa pełna nazwa zjadała sezon za wielokropkiem. */ ?>
+        <span class="ctx__linia"><b><?= View::e(trim((string) ($klubSzyny['short_name'] ?? '')) ?: (string) $klubSzyny['name']) ?></b> · <?= View::e($sezonSzyny) ?></span>
+        <?php if ($przelacza): ?><span class="ctx__sw" aria-hidden="true">⇄</span><?php endif; ?>
+      </<?= $przelacza ? 'a' : 'div' ?>>
     <?php endif; ?>
 
     <nav class="grp">
       <?php $pozycja('pulpit', '/pulpit', View::t('nav.dashboard')); ?>
     </nav>
 
+    <?php /*
+      SZYNA KLUBU (golden layout W2, pkt 11). „Mecze" zniknęły z szyny — dublują
+      Sezon; trasa `/mecze` zostaje (wyszukiwarka u góry z niej korzysta).
+      Trener nie widzi importu ani ustawień klubu — o dostępie rozstrzyga
+      `straznikZakresu()` w routerze, szyna tylko nie kusi.
+    */ ?>
     <nav class="grp">
       <span class="grp__lab"><?= View::e(View::t('nav.grp.club')) ?></span>
-      <?php /* SEZON prowadzi do LISTY KOLEJEK (sesja 7), a nie do administracji
-               sezonami — ta siedzi niżej, pod „Drużyna". Trener otwiera menu,
-               żeby zobaczyć kolejki, a nie żeby zakładać sezon. */ ?>
       <?php $pozycja('season', '/sezon', View::t('nav.season')); ?>
-      <?php $pozycja('seasons', '/sezony', View::t('nav.team')); ?>
+      <?php $pozycja('team', '/druzyna', View::t('nav.team')); ?>
       <?php $pozycja('players', '/zawodnicy', View::t('nav.players'), null, true); ?>
       <?php $pozycja('reports', '/raporty', View::t('nav.reports'), $liczniki['reports'] ?? null); ?>
-      <?php $pozycja('import', '/import', View::t('import.nav')); ?>
+      <?php if (!$trenerSzyny): ?>
+        <?php $pozycja('import', '/import', View::t('import.nav')); ?>
+      <?php endif; ?>
       <?php $pozycja('links', '/linki', View::t('share.nav'), $liczniki['links'] ?? null); ?>
+      <?php if (!$trenerSzyny): ?>
+        <?php $pozycja('settings', '/klub/ustawienia', View::t('nav.club_settings')); ?>
+      <?php endif; ?>
     </nav>
 
     <nav class="grp">
       <span class="grp__lab"><?= View::e(View::t('nav.grp.tools')) ?></span>
       <?php $pozycja('calendar', '/kalendarz', View::t('nav.calendar')); ?>
-      <?php $pozycja('matches', '/mecze', View::t('nav.matches'), $liczniki['matches'] ?? null); ?>
       <?php $pozycja('index', '/indeks', View::t('nav.index')); ?>
       <?php $pozycja('notes', '/notatki', View::t('nav.notes')); ?>
       <?php $pozycja('xg', '/xg', View::t('nav.xg')); ?>
     </nav>
 
     <?php /*
-      Grupa widoczna WYŁĄCZNIE dla administratora. To wygoda, nie ochrona —
-      o dostępie rozstrzyga `requireCan()` w trasie (app/public/index.php).
+      [op] ADMINISTRACJA i stopka techniczna — WYŁĄCZNIE administrator.
+      Analityk i trener nie mają do czego użyć wersji silnika ani stanu kolejki,
+      a pokazane budzą pytania, na które nie mają odpowiedzi.
     */ ?>
     <?php if ($admin): ?>
       <nav class="grp">
         <span class="grp__lab"><?= View::e(View::t('nav.grp.admin')) ?></span>
         <?php $pozycja('clubs', '/kluby', View::t('nav.clubs')); ?>
         <?php $pozycja('users', '/uzytkownicy', View::t('nav.users')); ?>
+        <?php $pozycja('jobs', '/zadania', View::t('nav.jobs'), $kolejka > 0 ? $kolejka : null); ?>
       </nav>
-    <?php endif; ?>
 
-    <div class="foot">
-      <?= View::e(View::t('common.engine', Engine::version())) ?><br>
-      <?= View::e(View::t('nav.queue', $kolejka)) ?>
-    </div>
+      <div class="foot">
+        <?= View::e(View::t('common.engine', Engine::version())) ?> ·
+        <?= View::e(View::t('nav.template', 'v21')) ?><br>
+        <?= View::e(View::t('nav.queue', $kolejka)) ?> ·
+        <?= View::e(View::t('nav.disk', \CoachAnalyze\Storage::zajetoscOpis())) ?>
+      </div>
+    <?php endif; ?>
   </aside>
 
   <main class="main<?= $club !== null ? ' club-scope' : '' ?>"

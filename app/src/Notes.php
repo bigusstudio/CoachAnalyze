@@ -221,10 +221,13 @@ final class Notes
     }
 
     /** Wszystkie użyte tagi wraz z liczbą wystąpień — do podpowiedzi i filtra. */
-    public static function tagCloud(): array
+    public static function tagCloud(?int $tenant = null): array
     {
         $liczniki = [];
-        foreach (Db::all('SELECT tags_json FROM notes WHERE tags_json IS NOT NULL') as $row) {
+        foreach (Db::all(
+            'SELECT tags_json FROM notes WHERE tags_json IS NOT NULL AND (:t_a IS NULL OR club_id = :t_b)',
+            ['t_a' => $tenant, 't_b' => $tenant]
+        ) as $row) {
             foreach (self::decodeTags($row['tags_json']) as $tag) {
                 $liczniki[$tag] = ($liczniki[$tag] ?? 0) + 1;
             }

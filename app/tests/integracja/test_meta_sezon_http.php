@@ -371,8 +371,10 @@ check('raport istnieje',
     Db::one('SELECT id FROM reports WHERE match_id = :m', ['m' => $matchId]) !== null);
 
 $edycja2 = http('GET', '/mecze/' . $matchId . '?zakladka=dane');
+// Od golden layout W2 konto klubowe nie widzi słowa „Przelicz" — nota mówi
+// o ponownym przygotowaniu raportu.
 check('przy raporcie ekran uprzedza o nagłówku',
-    str_contains($edycja2['body'], 'Przelicz'),
+    str_contains($edycja2['body'], 'ponownym przygotowaniu'),
     'meta nie wpływa na liczby, ale nagłówek gotowego HTML-a zostaje stary');
 
 $zapis2 = http('POST', '/mecze/' . $matchId . '/meta', ['form' => [
@@ -382,8 +384,8 @@ $zapis2 = http('POST', '/mecze/' . $matchId . '/meta', ['form' => [
 check('zapis przy raporcie przechodzi', $zapis2['status'] === 302);
 
 $poZapisie = http('GET', (string) $zapis2['location']);
-check('komunikat mówi o „Przelicz", nie o utracie danych',
-    str_contains($poZapisie['body'], 'Przelicz'));
+check('komunikat mówi o ponownym przygotowaniu raportu, nie o utracie danych',
+    str_contains($poZapisie['body'], 'ponownym przygotowaniu'));
 check('komunikat mówi, że liczby się nie zmieniły',
     str_contains($poZapisie['body'], 'nie zmieniły'));
 
@@ -392,8 +394,9 @@ echo "\n== F. wejścia do edycji z trzech miejsc ==\n";
 
 check('z widoku pokrycia',
     str_contains(http('GET', '/import/' . $importId)['body'], '/mecze/' . $matchId . '?zakladka=dane'));
-check('z huba klubu',
-    str_contains(http('GET', '/klub/1')['body'], '/mecze/' . $matchId . '?zakladka=dane'));
+// Hub klubu jest [op] od golden layout W2 — analityk wchodzi z listy kolejek.
+check('z listy kolejek sezonu (karta meczu)',
+    str_contains(http('GET', '/sezon?klub=1&sezon=' . $sezonBiezacy)['body'], 'href="/mecze/' . $matchId . '"'));
 $historia = http('GET', '/mecze/' . $matchId . '/historia');
 check('stara historia meczu przekierowuje na kartę',
     $historia['status'] === 302 && str_starts_with((string) $historia['location'], '/mecze/' . $matchId));

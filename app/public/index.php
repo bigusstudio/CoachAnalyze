@@ -289,6 +289,100 @@ function requireCan(array $user, string $czynnosc): void
     exit;
 }
 
+/**
+ * STRAŻNIK ZAKRESU (golden layout W2) — PRZED przełącznikiem tras.
+ *
+ * Jedno miejsce, które dla KAŻDEJ trasy z identyfikatorem zasobu sprawdza,
+ * czy zasób należy do klubu w zasięgu zalogowanego (`Zakres`). Pojedyncze trasy
+ * tego nie powtarzają — kontrola rozsiana po czterdziestu funkcjach zawsze
+ * gubi jedną. Cudzy zasób = TO SAMO 404 co nieistniejący.
+ *
+ * Do tego trasy [op] (tylko Administrator) i trasy, których Trener nie ma
+ * (import, ustawienia klubu, sezony) — też 404, z tego samego powodu.
+ *
+ * @param array<string,mixed> $user
+ */
+/**
+ * Klub-tenant, do którego zawężamy LISTY (golden layout W2): administrator —
+ * bez zawężenia (`null`, jak dotąd), pozostali — klub bieżący. Rola bez klubu
+ * dostaje `0`, czyli pustą listę, a nie cudze dane.
+ */
+function tenantListy(?array $user): ?int
+{
+    if (\CoachAnalyze\Zakres::op($user)) {
+        return null;
+    }
+    $klub = \CoachAnalyze\Zakres::biezacy($user);
+    return $klub !== null ? (int) $klub['id'] : 0;
+}
+
+function straznikZakresu(array $user, string $path, string $method): void
+{
+    $op = \CoachAnalyze\Zakres::op($user);
+    $trener = \CoachAnalyze\Zakres::trener($user);
+
+    $tylkoOp = [
+        '#^/kluby(/|$)#', '#^/uzytkownicy(/|$)#', '#^/zadania$#', '#^/zadania/\d+(/ponow)?$#',
+        '#^/import/\d+/(diff|mapowanie|inspekcja)$#', '#^/klub/\d+/(templaty|przelicz|konfigurator/porzuc)#',
+        '#^/klub/ustawienia/zaawansowane#',
+    ];
+    $bezTrenera = [
+        '#^/import(/|$)#', '#^/klub/\d+/import$#', '#^/mecze/\d+/wgraj$#', '#^/klub/ustawienia#',
+        '#^/klub/\d+/(konfigurator|uklad)#', '#^/sezony(/|$)#', '#^/klub/\d+/wybierz$#', '#^/klub/wybierz$#',
+    ];
+    foreach ($op ? [] : $tylkoOp as $wz) {
+        if (preg_match($wz, $path) === 1) {
+            tenantNotFound();
+            exit;
+        }
+    }
+    foreach ($trener ? $bezTrenera : [] as $wz) {
+        if (preg_match($wz, $path) === 1) {
+            tenantNotFound();
+            exit;
+        }
+    }
+    if ($op) {
+        return;
+    }
+
+    // Hub klubu jest ekranem administracyjnym — pozostali dostają TEN klub
+    // jako bieżący i wracają na pulpit (golden layout W2, pkt 15).
+    if ($method === 'GET' && preg_match('#^/klub/(\d+)$#', $path, $m) === 1) {
+        if (!\CoachAnalyze\Zakres::moze($user, (int) $m[1])) {
+            tenantNotFound();
+            exit;
+        }
+        \CoachAnalyze\Zakres::wybierz($user, (int) $m[1]);
+        redirect('/pulpit');
+    }
+
+    $zasoby = [
+        '#^/mecze/(\d+)#' => 'mecz', '#^/raport/(\d+)#' => 'raport', '#^/import/(\d+)#' => 'import',
+        '#^/link/(\d+)#' => 'link', '#^/notatki/(\d+)#' => 'notatka', '#^/klub/(\d+)#' => 'klub',
+    ];
+    foreach ($zasoby as $wz => $rodzaj) {
+        if (preg_match($wz, $path, $m) === 1) {
+            $klub = \CoachAnalyze\Zakres::klubZasobu($rodzaj, (int) $m[1]);
+            if (!\CoachAnalyze\Zakres::moze($user, $klub)) {
+                tenantNotFound();
+                exit;
+            }
+        }
+    }
+
+    // Filtr klubu w adresie list (`?klub=`, `?club=` w /api/metryki).
+    foreach (['klub', 'club'] as $param) {
+        if (isset($_GET[$param]) && $_GET[$param] !== ''
+            && !\CoachAnalyze\Zakres::moze($user, (int) $_GET[$param])) {
+            tenantNotFound();
+            exit;
+        }
+    }
+}
+
+straznikZakresu($user, $path, $method);
+
 switch (true) {
     /*
      * PUNKT WEJŚCIA = PULPIT (golden layout W0, docs/GOLDEN_LAYOUT.md).
@@ -300,33 +394,43 @@ switch (true) {
         break;
 
     case $path === '/pulpit' && $method === 'GET':
+        /*
+         * PULPIT W ZAKRESIE KLUBU BIEŻĄCEGO (golden layout W2): trener widzi
+         * swój klub, analityk — klub wybrany w szynie spośród swoich,
+         * administrator — wybrany albo domyślny. „Wymaga uwagi" (zadania,
+         * alerty techniczne) jest [op].
+         */
+        $klubPulpitu = \CoachAnalyze\Zakres::biezacy($user);
+        $kid = $klubPulpitu !== null ? (int) $klubPulpitu['id'] : null;
+        $opPulpitu = \CoachAnalyze\Zakres::op($user);
         $sezonPulpitu = Stats::currentSeason();
-        $ostatniMecz  = Stats::lastFinishedMatch();
+        $ostatniMecz  = $kid !== null || $opPulpitu ? Stats::lastFinishedMatch($kid) : null;
         View::page('dashboard', [
             'title'    => View::t('dash.title'),
             'active'   => 'pulpit',
-            'counters' => Stats::counters(),
-            'matches'  => Stats::recentMatches(5),
-            'jobs'     => Stats::jobsNeedingAttention(),
-            'alerts'   => \CoachAnalyze\Alerts::all(),
+            'counters' => Stats::counters($kid),
+            'matches'  => Stats::recentMatches(5, $kid),
+            'jobs'     => $opPulpitu ? Stats::jobsNeedingAttention() : [],
+            'alerts'   => $opPulpitu ? \CoachAnalyze\Alerts::all() : [],
+            'op'       => $opPulpitu,
             'notice'   => Session::flash('notice'),
             // Sesja 3,5 — liczby ze zdarzeń (tabela `events`, migracja 014).
             'season'      => $sezonPulpitu,
             'lastMatch'   => $ostatniMecz,
             'lastFacts'   => $ostatniMecz !== null
                 ? Stats::matchFacts((int) $ostatniMecz['id']) : null,
-            'seasonRows'  => Stats::seasonMatches(
-                $sezonPulpitu !== null ? (int) $sezonPulpitu['id'] : null, 40
-            ),
-            // Sesja 3 — metryki z tabeli `events`. Tenant = klub „nasz";
-            // bez niego metryk nie liczymy i kafle zostają z kreską.
-            'metryki'     => ($tenantPulpitu = Clubs::tenantDefault()) !== null
+            'seasonRows'  => $kid !== null || $opPulpitu ? Stats::seasonMatches(
+                $sezonPulpitu !== null ? (int) $sezonPulpitu['id'] : null, 40, $kid
+            ) : [],
+            // Sesja 3 — metryki z tabeli `events` dla klubu bieżącego;
+            // bez klubu metryk nie liczymy i kafle zostają z kreską.
+            'metryki'     => $kid !== null
                 ? \CoachAnalyze\Metrics::computeAll([
-                    'club_id'   => (int) $tenantPulpitu,
+                    'club_id'   => $kid,
                     'season_id' => $sezonPulpitu !== null ? (int) $sezonPulpitu['id'] : null,
                   ])
                 : ['metrics' => [], 'coverage' => []],
-            'tenantId'    => $tenantPulpitu,
+            'tenantId'    => $kid,
         ]);
         break;
 
@@ -344,7 +448,10 @@ switch (true) {
         // czynnością, nie podglądem.
         requireCan($user, 'upload');
         requireCsrf();
-        handleImport((int) $user['id']);
+        // Mecz trafia do klubu BIEŻĄCEGO zalogowanego (golden layout W2), nie do
+        // „pierwszego własnego" — analityk z dwoma klubami importuje do wybranego.
+        $klubImportu = \CoachAnalyze\Zakres::biezacy($user);
+        handleImport((int) $user['id'], $klubImportu !== null ? (int) $klubImportu['id'] : null);
         break;
 
     case preg_match('#^/import/(\d+)$#', $path, $m) === 1 && $method === 'GET':
@@ -758,13 +865,14 @@ switch (true) {
             'active'  => 'matches',
             'statusy' => Matches::STATUSY,
             'wynik'   => Matches::search([
+                'tenant' => tenantListy($user),
                 'club'   => $filtr['klub'],
                 'season' => $filtr['sezon'],
                 'status' => $filtr['status'],
                 'sort'   => $filtr['sort'],
                 'page'   => $filtr['strona'],
             ]),
-            'clubs'   => Clubs::all(),
+            'clubs'   => \CoachAnalyze\Zakres::op($user) ? Clubs::all() : [],
             'seasons' => Seasons::all(),
             'filtr'   => $filtr,
             'notice'  => Session::flash('notice'),
@@ -828,6 +936,44 @@ switch (true) {
 
     case preg_match('#^/sezon/mecz/(\d+)$#', $path, $m) === 1 && $method === 'GET':
         redirect('/mecze/' . (int) $m[1]);
+        break;
+
+    // ------------------------------------------- golden layout W2: nowe ekrany
+    case $path === '/druzyna' && $method === 'GET':
+        showTeam();
+        break;
+
+    case $path === '/zadania' && $method === 'GET':
+        // [op] — strażnik zakresu odrzucił już pozostałe role (404).
+        View::page('jobs_list', [
+            'title'  => View::t('nav.jobs'),
+            'active' => 'jobs',
+            'jobs'   => \CoachAnalyze\Db::all('SELECT * FROM jobs ORDER BY id DESC LIMIT 100'),
+        ]);
+        break;
+
+    case $path === '/klub/wybierz' && $method === 'GET':
+        View::page('club_pick', [
+            'title'  => View::t('pick.title'),
+            'active' => '',
+            'kluby'  => array_values(array_filter(
+                Clubs::tenants(),
+                static fn(array $k): bool => \CoachAnalyze\Zakres::moze($user, (int) $k['id'])
+            )),
+            'biezacy' => \CoachAnalyze\Zakres::biezacy($user),
+        ]);
+        break;
+
+    case preg_match('#^/klub/(\d+)/wybierz$#', $path, $m) === 1 && $method === 'POST':
+        // Wybór klubu bieżącego to PREFERENCJA WIDOKU, nie czynność na danych;
+        // zakres sprawdza `Zakres::wybierz` (i strażnik — trener nie ma tej trasy).
+        requireCsrf();
+        \CoachAnalyze\Zakres::wybierz($user, (int) $m[1]);
+        redirect('/pulpit');
+        break;
+
+    case $path === '/klub/ustawienia' && $method === 'GET':
+        showClubSettings($user);
         break;
 
     case $path === '/zawodnicy' && $method === 'GET':
@@ -898,11 +1044,12 @@ switch (true) {
         View::page('notes_list', [
             'title'   => View::t('note.title'),
             'active'  => 'notes',
-            'notes'   => Notes::search($filtr['q'], $filtr['poziom'] ?: null, $filtr['tag'] ?: null),
-            'tags'    => Notes::tagCloud(),
+            'notes'   => Notes::search($filtr['q'], $filtr['poziom'] ?: null, $filtr['tag'] ?: null, tenantListy($user)),
+            'tags'    => Notes::tagCloud(tenantListy($user)),
             'filtr'   => $filtr,
-            'matches' => Stats::recentMatches(50),
-            'clubs'   => Clubs::all(),
+            'matches' => Stats::recentMatches(50, tenantListy($user)),
+            'clubs'   => \CoachAnalyze\Zakres::op($user) ? Clubs::all()
+                : array_values(array_filter([\CoachAnalyze\Zakres::biezacy($user)])),
             'notice'  => Session::flash('notice'),
             'error'   => Session::flash('error'),
         ]);
@@ -1136,7 +1283,7 @@ switch (true) {
         View::page('share_active', [
             'title'  => View::t('share.active'),
             'active' => 'links',
-            'links'  => Share::active(),
+            'links'  => Share::active(tenantListy($user)),
             'appUrl' => \CoachAnalyze\Config::get('APP_URL', ''),
             'notice' => Session::flash('notice'),
         ]);
@@ -1359,6 +1506,10 @@ function serveReport(int $id): void
     header('Content-Type: text/html; charset=utf-8');
     header('X-Robots-Tag: noindex, nofollow');
     header('Cache-Control: private, no-store');
+    // Otwarcie raportu zamyka jego chmurkę „Raport gotowy" (golden layout W2).
+    if (Session::userId() !== null) {
+        Notifications::oznaczRaportOtwarty((int) Session::userId(), $id);
+    }
     // Klips „← CA" prowadzi na PULPIT (decyzja z odbioru W0 na produkcji):
     // raport otwiera się z wielu miejsc, a pulpit jest jedynym punktem, który
     // zawsze ma sens. Do karty meczu prowadzi nazwa meczu na pulpicie.
@@ -1523,7 +1674,8 @@ function showCoverage(int $importId): void
          * pokrycia, dobrowolne.
          * ═══════════════════════════════════════════════════════════════════
          */
-    } elseif (Imports::needsMapping($import)) {
+    } elseif (Imports::needsMapping($import) && \CoachAnalyze\Zakres::op(Auth::currentUser())) {
+        // Kreator mapowań jest [op] (golden layout W2) — analityka nie odsyłamy.
         redirect('/import/' . $importId . '/mapowanie');
     }
 
@@ -1765,7 +1917,12 @@ function queueBuild(int $importId, int $userId): void
     $clubGen = $meczGen !== null && $meczGen['club_id'] !== null ? (int) $meczGen['club_id'] : null;
     $maTemplatGen = $clubGen !== null && \CoachAnalyze\ReportTemplates::current($clubGen) !== null;
 
-    if ($maTemplatGen) {
+    // Golden layout W2/W3: ekran różnic i kreator mapowań są [op] — NIE stoją
+    // na ścieżce analityka. Nierozpoznane tagi nie wchodzą do raportu i widać
+    // je w Słowniku klubu; zapis słownika nigdy nie dzieje się przy imporcie.
+    $opGen = \CoachAnalyze\Zakres::op(Auth::currentUser());
+
+    if ($maTemplatGen && $opGen) {
         if (empty($import['diff_done_at'])) {
             $diffGen = configuratorDiff($import, $clubGen);
             if ($diffGen['nowe'] !== []) {
@@ -1773,7 +1930,7 @@ function queueBuild(int $importId, int $userId): void
                 redirect('/import/' . $importId . '/diff');
             }
         }
-    } elseif (Imports::needsMapping($import)) {
+    } elseif (!$maTemplatGen && $opGen && Imports::needsMapping($import)) {
         Session::flash('notice', View::t('mapping.required'));
         redirect('/import/' . $importId . '/mapowanie');
     }
@@ -1791,6 +1948,7 @@ function showReports(): void
 {
     $wynik = Reports::search([
         'jeden_na_mecz' => true,
+        'tenant' => tenantListy(Auth::currentUser()),
         'club'   => isset($_GET['klub']) && $_GET['klub'] !== '' ? (int) $_GET['klub'] : null,
         'season' => isset($_GET['sezon']) && $_GET['sezon'] !== '' ? (int) $_GET['sezon'] : null,
         'sort'   => isset($_GET['sort']) ? (string) $_GET['sort'] : null,
@@ -1804,7 +1962,8 @@ function showReports(): void
         'total'   => $wynik['total'],
         'page'    => $wynik['page'],
         'pages'   => $wynik['pages'],
-        'clubs'   => Reports::filterClubs(),
+        // Filtr po klubie jest narzędziem przeglądu wszystkich klubów — [op].
+        'clubs'   => \CoachAnalyze\Zakres::op(Auth::currentUser()) ? Reports::filterClubs() : [],
         'seasons' => Reports::filterSeasons(),
         'filters' => [
             'klub'  => $_GET['klub']  ?? '',
@@ -2098,6 +2257,7 @@ function showUsers(): void
         'active'  => 'users',
         'users'   => Users::all(),
         'roles'   => Users::ROLE,
+        'kluby'   => Clubs::tenants(),
         'me'      => (int) (Session::userId() ?? 0),
         'admins'  => Users::activeAdminCount(),
         /*
@@ -2123,6 +2283,7 @@ function createUser(int $authorId): void
             'email'        => $_POST['email'] ?? '',
             'display_name' => $_POST['display_name'] ?? '',
             'role'         => $_POST['role'] ?? 'operator',
+            'club_id'      => $_POST['club_id'] ?? null,
         ], $authorId);
     } catch (\Throwable $e) {
         Session::flash('error', $e->getMessage());
@@ -2138,7 +2299,7 @@ function createUser(int $authorId): void
 function changeUserRole(int $userId, string $rola, int $authorId): void
 {
     try {
-        Users::setRole($userId, $rola, $authorId);
+        Users::setRole($userId, $rola, $authorId, $_POST['club_id'] ?? null);
         Session::flash('notice', View::t('users.role_changed'));
     } catch (\Throwable $e) {
         Session::flash('error', $e->getMessage());
@@ -2526,6 +2687,11 @@ function publicNotFound(float $start): never
  */
 function indeksKlub(): ?array
 {
+    // Poza administratorem — klub bieżący, bez przełączania (golden layout W2).
+    $user = Auth::currentUser();
+    if (!\CoachAnalyze\Zakres::op($user)) {
+        return \CoachAnalyze\Zakres::biezacy($user);
+    }
     $kluby = Clubs::all();
     if (isset($_GET['klub']) && $_GET['klub'] !== '') {
         foreach ($kluby as $klub) {
@@ -4294,7 +4460,10 @@ function showTemplateHistory(int $id): void
  */
 function zakresKlubu(): ?array
 {
-    $id = isset($_GET['klub']) ? (int) $_GET['klub'] : \CoachAnalyze\Clubs::tenantDefault();
+    // Bez `?klub=` — klub bieżący z zakresu zalogowanego (golden layout W2);
+    // z `?klub=` — strażnik zakresu sprawdził już, że wolno.
+    $biezacy = \CoachAnalyze\Zakres::biezacy(Auth::currentUser());
+    $id = isset($_GET['klub']) ? (int) $_GET['klub'] : ($biezacy !== null ? (int) $biezacy['id'] : null);
 
     if ($id === null) {
         // Instalacja bez ani jednego klubu — ekran mówi to wprost zamiast
@@ -4364,11 +4533,31 @@ function showSeasonRounds(): void
     }
     $ctx = kontekstSezonu($club);
 
+    /*
+     * TABELA SEZONU (golden layout W2, pkt 17): k., rywal, data, miejsce, wynik,
+     * xG, strzały, SBZ, pressing, stan raportu + SUMA. SBZ i pressing z TYCH
+     * SAMYCH definicji co pulpit (`Metrics`) — PHP ich nie liczy (CLAUDE.md §4);
+     * suma pressingu to ta sama definicja z zakresem sezonu, nie średnia z wierszy.
+     */
+    $def = \CoachAnalyze\Metrics::definicje();
+    $kolejki = \CoachAnalyze\Stats::seasonRounds((int) $club['id'], $ctx['sezonId']);
+    foreach ($kolejki as &$k) {
+        $zakres = ['club_id' => (int) $club['id'], 'match_id' => (int) $k['id']];
+        $k['sbz'] = \CoachAnalyze\Metrics::compute($def['sbz'], $zakres)['value'];
+        $k['pressing'] = \CoachAnalyze\Metrics::compute($def['pressing'], $zakres);
+        $k['raport'] = Imports::latestReport((int) $k['id']);
+        $k['w_toku'] = Matches::zadanieWToku((int) $k['id']) !== null;
+    }
+    unset($k);
+    $zakresSezonu = ['club_id' => (int) $club['id'], 'season_id' => $ctx['sezonId']];
+
     View::page('season_rounds', [
         'title'   => View::t('sezon.title'),
         'active'  => 'season',
         'club'    => $club,
-        'kolejki' => \CoachAnalyze\Stats::seasonRounds((int) $club['id'], $ctx['sezonId']),
+        'kolejki' => $kolejki,
+        'sumaSbz' => \CoachAnalyze\Metrics::compute($def['sbz'], $zakresSezonu)['value'],
+        'sumaPressing' => \CoachAnalyze\Metrics::compute($def['pressing'], $zakresSezonu),
     ] + $ctx);
 }
 
@@ -4394,6 +4583,44 @@ function showSeasonSummary(): void
         'metryki'  => \CoachAnalyze\Metrics::computeAll($zakres),
         'kolejki'  => \CoachAnalyze\Stats::seasonRounds((int) $club['id'], $ctx['sezonId']),
     ] + $ctx);
+}
+
+/** DRUŻYNA — kadra z match_players i statystyki sezonu (golden layout W2). */
+function showTeam(): void
+{
+    $club = zakresKlubu();
+    if ($club === null) {
+        return;
+    }
+    $ctx = kontekstSezonu($club);
+    View::page('team', [
+        'title'  => View::t('nav.team'),
+        'active' => 'team',
+        'club'   => $club,
+        'kadra'  => \CoachAnalyze\Stats::kadra((int) $club['id'], $ctx['sezonId']),
+        'zawodnicy' => \CoachAnalyze\Stats::players((int) $club['id'], $ctx['sezonId']),
+    ] + $ctx);
+}
+
+/**
+ * USTAWIENIA KLUBU (golden layout W2 — szkielet; W3 — pełny ekran).
+ * Poza hierarchią Pulpit → Sezon → Mecz; rodzicem jest Pulpit.
+ *
+ * @param array<string,mixed> $user
+ */
+function showClubSettings(array $user): void
+{
+    $club = \CoachAnalyze\Zakres::biezacy($user);
+    if ($club === null) {
+        tenantNotFound();
+        return;
+    }
+    View::page('club_settings', [
+        'title'  => View::t('nav.club_settings'),
+        'active' => 'settings',
+        'club'   => $club,
+        'op'     => \CoachAnalyze\Zakres::op($user),
+    ]);
 }
 
 /** ZAWODNICY — skład scalony ze zdarzeniami po pełnej nazwie. */

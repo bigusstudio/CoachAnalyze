@@ -149,7 +149,11 @@ foreach ([
 // ================================================================ ROLE
 echo "\n== zmiana roli ==\n";
 
-Users::setRole($nowe['id'], 'viewer', $ADMIN);
+// Trener wymaga klubu-tenanta (golden layout W2, migracja 018) — baza tego
+// zestawu jest bez danych, więc klub zakładamy tutaj.
+\CoachAnalyze\Db::run("INSERT INTO clubs (owner_id, club_key, name, is_own_team) VALUES (1, 'TRN1KLUB', 'Klub trenera', 1)");
+$klubTrenera = (int) \CoachAnalyze\Db::pdo()->lastInsertId();
+Users::setRole($nowe['id'], 'viewer', $ADMIN, $klubTrenera);
 check('rola zmieniona', Users::find($nowe['id'])['role'] === 'viewer');
 check('audyt odnotowal zmiane',
     count(Db::all("SELECT id FROM audit_log WHERE action = 'user.role_changed'")) === 1);

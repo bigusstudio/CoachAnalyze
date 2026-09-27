@@ -66,7 +66,8 @@ use CoachAnalyze\View;
       <thead>
         <tr>
           <th scope="col"><?= View::e(View::t('index.col.name')) ?></th>
-          <th scope="col"><?= View::e(View::t('index.col.concept')) ?></th>
+          <?php /* Pojęcie kanoniczne to szczegół techniczny — [op] (golden layout W2). */ ?>
+          <?php if (View::op()): ?><th scope="col"><?= View::e(View::t('index.col.concept')) ?></th><?php endif; ?>
           <th scope="col"><?= View::e(View::t('index.col.version')) ?></th>
         </tr>
       </thead>
@@ -84,7 +85,7 @@ use CoachAnalyze\View;
                 </span>
               <?php endif; ?>
             </td>
-            <td><code class="tag-nazwa"><?= View::e((string) $t['concept']) ?></code></td>
+            <?php if (View::op()): ?><td><code class="tag-nazwa"><?= View::e((string) $t['concept']) ?></code></td><?php endif; ?>
             <td>
               <?php /*
                 TRZY STANY, NIE DWA. „Klubowe" i „nadpisuje systemowe" to nie to

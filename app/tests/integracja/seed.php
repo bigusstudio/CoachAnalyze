@@ -66,6 +66,8 @@ function ca_test_db(string $file, bool $withData = true): PDO
 
     $pdo->exec('CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT UNIQUE,
         pass_hash TEXT, display_name TEXT, role TEXT DEFAULT "operator",
+        -- Migracja 018: trener przypisany do jednego klubu (golden layout W2).
+        club_id INT NULL,
         notify_mail_pending INT DEFAULT 1, notify_mail_ready INT DEFAULT 1,
         notify_mail_failed INT DEFAULT 1,
         status TEXT NOT NULL DEFAULT "active", must_change_password INT NOT NULL DEFAULT 0,

@@ -111,6 +111,8 @@ $pusty = View::render('dashboard', [
     'counters' => ['matches' => 0, 'matches_scope' => 'wszystkie sezony',
                    'reports' => 0, 'links' => 0, 'queued' => 0],
     'matches' => [], 'jobs' => [], 'notice' => null,
+    // „Wymaga uwagi" jest [op] od golden layout W2 — render jako administrator.
+    'op' => true,
 ]);
 check('pusty stan meczów jest opisowy',
     str_contains($pusty, 'Nie ma jeszcze żadnego rozegranego meczu'));
@@ -172,7 +174,10 @@ check('szyna ma grupy menu',
     'grupy zamiast płaskiej listy pozycji');
 check('pozycje bez widoku prowadzą do zapowiedzi, nie do 404',
     str_contains($layout, 'href="/zawodnicy"') && str_contains($layout, 'href="/kalendarz"'));
-check('szyna niesie stan kolejki w stopce', str_contains($layout, 'W kolejce'));
+// Stopka techniczna (silnik, szablon, kolejka, dysk) jest [op] od golden layout
+// W2 — ten render jest bez sesji, więc stopki NIE MA; widoczność dla
+// administratora sprawdza `test_golden_w2_http.php`.
+check('szyna bez sesji nie niesie stopki technicznej', !str_contains($layout, 'W kolejce'));
 
 // ---------------------------------------------------------------- CSS
 echo "\n== motyw w CSS ==\n";

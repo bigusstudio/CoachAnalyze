@@ -240,7 +240,9 @@ $wejscie = http('GET', '/');
 check('panel wpuszcza (przekierowanie na pulpit)',
     $wejscie['status'] === 302 && $wejscie['location'] === '/pulpit',
     $wejscie['status'] . ' → ' . (string) $wejscie['location']);
-check('lista klubów odpowiada', http('GET', '/kluby')['status'] === 200);
+// Od golden layout W2 lista klubów jest [op]; konto testowe to analityk.
+check('lista klubów jest [op] — analityk dostaje 404', http('GET', '/kluby')['status'] === 404);
+check('pulpit odpowiada', http('GET', '/pulpit')['status'] === 200);
 
 // ============================================================ 2. bez ciasteczka
 echo "\n== żądanie BEZ ciasteczka sesji: komunikat o ciasteczku, nie o formularzu ==\n";

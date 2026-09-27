@@ -1537,3 +1537,12 @@ form.chmurka__zamknij button:hover { color: var(--tekst); }
   animation: xg-puls 0.5s ease-in-out 4; }
 @keyframes xg-puls { 50% { transform: scale(1.7); } }
 @media (prefers-reduced-motion: reduce) { .xg-znacznik--nowy { animation: none; } }
+
+/* ═══════════════════════════════════════════════ golden layout W2
+   Kontekst klubu i sezonu w JEDNEJ linii szyny, z wielokropkiem. */
+.ctx--linia { align-items: center; }
+.ctx__linia { min-width: 0; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  font-size: 12.5px; color: var(--szyna-tekst2); }
+.ctx__linia b { color: var(--szyna-tytul); font: 700 15px 'Barlow Condensed', sans-serif; }
+div.ctx { cursor: default; }
+.tbl__suma th, .tbl__suma td { border-top: 2px solid var(--obramowanie); font-weight: 700; }

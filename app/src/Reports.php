@@ -56,7 +56,8 @@ final class Reports
          * Globalna `/raporty` go nie przekazuje — to świadomy, osobny widok
          * „co wygenerowaliśmy w ogóle", nie pozostałość po TODO.
          */
-        if (!empty($filters['tenant'])) {
+        // `0` = rola bez klubu (golden layout W2): pusta lista, NIE brak filtra.
+        if (isset($filters['tenant'])) {
             $warunki[] = 'r.club_id = :tenant';
             $params['tenant'] = (int) $filters['tenant'];
         }

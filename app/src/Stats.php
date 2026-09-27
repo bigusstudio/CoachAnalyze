@@ -16,34 +16,37 @@ final class Stats
      *
      * @return array{matches:int, matches_scope:string, reports:int, links:int, queued:int}
      */
-    public static function counters(): array
+    public static function counters(?int $clubId = null): array
     {
         $season = self::currentSeason();
+        // Zakres klubu (golden layout W2): pulpit i szyna mówią o klubie bieżącym.
+        $wKlubie = $clubId !== null ? ' AND club_id = :club' : '';
+        $pKlub = $clubId !== null ? ['club' => $clubId] : [];
 
         if ($season !== null) {
             $matches = (int) Db::one(
-                'SELECT COUNT(*) AS c FROM matches WHERE season_id = :sid',
-                ['sid' => $season['id']]
+                'SELECT COUNT(*) AS c FROM matches WHERE season_id = :sid' . $wKlubie,
+                ['sid' => $season['id']] + $pKlub
             )['c'];
             $scope = (string) $season['label'];
         } else {
             // Brak sezonu oznaczonego jako bieżący to stan normalny na starcie.
             // Pokazujemy wtedy sumę wszystkich meczów i mówimy o tym wprost,
             // zamiast wyświetlać zero, które wygląda jak błąd danych.
-            $matches = (int) Db::one('SELECT COUNT(*) AS c FROM matches')['c'];
+            $matches = (int) Db::one('SELECT COUNT(*) AS c FROM matches WHERE 1 = 1' . $wKlubie, $pKlub)['c'];
             $scope = View::t('dash.all_seasons');
         }
 
         return [
             'matches'       => $matches,
             'matches_scope' => $scope,
-            'reports'       => (int) Db::one('SELECT COUNT(*) AS c FROM reports')['c'],
+            'reports'       => (int) Db::one('SELECT COUNT(*) AS c FROM reports WHERE 1 = 1' . $wKlubie, $pKlub)['c'],
             // Czas podajemy parametrem, a nie przez NOW(): zapytanie daje się wtedy
             // uruchomić poza MySQL-em (testy) i nie zależy od zegara serwera bazy.
             'links'         => (int) Db::one(
                 'SELECT COUNT(*) AS c FROM share_links
-                  WHERE revoked_at IS NULL AND (expires_at IS NULL OR expires_at > :now)',
-                ['now' => self::now()]
+                  WHERE revoked_at IS NULL AND (expires_at IS NULL OR expires_at > :now)' . $wKlubie,
+                ['now' => self::now()] + $pKlub
             )['c'],
             'queued'        => (int) Db::one(
                 "SELECT COUNT(*) AS c FROM jobs WHERE status = 'queued'"
@@ -81,7 +84,7 @@ final class Stats
      *
      * @return list<array<string,mixed>>
      */
-    public static function recentMatches(int $limit = 5): array
+    public static function recentMatches(int $limit = 5, ?int $clubId = null): array
     {
         // LIMIT jako PARAMETR, nie sklejony z liczbą. Zakres i tak przycinamy,
         // ale zapytanie nie ma prawa powstawać przez konkatenację — dziś jest to
@@ -92,9 +95,10 @@ final class Stats
                FROM matches m
                LEFT JOIN clubs h ON h.id = m.club_home_id
                LEFT JOIN clubs a ON a.id = m.club_away_id
+              WHERE (:club_a IS NULL OR m.club_id = :club_b)
               ORDER BY (m.played_at IS NULL), m.played_at DESC, m.id DESC
               LIMIT :limit',
-            ['limit' => max(1, min(50, $limit))]
+            ['limit' => max(1, min(50, $limit)), 'club_a' => $clubId, 'club_b' => $clubId]
         );
     }
 
@@ -130,9 +134,9 @@ final class Stats
      *
      * @return array{season:string, matches:int, reports:int, links:int, queued:int}
      */
-    public static function railCounters(): array
+    public static function railCounters(?int $clubId = null): array
     {
-        $liczniki = self::counters();
+        $liczniki = self::counters($clubId);
 
         return [
             'season'  => $liczniki['matches_scope'],
@@ -148,7 +152,7 @@ final class Stats
      *
      * @return array<string,mixed>|null
      */
-    public static function lastFinishedMatch(): ?array
+    public static function lastFinishedMatch(?int $clubId = null): ?array
     {
         return Db::one(
             "SELECT m.id, m.played_at, m.round, m.competition, m.status,
@@ -162,9 +166,10 @@ final class Stats
                LEFT JOIN clubs h ON h.id = m.club_home_id
                LEFT JOIN clubs a ON a.id = m.club_away_id
                LEFT JOIN seasons s ON s.id = m.season_id
-              WHERE m.status = 'done'
+              WHERE m.status = 'done' AND (:club_a IS NULL OR m.club_id = :club_b)
               ORDER BY " . self::SQL_KOLEJNOSC_PULPITU . "
-              LIMIT 1"
+              LIMIT 1",
+            ['club_a' => $clubId, 'club_b' => $clubId]
         );
     }
 
@@ -232,9 +237,16 @@ final class Stats
      *
      * @return list<array<string,mixed>>
      */
-    public static function seasonMatches(?int $seasonId, int $limit = 40): array
+    public static function seasonMatches(?int $seasonId, int $limit = 40, ?int $clubId = null): array
     {
-        $warunek = $seasonId !== null ? 'WHERE m.season_id = :sid' : '';
+        $warunki = [];
+        if ($seasonId !== null) {
+            $warunki[] = 'm.season_id = :sid';
+        }
+        if ($clubId !== null) {
+            $warunki[] = 'm.club_id = :club';
+        }
+        $warunek = $warunki === [] ? '' : 'WHERE ' . implode(' AND ', $warunki);
         // OSOBNE SYMBOLE DLA KAŻDEGO WYSTĄPIENIA. PDO bez emulacji nie przyjmuje
         // tego samego symbolu nazwanego dwa razy w jednym zapytaniu, a emulacja
         // jest w tym projekcie wyłączona (pilnuje tego `test_sql_parametry.php`).
@@ -246,6 +258,9 @@ final class Stats
         ];
         if ($seasonId !== null) {
             $parametry['sid'] = $seasonId;
+        }
+        if ($clubId !== null) {
+            $parametry['club'] = $clubId;
         }
 
         return Db::all(
@@ -375,6 +390,49 @@ final class Stats
      *
      * @return list<array<string,mixed>>
      */
+    /**
+     * KADRA KLUBU W SEZONIE (golden layout W2, pkt 16 — do czasu modułu M7).
+     *
+     * Z `match_players`: numer i pozycja (ostatnie wpisane — numer zmienia się
+     * rzadko, a „najczęstszy" wymagałby drugiego zapytania na zawodnika), mecze,
+     * minuty i wyjścia w pierwszym składzie. Statystyki zdarzeń dokłada
+     * `players()` — ten sam zestaw, który pokazuje ekran Zawodnicy.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public static function kadra(int $clubId, ?int $seasonId = null): array
+    {
+        $warunek = $seasonId !== null ? 'AND m.season_id = :sid' : '';
+        $p = ['club' => $clubId] + ($seasonId !== null ? ['sid' => $seasonId] : []);
+        $kadra = Db::all(
+            "SELECT mp.player, MAX(mp.number) AS number, MAX(mp.position) AS position,
+                    COUNT(DISTINCT mp.match_id) AS matches,
+                    SUM(CASE WHEN mp.minutes IS NOT NULL THEN mp.minutes ELSE 0 END) AS minutes,
+                    SUM(CASE WHEN mp.minutes IS NOT NULL THEN 1 ELSE 0 END) AS with_minutes,
+                    SUM(mp.is_starter) AS starts
+               FROM match_players mp
+               JOIN matches m ON m.id = mp.match_id
+              WHERE mp.club_id = :club {$warunek}
+              GROUP BY mp.player
+              ORDER BY (MAX(mp.number) IS NULL), MAX(mp.number), mp.player",
+            $p
+        );
+        $statystyki = [];
+        foreach (self::players($clubId, $seasonId) as $z) {
+            $statystyki[(string) $z['player']] = $z;
+        }
+        foreach ($kadra as &$k) {
+            $st = $statystyki[(string) $k['player']] ?? null;
+            $k['minutes'] = (int) $k['with_minutes'] > 0 ? (int) $k['minutes'] : null;
+            $k['shots'] = $st['shots'] ?? 0;
+            $k['goals'] = $st['goals'] ?? 0;
+            $k['xg'] = $st['xg'] ?? 0.0;
+            $k['events'] = $st['events'] ?? 0;
+        }
+        unset($k);
+        return $kadra;
+    }
+
     public static function players(int $clubId, ?int $seasonId = null): array
     {
         $warunek = $seasonId !== null ? 'AND m.season_id = :sid' : '';

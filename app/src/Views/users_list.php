@@ -78,6 +78,19 @@ use CoachAnalyze\View;
       </select>
     </label>
 
+    <?php /* Klub TRENERA (golden layout W2, migracja 018). Bez skryptu pole jest
+             zawsze widoczne; dla Analityka i Administratora serwer je pomija. */ ?>
+    <label class="field" for="club_id">
+      <span class="field__label"><?= View::e(View::t('users.club')) ?></span>
+      <select class="field__input" id="club_id" name="club_id">
+        <option value=""><?= View::e(View::t('users.club.none')) ?></option>
+        <?php foreach ($kluby as $k): ?>
+          <option value="<?= (int) $k['id'] ?>"><?= View::e((string) $k['name']) ?></option>
+        <?php endforeach; ?>
+      </select>
+      <span class="hint"><?= View::e(View::t('users.club.hint')) ?></span>
+    </label>
+
     <?php /* Hasła NIE WPISUJE administrator — generuje je system, z CSPRNG. */ ?>
     <p class="hint"><?= View::e(View::t('users.password.generated')) ?></p>
 
@@ -139,6 +152,14 @@ use CoachAnalyze\View;
                   <?php foreach ($roles as $r): ?>
                     <option value="<?= View::e($r) ?>" <?= $r === (string) $u['role'] ? 'selected' : '' ?>>
                       <?= View::e(View::t('users.role.' . $r)) ?>
+                    </option>
+                  <?php endforeach; ?>
+                </select>
+                <select class="field__input field__input--slim" name="club_id" aria-label="<?= View::e(View::t('users.club')) ?>">
+                  <option value=""><?= View::e(View::t('users.club.none')) ?></option>
+                  <?php foreach ($kluby as $k): ?>
+                    <option value="<?= (int) $k['id'] ?>" <?= (int) ($u['club_id'] ?? 0) === (int) $k['id'] ? 'selected' : '' ?>>
+                      <?= View::e((string) $k['name']) ?>
                     </option>
                   <?php endforeach; ?>
                 </select>

@@ -150,19 +150,21 @@ final class Users
         if (Db::one('SELECT id FROM users WHERE email = :e', ['e' => $email]) !== null) {
             throw new \RuntimeException(View::t('users.err.taken'));
         }
+        $klub = self::klubDlaRoli($rola, $dane['club_id'] ?? null);
 
         $haslo = self::generatePassword();
 
         Db::run(
             'INSERT INTO users
-                (email, pass_hash, display_name, role, status, must_change_password,
+                (email, pass_hash, display_name, role, club_id, status, must_change_password,
                  created_at, created_by)
-             VALUES (:e, :h, :n, :r, :s, 1, :now, :by)',
+             VALUES (:e, :h, :n, :r, :k, :s, 1, :now, :by)',
             [
                 'e'   => $email,
                 'h'   => Auth::hashPassword($haslo),
                 'n'   => mb_substr($nazwa, 0, 120),
                 'r'   => $rola,
+                'k'   => $klub,
                 's'   => 'active',
                 'now' => Stats::now(),
                 'by'  => $authorId,
@@ -189,7 +191,7 @@ final class Users
      *
      * @throws \RuntimeException z powodem po polsku
      */
-    public static function setRole(int $userId, string $rola, int $authorId): void
+    public static function setRole(int $userId, string $rola, int $authorId, int|string|null $clubId = null): void
     {
         if (!in_array($rola, self::ROLE, true)) {
             throw new \RuntimeException(View::t('users.err.role'));
@@ -211,11 +213,38 @@ final class Users
             throw new \RuntimeException(View::t('users.err.last_admin'));
         }
 
-        Db::run('UPDATE users SET role = :r WHERE id = :id', ['r' => $rola, 'id' => $userId]);
+        // Klub trenera sprawdzany PO kontrolach konta — powód odmowy ma być
+        // ten najważniejszy („własnej roli nie zmienisz"), a nie brak klubu.
+        $klub = self::klubDlaRoli($rola, $clubId);
+
+        Db::run('UPDATE users SET role = :r, club_id = :k WHERE id = :id',
+            ['r' => $rola, 'k' => $klub, 'id' => $userId]);
         Audit::log('user.role_changed', $authorId, 'user', $userId, [
             'from' => (string) $user['role'],
             'to'   => $rola,
+            'club' => $klub,
         ]);
+    }
+
+    /**
+     * Klub konta dla roli (golden layout W2, migracja 018).
+     *
+     * Trener (`viewer`) MUSI mieć dokładnie jeden klub-tenant — bez niego nie
+     * zobaczyłby niczego, a to wygląda jak awaria, nie jak brak uprawnień.
+     * Pozostałe role dostają NULL: analityk widzi kluby swojego konta
+     * (`clubs.owner_id`), administrator — wszystkie.
+     */
+    private static function klubDlaRoli(string $rola, int|string|null $clubId): ?int
+    {
+        if ($rola !== 'viewer') {
+            return null;
+        }
+        $id = (int) $clubId;
+        $klub = $id > 0 ? Clubs::find($id) : null;
+        if ($klub === null || empty($klub['is_own_team'])) {
+            throw new \RuntimeException(View::t('users.err.club'));
+        }
+        return $id;
     }
 
     /**

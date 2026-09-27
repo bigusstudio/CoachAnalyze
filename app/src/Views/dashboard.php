@@ -96,7 +96,9 @@ $klasaWyniku = static function (?int $nas, ?int $ich): string {
   </div>
   <?php /* JEDEN przycisk podstawowy na ekran — reszta akcji jest drugorzędna. */ ?>
   <div class="acts">
-    <a class="btn p" href="/import"><?= View::e(View::t('import.nav')) ?></a>
+    <?php if (\CoachAnalyze\Users::can(\CoachAnalyze\Auth::currentUser(), 'upload')): ?>
+      <a class="btn p" href="/import"><?= View::e(View::t('import.nav')) ?></a>
+    <?php endif; ?>
   </div>
 </div>
 
@@ -107,7 +109,7 @@ $klasaWyniku = static function (?int $nas, ?int $ich): string {
 <div class="grid">
 
   <?php /* ─────────────────────────────────────────── ostatni mecz */ ?>
-  <section class="card c8">
+  <section class="card <?= !empty($op) ? 'c8' : 'c12' ?>">
     <h2>
       <?= View::e(View::t('dash.last_match')) ?>
       <?php if ($lastMatch !== null): ?>
@@ -234,7 +236,10 @@ $klasaWyniku = static function (?int $nas, ?int $ich): string {
     <?php endif; ?>
   </section>
 
-  <?php /* ─────────────────────────────────────────── wymaga uwagi */ ?>
+  <?php /* ─────────────────────────────────────────── wymaga uwagi
+           [op] (golden layout W2): zadania i alerty techniczne widzi wyłącznie
+           administrator — analityk i trener nie mają na nie wpływu. */ ?>
+  <?php if (!empty($op)): ?>
   <section class="card c4">
     <h2><?= View::e(View::t('dash.attention')) ?></h2>
     <div class="todo">
@@ -270,6 +275,7 @@ $klasaWyniku = static function (?int $nas, ?int $ich): string {
       <?php endif; ?>
     </div>
   </section>
+  <?php endif; ?>
 
   <?php /* ─────────────────────────────────────────── kafle liczbowe */ ?>
   <?php
@@ -280,8 +286,10 @@ $klasaWyniku = static function (?int $nas, ?int $ich): string {
          'd' => $counters['matches_scope'], 'pusty' => false],
         ['l' => View::t('dash.kpi.reports'), 'v' => (string) $counters['reports'],
          'd' => View::t('nav.reports'), 'pusty' => false],
-        ['l' => View::t('dash.kpi.queue'), 'v' => (string) $counters['queued'],
-         'd' => View::t('nav.queue', $counters['queued']), 'pusty' => false],
+        // Kafel kolejki jest [op] (golden layout W2) — analityk i trener nie
+        // mają na nią wpływu; `null` odfiltrowuje `array_filter` niżej.
+        !empty($op) ? ['l' => View::t('dash.kpi.queue'), 'v' => (string) $counters['queued'],
+         'd' => View::t('nav.queue', $counters['queued']), 'pusty' => false] : null,
         // Sesja 3: trzy kafle liczone z tabeli `events`. Kreska zostaje
         // WYŁĄCZNIE wtedy, gdy metryka nie ma wartości.
         // Podpis mówi, Z CZEGO liczba powstała — powtórzenie nazwy kafla
@@ -301,6 +309,7 @@ $klasaWyniku = static function (?int $nas, ?int $ich): string {
              ? View::t('dash.of_total', (int) $mPoId['reakcja_na_strate']['d']) : '',
          'pusty' => ($mPoId['reakcja_na_strate']['value'] ?? null) === null],
     ];
+    $kafle = array_values(array_filter($kafle));
   ?>
   <?php foreach ($kafle as $k): ?>
     <section class="card c4 kpi<?= $k['pusty'] ? ' kpi--pusty' : '' ?>">

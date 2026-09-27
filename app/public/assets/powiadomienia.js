@@ -43,7 +43,12 @@
      * Powiadomienie, którego ktoś nie zdążył przeczytać, ma zostać w liczniku
      * i na liście, a nie wyparować, bo akurat patrzył w inną stronę.
      */
-    var ZYCIE_CHMURKI = 15000;
+    var ZYCIE_CHMURKI = 8000;
+
+    /* Chmurka BŁĘDU nie znika sama (golden layout W2): informacyjne („gotowe",
+     * „w toku") po 8 s, błąd zostaje do zamknięcia — to jedyna, po której
+     * trzeba coś zrobić. */
+    var ZOSTAJE = 'chmurka--failed';
 
     var odstep = ODSTEP_MIN;
     var timer = null;
@@ -187,6 +192,7 @@
     }
 
     function zaplanujZniknienie(el) {
+        if ((' ' + el.className + ' ').indexOf(' ' + ZOSTAJE + ' ') !== -1) { return; }
         window.setTimeout(function () { usun(el); }, ZYCIE_CHMURKI);
     }
 

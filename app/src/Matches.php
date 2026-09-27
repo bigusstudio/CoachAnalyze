@@ -72,7 +72,8 @@ final class Matches
          * historię wszystkich tenantów naraz — to świadomy, osobny widok, nie
          * pozostałość po TODO.
          */
-        if (!empty($filters['tenant'])) {
+        // `0` = rola bez klubu (golden layout W2): pusta lista, NIE brak filtra.
+        if (isset($filters['tenant'])) {
             $where[] = 'm.club_id = :tenant';
             $params['tenant'] = (int) $filters['tenant'];
         }

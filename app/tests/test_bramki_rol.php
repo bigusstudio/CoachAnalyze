@@ -51,6 +51,7 @@ $wyjatki = [
     '/konto/wyloguj-wszedzie'     => 'odzyskanie kontroli nad własnym kontem',
     '/konto/haslo'                => 'zmiana własnego hasła (wymaga starego)',
     '/powiadomienia/…/odczytane'  => 'zamknięcie własnej chmurki; filtr konta w SQL',
+    '/klub/…/wybierz'             => 'wybór klubu bieżącego — preferencja widoku; zakres sprawdza Zakres::wybierz, trenera odcina straznikZakresu',
 ];
 
 $zrodlo = (string) file_get_contents($root . '/app/public/index.php');

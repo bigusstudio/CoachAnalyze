@@ -155,16 +155,18 @@ final class Share
     }
 
     /** Wszystkie aktywne linki — do przeglądu w panelu. */
-    public static function active(): array
+    public static function active(?int $tenant = null): array
     {
+        // `$tenant` — zakres klubu (golden layout W2); `null` = wszystkie (admin).
         $rows = Db::all(
             'SELECT sl.*, c.club_key, c.name AS club_name, r.generated_at, r.match_id
                FROM share_links sl
                JOIN clubs c   ON c.id = sl.club_id
                JOIN reports r ON r.id = sl.report_id
               WHERE sl.revoked_at IS NULL AND (sl.expires_at IS NULL OR sl.expires_at > :now)
+                AND (:t_a IS NULL OR sl.club_id = :t_b)
               ORDER BY sl.id DESC',
-            ['now' => Stats::now()]
+            ['now' => Stats::now(), 't_a' => $tenant, 't_b' => $tenant]
         );
 
         foreach ($rows as &$row) {

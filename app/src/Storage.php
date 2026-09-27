@@ -95,6 +95,22 @@ final class Storage
             && ($dir === $root || str_starts_with($dir, $root . DIRECTORY_SEPARATOR));
     }
 
+    /**
+     * Wolne miejsce w magazynie do stopki [op] (golden layout W2).
+     *
+     * `disk_free_space` zamiast sumowania plików: stopka renderuje się na każdej
+     * stronie administratora, a przejście po katalogu uploadów byłoby kosztem
+     * rosnącym z każdym meczem. Na hostingu, który funkcję blokuje, „—".
+     */
+    public static function zajetoscOpis(): string
+    {
+        $wolne = @disk_free_space(self::root());
+        if ($wolne === false || $wolne === null) {
+            return View::t('common.dash');
+        }
+        return View::t('storage.free', number_format($wolne / 1073741824, 1, ',', ' '));
+    }
+
     /** Sprawdzenie startowe — używane przez ekran uploadu, żeby powiedzieć prawdę od razu. */
     public static function writable(): bool
     {

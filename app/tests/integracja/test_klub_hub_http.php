@@ -71,6 +71,12 @@ putenv('CA_ENV_PATH=' . $envFile);
 require $root . '/app/src/bootstrap.php';
 require $here . '/seed.php';
 ca_test_db($baza);   // z danymi: klub 1 (tenant), 2 (rywal), 3 (rywal), 4 (tenant)
+/*
+ * ADMINISTRATOR, NIE ANALITYK (golden layout W2). Lista klubów, hub klubu
+ * i historia wersji szablonu są od W2 ekranami [op]; zakres analityka
+ * i trenera sprawdza `test_golden_w2_http.php`.
+ */
+\CoachAnalyze\Db::run("UPDATE users SET role = 'admin' WHERE email = 'operator@example.com'");
 
 // ---------------------------------------------------------------- procesy
 $procesy = [];

@@ -273,7 +273,7 @@ return [
     // --- zadania ---
     // --- wskaźnik pracy kolejki (jeden komponent dla wszystkich oczekiwań) ---
     'work.aria'           => 'Postęp pracy',
-    'work.stage.queued'     => 'W kolejce',
+    'work.stage.queued'     => 'Czeka na przygotowanie',
     'work.stage.processing' => 'Przetwarzanie',
     'work.stage.done'       => 'Gotowe',
     'work.stage.failed'     => 'Błąd',
@@ -319,7 +319,7 @@ return [
     'report.missing'      => 'Raport nie istnieje albo plik został usunięty ze schowka.',
 
     'status.draft'        => 'szkic',
-    'status.queued'       => 'w kolejce',
+    'status.queued'       => 'czeka',
     'status.running'      => 'w toku',
     'status.done'         => 'gotowe',
     'status.failed'       => 'błąd',
@@ -512,8 +512,8 @@ return [
     'meta.edit.saved'     => 'Dane meczu zapisane.',
 
     // Uczciwa nota: nagłówek gotowego raportu jest już w pliku HTML.
-    'meta.edit.report_note' => 'Raport dla tego meczu już istnieje. Zmiana tych danych nie wpływa na liczby, ale nagłówek raportu odświeży się dopiero przy „Przelicz".',
-    'meta.edit.saved_with_report' => 'Dane meczu zapisane. Liczby w raporcie się nie zmieniły — nagłówek gotowego raportu odświeży się dopiero po użyciu „Przelicz".',
+    'meta.edit.report_note' => 'Raport dla tego meczu już istnieje. Zmiana tych danych nie wpływa na liczby, ale nagłówek raportu odświeży się dopiero przy jego ponownym przygotowaniu.',
+    'meta.edit.saved_with_report' => 'Dane meczu zapisane. Liczby w raporcie się nie zmieniły — nagłówek gotowego raportu odświeży się przy jego ponownym przygotowaniu.',
 
     'meta.season.auto'    => '— wykryj z daty',
     'meta.submit'         => 'Zapisz i przejdź dalej',
@@ -1015,7 +1015,7 @@ return [
     'notif.mail.skipped'   => 'odwołany',
 
     'notif.pending.title'  => 'Import wgrany, przetwarzanie w toku',
-    'notif.pending.body'   => 'Eksport został zapisany i czeka w kolejce. Raport powstaje w tle — nie trzeba czekać przy tej stronie.',
+    'notif.pending.body'   => 'Eksport został zapisany i czeka na przygotowanie. Raport powstaje w tle — nie trzeba czekać przy tej stronie.',
 
     'notif.prefs.title'    => 'Powiadomienia mailem',
     'notif.prefs.hint'     => 'Dotyczy wyłącznie poczty. Powiadomienia w panelu działają zawsze.',
@@ -1067,12 +1067,17 @@ return [
     'users.scope_warning'  => 'W tej wersji każde konto widzi dane wszystkich klubów. '
                               . 'Separacja danych między klientami wymaga osobnego wdrożenia.',
 
-    'users.role.admin'     => 'administrator',
-    'users.role.operator'  => 'operator',
-    'users.role.viewer'    => 'podgląd',
-    'users.role.admin.hint'    => 'pełny dostęp, w tym zarządzanie kontami',
-    'users.role.operator.hint' => 'praca na danych, bez zarządzania kontami',
-    'users.role.viewer.hint'   => 'tylko podgląd raportów i notatek, bez wgrywania i udostępniania',
+    // Nazwy ról (golden layout W2). Klucze w bazie bez zmian: admin/operator/viewer.
+    'users.role.admin'     => 'Administrator',
+    'users.role.operator'  => 'Analityk',
+    'users.role.viewer'    => 'Trener',
+    'users.role.admin.hint'    => 'operator systemu: wszystkie kluby, konta i narzędzia techniczne',
+    'users.role.operator.hint' => 'kluby swojego konta: import, karty meczów, ustawienia klubu',
+    'users.role.viewer.hint'   => 'jeden klub, tylko odczyt: pulpit, sezon, mecze, raporty, drużyna',
+    'users.club'           => 'Klub trenera',
+    'users.club.none'      => '— bez klubu —',
+    'users.club.hint'      => 'Wymagany dla roli Trener; dla pozostałych ról pomijany.',
+    'users.err.club'       => 'Trener musi mieć przypisany klub (własny klub z listy).',
     'users.role.save'      => 'Zmień',
     'users.role.self_locked'      => 'własnej roli nie można zmienić',
     'users.role.last_admin_locked' => 'ostatni administrator',
@@ -1240,7 +1245,7 @@ return [
     'dash.kpi.reaction'   => 'Reakcja na stratę',
     'dash.last_match'     => 'Ostatni mecz',
     'dash.no_match'       => 'Nie ma jeszcze żadnego rozegranego meczu.',
-    'dash.no_events'      => 'Ten mecz nie ma zapisanych zdarzeń — przelicz raport, żeby je uzupełnić.',
+    'dash.no_events'      => 'Ten mecz nie ma jeszcze zapisanych zdarzeń — liczby pojawią się po ponownym przygotowaniu raportu.',
     'dash.season_strip'   => 'Sezon',
     'dash.season_sum'     => 'SUMA',
     // Prefiks odróżnia KOLEJKĘ od numeru porządkowego meczu w pasku sezonu.
@@ -1345,4 +1350,33 @@ return [
     'coverage.source.no_tpl'  => 'inspekcja bez szablonu',
     'coverage.source.engine'  => 'silnik %s',
     'coverage.source.unknown' => 'Źródło pokrycia nieznane — zapis sprzed podpisu wersji; przelicz raport, żeby odświeżyć.',
+    'nav.club_settings'     => 'Ustawienia klubu',
+    'nav.jobs'              => 'Zadania',
+    'nav.template'          => 'szablon %s',
+    'nav.disk'              => 'dysk %s',
+    'storage.free'          => 'wolne %s GB',
+    // ── golden layout W2 ────────────────────────────────────────────────────
+    'team.kadra'            => 'Kadra',
+    'team.col.matches'      => 'Mecze',
+    'team.col.starts'       => 'W pierwszym składzie',
+    'team.col.goals'        => 'Gole',
+    'team.empty'            => 'Kadra powstaje ze składów meczów. Wpisz skład na karcie meczu (zakładka „Skład”) — numery, pozycje i minuty pojawią się tutaj.',
+    'team.no_roster'        => 'Składy meczów nie są jeszcze wpisane. Poniżej zawodnicy znani ze zdarzeń; numery, pozycje i minuty pojawią się po wpisaniu składu na karcie meczu.',
+    'team.from_events'      => 'Zawodnicy ze zdarzeń, spoza kadry',
+    'team.from_events.hint' => 'Nazwiska z tagów bez wpisu w składzie — skład o nich nie wie albo to literówka w eksporcie. Liczba to zdarzenia w sezonie.',
+    'jobs.col.match'        => 'Mecz',
+    'pick.title'            => 'Wybierz klub',
+    'settings.layout'       => 'Układ raportu',
+    'settings.layout.hint'  => 'Kolejność i widoczność sekcji raportu.',
+    'settings.dictionary'   => 'Słownik klubu',
+    'settings.dictionary.hint' => 'Które tagi z eksportu wchodzą do raportu i pod jaką nazwą.',
+    'settings.seasons'      => 'Sezony',
+    'settings.seasons.hint' => 'Sezony rozgrywkowe i sezon bieżący.',
+    'settings.advanced'     => 'Zaawansowane',
+    'settings.mappings'     => 'Mapowanie tagów',
+    'settings.history'      => 'Historia wersji szablonu',
+    'settings.club_data'    => 'Dane klubu',
+    'sezon.col.pressing'    => 'Pressing',
+    'sezon.col.report'      => 'Raport',
+    'sezon.suma.row'        => 'SUMA (mecze ze strzałami: %d)',
 ];

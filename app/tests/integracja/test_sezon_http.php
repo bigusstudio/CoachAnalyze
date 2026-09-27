@@ -347,7 +347,8 @@ echo "\n== H. cudzy klub ==\n";
 
 foreach (['/sezon', '/sezon/suma', '/zawodnicy', '/kalendarz'] as $sciezka) {
     $obcy = http('GET', $sciezka . '?klub=' . $rywal);
-    check('403 na ' . $sciezka, $obcy['status'] === 403, 'status ' . $obcy['status']);
+    // Golden layout W2: cudzy klub = 404 ze strażnika zakresu, jak nieistniejący.
+    check('404 na ' . $sciezka, $obcy['status'] === 404, 'status ' . $obcy['status']);
 }
 
 echo "\n=== OK: {$ok}, BŁĘDÓW: {$fail} ===\n";

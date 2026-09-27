@@ -28,9 +28,11 @@ $systemowe = $systemowe ?? null;
 <?php endif; ?>
 
 <p class="hint">
-  <?= View::e(View::t('index.col.concept')) ?>:
-  <code class="tag-nazwa"><?= View::e((string) $term['concept']) ?></code>
-  ·
+  <?php if (View::op()): ?>
+    <?= View::e(View::t('index.col.concept')) ?>:
+    <code class="tag-nazwa"><?= View::e((string) $term['concept']) ?></code>
+    ·
+  <?php endif; ?>
   <?php if (!empty($term['is_default'])): ?>
     <span class="tag"><?= View::e(View::t('index.mark.system')) ?></span>
   <?php elseif (!empty($term['overrides_default'])): ?>

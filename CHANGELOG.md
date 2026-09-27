@@ -3,6 +3,73 @@
 Format: [wersja silnika] — data — opis.
 Każda zmiana, która modyfikuje wyjście silnika, MUSI mieć tu wpis wraz z powodem.
 
+## Aplikacja — 2026-09-27 · Golden layout W2: role i porządek
+
+### Role (bez nowej kolumny roli — `users.role` z migracji 001)
+| Rola w bazie | Nazwa w UI | Zakres |
+|---|---|---|
+| `admin` | Administrator | wszystko, w tym [op] |
+| `operator` | Analityk | kluby, których `clubs.owner_id` = jego id; import, karty meczów, Ustawienia klubu |
+| `viewer` | Trener | DOKŁADNIE jeden klub z `users.club_id` (**migracja 018**), tylko odczyt |
+
+- **`app/migrations/018_trener_klub.sql`** — `users.club_id INT NULL` + FK, czysto
+  addytywna; z podglądem „który analityk zobaczy które kluby" PRZED `ALTER`.
+  **Analityk bez klubu z `owner_id` = jego id zobaczy pusty panel** — sprawdź
+  podgląd przed wdrożeniem.
+- **`Zakres`** (`app/src/Zakres.php`) i **`straznikZakresu()`** w routerze: każda
+  trasa z id meczu/raportu/importu/linku/notatki/klubu oraz `?klub=` sprawdzana
+  przed przełącznikiem tras; cudzy zasób = 404 jak nieistniejący. Trasy [op]
+  (kluby, użytkownicy, zadania, diff, mapowania, historia wersji) i trasy bez
+  trenera (import, ustawienia, sezony, wybór klubu) — też 404.
+- **Listy w zakresie klubu bieżącego** (pulpit, szyna, raporty, mecze,
+  notatki, chmura tagów, linki, indeks); `tenant = 0` = pusta lista, nie brak
+  filtra. Klub bieżący: trener — swój; pozostali — wybrany (`/klub/wybierz`).
+- **Ekran Użytkownicy**: nazwy Administrator / Analityk / Trener; Trener wymaga
+  klubu (odmowa bez niego).
+
+### Porządek (pkt 11–17)
+- **Szyna**: PULPIT · KLUB: Sezon, Drużyna, Zawodnicy, Raporty, Wgraj eksport,
+  Linki, Ustawienia klubu · NARZĘDZIA: Kalendarz, Indeks, Notatki, Kalkulator xG.
+  „Mecze" zniknęły z szyny (trasa zostaje). Trener bez importu i ustawień.
+  [op] ADMINISTRACJA (Kluby, Użytkownicy, Zadania) i stopka (silnik, szablon,
+  kolejka, dysk) tylko dla administratora; „Wymaga uwagi" i kafel kolejki na
+  pulpicie też.
+- **Kontekst klubu i sezonu w jednej linii** (skrót klubu, wielokropek, pełna
+  nazwa w `title`); przełączanie tylko przy więcej niż jednym klubie.
+- **Pasek sezonu**: „k. N" przy kolejce, numer wyszarzony bez prefiksu (bez
+  zmian — sprawdzone testem).
+- **Chmurki**: „Raport gotowy" zamyka się po otwarciu raportu, „w toku" — gdy
+  praca meczu się skończyła (przy odczycie, obejmuje stare wpisy);
+  informacyjne znikają po 8 s, błąd zostaje do zamknięcia.
+- **Hub klubu i `/kluby/{id}` tylko [op]**; pozostali po wejściu na `/klub/{id}`
+  dostają ten klub jako bieżący i wracają na pulpit. Mapowanie, historia wersji
+  i dane klubu — w Ustawieniach klubu → Zaawansowane [op] (szkielet; pełny
+  ekran w W3).
+- **Drużyna** (`/druzyna`): kadra z `match_players` (numer, pozycja, mecze,
+  pierwszy skład, minuty) + strzały, gole, xG; bez składów — nazwiska ze zdarzeń
+  i zdanie, jak uzupełnić. Nigdy pusty ekran.
+- **Sezon**: tabela k., rywal, data, miejsce, wynik, xG, strzały, SBZ, pressing,
+  stan raportu + SUMA (pressing sezonu tą samą definicją, nie średnia).
+- **[op] Zadania** (`/zadania`) — ostatnie sto zadań.
+- **Ścieżka analityka bez ekranów [op]**: „Generuj" i pokrycie nie odsyłają
+  analityka na ekran różnic ani do kreatora mapowań.
+
+### Konta klubowe bez słów technicznych
+Na ekranach analityka i trenera nie ma: silnik, templat, szablon vN, kolejka
+(zadań), dysk, pojęcie kanoniczne, Przelicz, Wygeneruj ponownie, kod klubu.
+Zmienione teksty: stan „czeka" (było „w kolejce"), noty o nagłówku raportu
+(„przy ponownym przygotowaniu"), kolumna pojęcia w indeksie [op].
+**„Kolejka" w znaczeniu rozgrywkowym (k. N) zostaje** — to termin piłkarski.
+
+### Testy
+- nowy `app/tests/integracja/test_golden_w2_http.php` (89): trzy role, 404 na
+  cudzy zasób, analityk z dwoma klubami, obcy analityk, [op], zakazane słowa
+  na 17–19 ekranach każdej roli, chmurki, Drużyna, Sezon,
+- zestawy administracyjne (hub, układ) logują administratora; 403 → 404 przy
+  cudzym klubie w `test_sezon_http` i `test_api_metryki_http`.
+
+Zrzuty: `docs/zrzuty/W2/` (trener 01–02, analityk 03–06, administrator 07–09).
+
 ## [0.16.5] — 2026-09-27 · Golden layout W1: dane, które kłamią + odbiór W0
 
 ### Silnik 0.16.5 (szablon v21) — wyświetlanie zmienione, liczby silnika nie

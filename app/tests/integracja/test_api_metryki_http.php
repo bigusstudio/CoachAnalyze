@@ -255,13 +255,15 @@ check('mecz bez zdarzeń daje NULL, nie zero',
 echo "\n== F. cudzy zakres ==\n";
 
 $obcy = http('GET', '/api/metryki?club=2');
-check('klub niebędący tenantem daje 403', $obcy['status'] === 403, 'status ' . $obcy['status']);
+// Golden layout W2: klub spoza zakresu = 404, tak samo jak nieistniejący —
+// strażnik zakresu nie potwierdza, że klub o tym numerze istnieje.
+check('klub niebędący tenantem daje 404 (poza zakresem)', $obcy['status'] === 404, 'status ' . $obcy['status']);
 
 $brakKlubu = http('GET', '/api/metryki');
 check('brak parametru klubu daje 400', $brakKlubu['status'] === 400, 'status ' . $brakKlubu['status']);
 
 $nieistniejacy = http('GET', '/api/metryki?club=99999');
-check('nieistniejący klub daje 403', $nieistniejacy['status'] === 403,
+check('nieistniejący klub daje 404', $nieistniejacy['status'] === 404,
     'status ' . $nieistniejacy['status']);
 
 echo "\n=== OK: {$ok}, BŁĘDÓW: {$fail} ===\n";

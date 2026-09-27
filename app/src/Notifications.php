@@ -213,6 +213,34 @@ final class Notifications
     }
 
     /**
+     * „Przetwarzanie w toku" przy meczu, którego praca SIĘ SKOŃCZYŁA, zamykamy
+     * przy odczycie (golden layout W2). Chmurka „w toku" wisząca obok
+     * „Raport gotowy" tego samego meczu przeczy sama sobie.
+     */
+    private static function zamknijZakonczone(int $userId): void
+    {
+        foreach (Db::all(
+            "SELECT id, entity_id FROM notifications
+              WHERE user_id = :u AND read_at IS NULL AND type = :t AND entity = 'match'",
+            ['u' => $userId, 't' => self::TYP_PENDING]
+        ) as $n) {
+            if ($n['entity_id'] !== null && Matches::zadanieWToku((int) $n['entity_id']) === null) {
+                self::markRead((int) $n['id'], $userId);
+            }
+        }
+    }
+
+    /** Otwarcie raportu zamyka jego „Raport gotowy" (golden layout W2). */
+    public static function oznaczRaportOtwarty(int $userId, int $reportId): void
+    {
+        Db::run(
+            "UPDATE notifications SET read_at = :now
+              WHERE user_id = :u AND read_at IS NULL AND entity = 'report' AND entity_id = :r",
+            ['now' => Stats::now(), 'u' => $userId, 'r' => $reportId]
+        );
+    }
+
+    /**
      * Adresy powiadomień pod rolę czytającego (golden layout W0).
      *
      * Powiadomienia zapisane przed tą zmianą wskazują `/zadania/N` — stronę,
@@ -245,6 +273,7 @@ final class Notifications
      */
     public static function unreadForToasts(int $userId, int $limit = 5): array
     {
+        self::zamknijZakonczone($userId);
         return self::adresyPodRole($userId, Db::all(
             'SELECT id, type, title, body, url, created_at
                FROM notifications
