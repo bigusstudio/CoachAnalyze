@@ -314,7 +314,11 @@ def cmd_build(args) -> int:
     config = dict(config, drop_sections=(
         [s["id"] for s in meta["sections_unavailable"]]
         + [s for s in coverage.ALL_SECTIONS if s not in wybrane]
-    ))
+    ), sections_unavailable={
+        # W5: generacja v21 wyszarza te sekcje z powodem zamiast je wycinać
+        # (`render.wyszarz_sekcje`); v17 wycina je jak dotąd.
+        s["id"]: s["reason"] for s in meta["sections_unavailable"] if s["id"] in wybrane
+    })
 
     html, report = render.render(
         frame_widok, palette=palette, metrics=metrics_pack,

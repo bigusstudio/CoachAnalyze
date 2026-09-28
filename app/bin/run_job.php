@@ -32,7 +32,6 @@ use CoachAnalyze\Db;
 use CoachAnalyze\EngineRunner;
 use CoachAnalyze\Events;
 use CoachAnalyze\TagCatalog;
-use CoachAnalyze\IgnoredTags;
 use CoachAnalyze\Imports;
 use CoachAnalyze\IndexTerms;
 use CoachAnalyze\Jobs;
@@ -253,6 +252,8 @@ function wykonajInspekcje(int $jobId, int $importId, array $import): void
      */
     try {
         $auto = AutoImport::poInspekcji($importId);
+        // Lista do pokrycia importu (W5) — baner regenerowanego raportu czyta ją stąd.
+        Imports::zapiszDodane($importId, $auto['variables']);
         if ($auto['club'] !== null || $auto['variables'] !== []) {
             error_log(sprintf(
                 'auto-import %d: klub=%s, zmiennych=%d, wersja templatu=%s',
@@ -562,8 +563,20 @@ function zapowiedzSlownika(?int $clubId, int $importId, bool $maTemplat): array
     }
     $auto = ReportTemplates::autoForImport($clubId, $importId);
     return [
-        'auto_added' => array_values((array) ($auto['added'] ?? [])),
-        'ignored'    => array_map('strval', array_keys(IgnoredTags::lookup($clubId)[IgnoredTags::TAG] ?? [])),
+        /*
+         * DWA ŹRÓDŁA, SUMA (golden layout W5): historia templatu i lista zapisana
+         * w pokryciu importu. Raport 30 (regeneracja) nie miał banera o zmiennej
+         * dodanej przy imporcie, raport 29 miał — ta sama lista ma dać ten sam baner.
+         */
+        'auto_added' => array_values(array_unique(array_merge(
+            array_map('strval', (array) ($auto['added'] ?? [])),
+            Imports::dodanePrzyImporcie(Imports::find($importId))
+        ))),
+        /*
+         * `club_ignored_tags` NIE WPŁYWA NA RAPORT (W5, zasada nadrzędna).
+         * Klucz zostaje w kontrakcie pusty — silnik 0.16.8 go nie czyta.
+         */
+        'ignored'    => [],
     ];
 }
 

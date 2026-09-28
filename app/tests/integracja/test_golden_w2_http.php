@@ -285,5 +285,27 @@ check('Sezon: kolumny SBZ, pressing i stan raportu', str_contains($sezonEkran['b
 check('Sezon: wiersz SUMA', str_contains($sezonEkran['body'], 'SUMA'));
 check('Sezon: „k. 4" i klik w kartę meczu', str_contains($sezonEkran['body'], 'k. 4') && str_contains($sezonEkran['body'], 'href="/mecze/' . $a['mecz'] . '"'));
 
+// ===========================================================================
+echo "\n== Trener klubu 2 z seeda (W5, pkt 6): raport 30, mecz 27, reszta 404 ==\n";
+
+// Numery jak na produkcji: mecz 27 (Hetman) klubu 2 z raportem 30, mecz 10 klubu 1.
+Db::run("INSERT INTO matches (id, owner_id, club_id, season_id, club_home_id, club_away_id, played_at, status)
+         VALUES (27, 1, 2, :s, 2, 3, '2026-09-20', 'done')", ['s' => $sezon]);
+Db::run("INSERT INTO matches (id, owner_id, club_id, season_id, club_home_id, club_away_id, played_at, status)
+         VALUES (10, 1, 1, :s, 1, 2, '2026-08-30', 'done')", ['s' => $sezon]);
+$html30 = $magazyn . '/reports/r30.html';
+file_put_contents($html30, '<html><body><a class="ca-klips" href="__POWROT_URL__">CA</a>RAPORT 30</body></html>');
+Db::run("INSERT INTO reports (id, match_id, club_id, html_path, engine_version, generated_at)
+         VALUES (30, 27, 2, :h, '0.16.8', '2026-09-28 08:14:00')", ['h' => $html30]);
+check('trener klubu 2 z seeda się loguje', zaloguj('trener.klub2@example.com'));
+$r30 = http('GET', '/raport/30');
+check('trener klubu 2: raport 30 odpowiada', $r30['status'] === 200 && str_contains($r30['body'], 'RAPORT 30'),
+    (string) $r30['status']);
+check('trener klubu 2: karta meczu 27 odpowiada', http('GET', '/mecze/27')['status'] === 200);
+foreach (['/import', '/klub/ustawienia', '/mecze/10'] as $sc) {
+    $st = http('GET', $sc)['status'];
+    check("trener klubu 2: {$sc} daje 404", $st === 404, (string) $st);
+}
+
 echo "\n=== OK: {$ok}, BŁĘDÓW: {$fail} ===\n";
 exit($fail === 0 ? 0 : 1);

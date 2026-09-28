@@ -181,6 +181,10 @@ final class Imports
      */
     public static function saveInspection(int $importId, array $meta, ?array $zrodlo = null): void
     {
+        // Lista „dodane przy imporcie" (W5) przeżywa każdy kolejny zapis pokrycia —
+        // także po regeneracji, która nadpisuje resztę `sections_json`.
+        $dodane = self::dodanePrzyImporcie(self::find($importId));
+
         Db::run(
             'UPDATE imports
                 SET format_fingerprint = :fp, coverage_json = :cov, warnings_json = :warn,
@@ -252,7 +256,7 @@ final class Imports
                         'engine_version'   => $meta['engine_version'] ?? null,
                         'at'               => Stats::now(),
                     ],
-                ]),
+                ] + ($dodane !== [] ? ['dodane_przy_imporcie' => $dodane] : [])),
                 'ver'  => $meta['engine_version'] ?? null,
                 'id'   => $importId,
             ]
@@ -268,6 +272,45 @@ final class Imports
             self::assignClubs((int) $import['match_id'],
                 array_map('strval', (array) ($meta['coverage']['teams'] ?? [])));
         }
+    }
+
+    /**
+     * Zmienne, które import dopisał do templatu sam — ZAPISANE W POKRYCIU IMPORTU
+     * (golden layout W5, pkt 4).
+     *
+     * Baner informacyjny raportu brał listę wyłącznie z historii templatu
+     * (`ReportTemplates::autoForImport`). Lista zapisana przy imporcie jest
+     * drugim, trwałym źródłem: regeneracja raportu (np. `--nieaktualne`) ma
+     * pokazać ten sam baner, co pierwszy render.
+     *
+     * @return list<string>
+     */
+    public static function dodanePrzyImporcie(?array $import): array
+    {
+        if ($import === null) {
+            return [];
+        }
+        $sekcje = json_decode((string) ($import['sections_json'] ?? ''), true);
+        return is_array($sekcje)
+            ? array_values(array_map('strval', (array) ($sekcje['dodane_przy_imporcie'] ?? [])))
+            : [];
+    }
+
+    /** @param list<string> $nazwy */
+    public static function zapiszDodane(int $importId, array $nazwy): void
+    {
+        $import = self::find($importId);
+        if ($import === null || $nazwy === []) {
+            return;
+        }
+        $sekcje = json_decode((string) ($import['sections_json'] ?? ''), true);
+        $sekcje = is_array($sekcje) ? $sekcje : [];
+        $sekcje['dodane_przy_imporcie'] = array_values(array_unique(array_merge(
+            array_map('strval', (array) ($sekcje['dodane_przy_imporcie'] ?? [])),
+            array_map('strval', $nazwy)
+        )));
+        Db::run('UPDATE imports SET sections_json = :s WHERE id = :id',
+            ['s' => self::encode($sekcje), 'id' => $importId]);
     }
 
     /** Zadanie `inspect` do kolejki. Nic nie uruchamia — podnosi je cron. */
@@ -693,15 +736,10 @@ final class Imports
     }
 
     /**
-     * Zdarzenia poza analiza: ile ich jest i z jakich tagow pochodza.
+     * Tagi eksportu SPOZA SŁOWNIKA KLUBU — bez zmiennej i bez decyzji.
      *
-     * DWA ZRODLA, obydwa musza byc widoczne:
-     *  - tagi NIEROZPOZNANE (silnik ich nie zna i nikt jeszcze nie zdecydowal),
-     *  - tagi swiadomie oznaczone „nie analizuj" w profilu klubu.
-     *
-     * Drugie sa grozniejsze, bo wygladaja na obsluzone. Decyzja „pomijamy" jest
-     * poprawna, ale musi byc WIDOCZNA przy kazdym raporcie — inaczej po pol roku
-     * nikt nie pamieta, ze jedna trzecia zdarzen nie wchodzi do liczb.
+     * Od W5 to lista informacyjna: te zdarzenia SĄ w raporcie (tabela makro,
+     * pod surową nazwą), a pojęcia „poza analizą" i „pominięte" zniknęły.
      *
      * @return array{count:?int, unrecognised:list<string>, ignored:list<string>, total:?int}
      */
@@ -718,26 +756,15 @@ final class Imports
         }
 
         $zdecydowane = $clubId !== null ? Mappings::decidedTags($clubId) : [];
-        $pominiete   = $clubId !== null ? Mappings::ignoredTags($clubId) : [];
 
         /*
-         * DWA MECHANIZMY IGNOROWANIA, JEDNA LISTA NA EKRANIE.
-         *
-         *   `Mappings::NIE_ANALIZUJ`  — kreator mapowań, klub BEZ templatu,
-         *   `club_ignored_tags`       — ekran różnic, klub Z templatem.
-         *
-         * Operator zna jedną odpowiedź („nie pytaj mnie o ten tag") i ma
-         * zobaczyć jedną listę. Rozdzielenie ich na ekranie znaczyłoby, że musi
-         * wiedzieć, którą drogą kiedyś kliknął, żeby znaleźć własną decyzję.
+         * „POMINIĘTE" NIE ISTNIEJĄ (golden layout W5, zasada nadrzędna).
+         * `club_ignored_tags` i „nie analizuj" z kreatora nie chowają zdarzeń
+         * przed klubem: szablon liczy po surowych nazwach, a tabela makro ma
+         * wiersz dla każdego tagu z pliku. Decyzja „nie pytaj" wycisza wyłącznie
+         * pytania w panelu — pokrycie o niej nie mówi.
          */
         $tenantId = self::tenantId($import);
-        if ($tenantId !== null) {
-            foreach (array_keys(IgnoredTags::lookup($tenantId)[Suggester::TAG] ?? []) as $tag) {
-                $pominiete[] = (string) $tag;
-            }
-            $pominiete = array_values(array_unique($pominiete));
-            sort($pominiete);
-        }
 
         /*
          * ═══════════════════════════════════════════════════════════════════
@@ -781,43 +808,13 @@ final class Imports
                 && !isset($wTemplacie[NazwaZmiennej::klucz($tag)])
         ));
 
-        /*
-         * ILE ZDARZEŃ FAKTYCZNIE ZOSTAJE POZA ANALIZĄ.
-         *
-         * `coverage.unanalysed` liczy zdarzenia BEZ POJĘCIA KANONICZNEGO —
-         * a od pivotu pojęcie jest opcjonalne i zwykle puste, więc ta liczba
-         * mówi o czymś innym, niż sugeruje nagłówek „poza analizą". Klub, który
-         * ma wszystko w templacie, widziałby tam komplet swoich zdarzeń.
-         *
-         * Sumujemy więc liczniki ze SŁOWNIKA EKSPORTU dla tagów, które
-         * faktycznie wypadły: nierozpoznanych po odfiltrowaniu i zignorowanych
-         * na stałe. NIE PARSUJEMY eksportu — `count` przychodzi gotowe
-         * z `meta.dictionary`, policzone przez silnik.
-         *
-         * Brak słownika (artefakt sprzed silnika 0.10.0) daje `null`, czyli
-         * „nie wiadomo", i ekran mówi to wprost zamiast pokazywać zero.
-         */
-        $slownik = [];
-        foreach ((array) (($meta['dictionary'] ?? [])['tags'] ?? []) as $poz) {
-            $nazwa = (string) ($poz['tag'] ?? $poz['name'] ?? '');
-            if ($nazwa !== '') {
-                $slownik[$nazwa] = (int) ($poz['count'] ?? 0);
-            }
-        }
-
-        $ile = null;
-        if ($slownik !== []) {
-            $ile = 0;
-            foreach (array_unique(array_merge($nierozpoznane, $pominiete)) as $tag) {
-                $ile += $slownik[(string) $tag] ?? 0;
-            }
-        }
-
+        // `count`/`total`/`ignored` zostają w kształcie dla zgodności wywołań,
+        // ale bez „poza analizą": nic z pliku nie wypada z raportu (W5).
         return [
-            'count'        => $ile !== null ? (int) $ile : null,
-            'total'        => isset($meta['events']) ? (int) $meta['events'] : null,
+            'count'        => null,
+            'total'        => null,
             'unrecognised' => array_values(array_unique($nierozpoznane)),
-            'ignored'      => $pominiete,
+            'ignored'      => [],
         ];
     }
 

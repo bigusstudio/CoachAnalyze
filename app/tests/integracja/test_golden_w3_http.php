@@ -333,13 +333,16 @@ check('znaczniki serwowania wypełnione', !str_contains($raport['body'], '__TRYB
 ca_test_db($baza);
 $v2 = ReportTemplates::decodeConfig(ReportTemplates::current(1)['config']);
 $nazwy2 = array_column(array_column($v2['variables'], 'source'), 'raw');
-check('import dopisał WYMYŚLONY TAG sam (wersja 2), POMIJANY — nie',
+// Golden layout W5: „nie pytaj" (club_ignored_tags) nie zatrzymuje zmiennej —
+// POMIJANY też wchodzi do słownika sam.
+check('import dopisał WYMYŚLONY TAG i POMIJANY sam (wersja 2)',
     ReportTemplates::currentVersion(1) === 2 && in_array('WYMYŚLONY TAG', $nazwy2, true)
-    && !in_array('POMIJANY', $nazwy2, true), implode(', ', $nazwy2));
+    && in_array('POMIJANY', $nazwy2, true), implode(', ', $nazwy2));
 
 $info = preg_match('#<div class="baner baner--info[^>]*>(.*?)</div>#s', $raport['body'], $mi2) === 1 ? $mi2[1] : '';
 check('baner INFORMACYJNY: dodany automatycznie + Słownik + zamknięcie',
-    str_contains($info, '1 nowy rodzaj zdarzeń dodany automatycznie: WYMYŚLONY TAG')
+    str_contains($info, '2 nowe rodzaje zdarzeń dodane automatycznie:') && str_contains($info, 'WYMYŚLONY TAG')
+    && str_contains($info, 'POMIJANY')
     && str_contains($info, 'sprawdź etykiety w Słowniku klubu')
     && str_contains($info, '/klub/ustawienia?zakladka=slownik') && str_contains($info, 'baner__zamknij'), $info);
 check('zamknięcie zapamiętane per raport', str_contains($raport['body'], "'ca-baner-info:'+location.pathname"));
@@ -354,22 +357,22 @@ check('WYMYŚLONY TAG wliczony w tabeli makro (klucz VARS + zdarzenia w danych)'
     && is_array($dane) && count(array_filter($dane['events'], static fn($e) => ($e['tag'] ?? '') === 'WYMYŚLONY TAG')) === 2);
 
 $ostrz = preg_match('#<div class="baner baner--niewliczone[^>]*>(.*?)</div>#s', $raport['body'], $mo) === 1 ? $mo[1] : '';
-check('baner OSTRZEGAWCZY: pominięty tag i zmienna bez znaczenia',
-    str_contains($ostrz, 'POMIJANY (3) — pominięty') && str_contains($ostrz, 'MOJE SBZ — bez znaczenia: oś SBZ')
+check('baner OSTRZEGAWCZY: wyłącznie zmienna bez znaczenia (W5: bez „pominiętych")',
+    !str_contains($ostrz, 'POMIJANY') && str_contains($ostrz, 'MOJE SBZ — bez znaczenia: oś SBZ')
     && str_contains($ostrz, 'Wlicz w Słowniku klubu'), $ostrz);
 check('nowy (wliczony) tag NIE jest w ostrzeżeniu', !str_contains($ostrz, 'WYMYŚLONY'));
 check('kolejność zakładek z Układu', kolejnosc($raport['body']) === ['przeglad', 'makro', 'bilans', 'mapy', 'tl_bilans'],
     implode(',', kolejnosc($raport['body'])));
 
 // ---------------------------------------------------------------- 4. Słownik
-echo "\n== 4. Słownik klubu: Nierozpoznane = pominięte + bez znaczenia ==\n";
+echo "\n== 4. Słownik klubu: Nierozpoznane = wyłącznie bez znaczenia (W5) ==\n";
 
 $slownik = http('GET', '/klub/ustawienia?zakladka=slownik');
 check('Słownik odpowiada', $slownik['status'] === 200);
-check('Nierozpoznane (2): POMIJANY i MOJE SBZ, z powodem i liczbą', str_contains($slownik['body'], 'Nierozpoznane (2)')
-    && str_contains($slownik['body'], 'POMIJANY') && str_contains($slownik['body'], '3 zdarzeń')
+check('Nierozpoznane (1): MOJE SBZ, z powodem', str_contains($slownik['body'], 'Nierozpoznane (1)')
+    && preg_match('#name="wlicz_nazwa\[\d+\]" value="POMIJANY"#', $slownik['body']) !== 1
     && str_contains($slownik['body'], 'bez znaczenia w: Oś SBZ'));
-check('nowy tag NIE jest „nierozpoznany" — jest w Wliczanych', str_contains($slownik['body'], 'Wliczane (4)')
+check('nowy tag NIE jest „nierozpoznany" — jest w Wliczanych', str_contains($slownik['body'], 'Wliczane (5)')
     && preg_match('#name="wlicz_nazwa\[\d+\]" value="WYMYŚLONY TAG"#', $slownik['body']) !== 1
     && str_contains($slownik['body'], 'value="WYMYŚLONY TAG"'));
 check('kontynuacja zmiennej jako opcja', str_contains($slownik['body'], 'kontynuacja zmiennej Strzały'));
@@ -377,13 +380,13 @@ check('[op] Zaawansowane niewidoczne dla analityka', !str_contains($slownik['bod
 check('analityk nie wejdzie w Zaawansowane (spada na Układ)',
     !str_contains(http('GET', '/klub/ustawienia?zakladka=zaawansowane')['body'], 'Historia wersji'));
 
+$iWym = (string) array_search('WYMYŚLONY TAG', $nazwy2, true);
 $zapis = http('POST', '/klub/ustawienia/slownik', ['form' => [
     'csrf' => csrfZ($slownik['body']),
-    'wlicz' => ['0' => 'nowa', '1' => 'bilans', '2' => 'nowa'],
-    'wlicz_nazwa' => ['0' => 'POMIJANY', '1' => 'MOJE SBZ', '2' => 'PODRZUCONY'],   // spoza listy — bez skutku
-    'wlicz_etykieta' => ['0' => 'Pomijany'],
-    'etykieta' => ['3' => 'Wymyślony'],
-    'sekcje' => ['3' => ['bilans']],
+    'wlicz' => ['0' => 'bilans', '1' => 'nowa'],
+    'wlicz_nazwa' => ['0' => 'MOJE SBZ', '1' => 'PODRZUCONY'],   // spoza listy — bez skutku
+    'etykieta' => [$iWym => 'Wymyślony'],
+    'sekcje' => [$iWym => ['bilans']],
 ]]);
 check('zapis → Słownik z partią odświeżania',
     $zapis['status'] === 302 && str_starts_with((string) $zapis['location'], '/klub/ustawienia?zakladka=slownik&partia='),
@@ -392,13 +395,14 @@ ca_test_db($baza);
 $v3 = ReportTemplates::decodeConfig(ReportTemplates::current(1)['config']);
 $poRaw = [];
 foreach ($v3['variables'] as $z) { $poRaw[$z['source']['raw']] = $z; }
-check('wersja 3: POMIJANY wliczony („Pomijany"), MOJE SBZ bez osi SBZ, etykieta „Wymyślony"',
+check('wersja 3: POMIJANY w słowniku, MOJE SBZ bez osi SBZ, etykieta „Wymyślony"',
     ReportTemplates::currentVersion(1) === 3
-    && ($poRaw['POMIJANY']['display_label'] ?? '') === 'Pomijany'
+    && isset($poRaw['POMIJANY'])
     && ($poRaw['MOJE SBZ']['sections'] ?? null) === ['bilans']
     && ($poRaw['WYMYŚLONY TAG']['display_label'] ?? '') === 'Wymyślony'
     && !isset($poRaw['PODRZUCONY']));
-check('POMIJANY zdjęty z „pominiętych"', empty(\CoachAnalyze\IgnoredTags::lookup(1)['tag']['POMIJANY']));
+// W5: „nie pytaj" zostaje jako wyciszenie pytań — i niczego już nie chowa.
+check('„nie pytaj" o POMIJANY zostaje, bez wpływu na raport', !empty(\CoachAnalyze\IgnoredTags::lookup(1)['tag']['POMIJANY']));
 
 cronDoKonca();
 $raport2 = http('GET', '/raport/' . $raportId);
@@ -431,7 +435,8 @@ check('Układ odpowiada, numery 01–05', $ukl['status'] === 200
     && str_contains($ukl['body'], '>01<') && str_contains($ukl['body'], '>05<'));
 check('Przegląd bez strzałek i bez „Ukryj"', str_contains($ukl['body'], 'zawsze pierwszy i widoczny')
     && !str_contains($ukl['body'], 'value="ukryj:0"'));
-check('„Inne zdarzenia" nie do pokazania, gdy wszystko wliczone', !str_contains($ukl['body'], 'Inne zdarzenia'));
+// W5: „Inne zdarzenia" jak każdy kafel — do pokazania zawsze, decyduje Układ.
+check('„Inne zdarzenia" do pokazania w Układzie (W5)', str_contains($ukl['body'], 'Inne zdarzenia'));
 
 $c = csrfZ($ukl['body']);
 http('POST', '/klub/ustawienia/uklad', ['form' => ['csrf' => $c, 'akcja' => 'gora:3']]);

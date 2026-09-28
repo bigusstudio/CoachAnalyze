@@ -4994,6 +4994,8 @@ function showPlayers(): void
         'active'    => 'players',
         'club'      => $club,
         'zawodnicy' => \CoachAnalyze\Stats::players((int) $club['id'], $ctx['sezonId']),
+        // W5: zawodnicy rywala z plików — osobna grupa, nie wycięci.
+        'rywale'    => \CoachAnalyze\Stats::rivalPlayers((int) $club['id'], $ctx['sezonId']),
     ] + $ctx);
 }
 

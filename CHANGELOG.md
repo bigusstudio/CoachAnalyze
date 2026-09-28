@@ -3,6 +3,61 @@
 Format: [wersja silnika] — data — opis.
 Każda zmiana, która modyfikuje wyjście silnika, MUSI mieć tu wpis wraz z powodem.
 
+## [0.16.8] + aplikacja — 2026-09-28 · Golden layout W5: zasada nadrzędna — wszystko z pliku widoczne
+
+**Decyzja Tomasa (28.09), docs/GOLDEN_LAYOUT.md §0:** wszystko z plików LiveTag
+(tagi, etykiety, zawodnicy, pozycje, czasy) jest widoczne na każdym ekranie. Trzy
+dozwolone ukrycia: sekcja ukryta w Układzie, martwe zmienne w Słowniku, warstwa [op].
+Bez migracji; v17 i test złoty nietknięte.
+
+### Silnik 0.16.8 — zmiana wyjścia v21
+- **Pokrycie = raport (pkt 1).** Dostępność sekcji przy templacie liczona z tego,
+  z czego sekcja faktycznie się liczy: zmienne templatu + tagi wbudowane szablonu
+  z aliasami (`coverage.tagi_sekcji`). Templat Pogoni v9 nie przypisywał
+  `ZDOBYCIE SBZ` do osi SBZ, więc pokrycie mówiło „Żadna zmienna tej sekcji nie ma
+  zdarzeń", a `drop_sections` wycinało oś SBZ, oś III strefy i pojedynki z raportu
+  30 — choć szablon liczył 20/20/50 i pokazywał je w Mapach. Oś III strefy nie
+  wymaga już współrzędnych (to oś czasu; pułapka 3 dotyczy mapy).
+- **Sekcja bez danych wyszarzona, nie wycięta (v21).** `render.wyszarz_sekcje`:
+  nagłówek + „Brak danych w tym eksporcie. {powód}". Z raportu znika wyłącznie to,
+  czego nie ma w Układzie — numeracja zakładek, nagłówków, PDF i slajdów = lista
+  w Ustawieniach.
+- **Numer slajdu = numer nagłówka** (`slideDefs` czyta `h2 .nr`); kafel bez slajdu
+  („Inne zdarzenia") nie przesuwa już numerów kolejnych slajdów.
+- **Tabela makro: każdy tag z pliku ma wiersz** (`kluczeMakro`, blok `liczby-v21`),
+  tag bez zmiennej z dopiskiem „(bez zmiennej)".
+- **„Inne zdarzenia"** tylko wg Układu — koniec automatycznego wycinania z W3.
+- **Baner ostrzegawczy** wyłącznie dla zmiennych bez kanonu w sekcjach znaczeniowych;
+  „pominięty" (`dictionary_notice.ignored`) nie jest już czytany.
+- **Baner informacyjny** obejmuje zmienne-etykiety („STRZAŁ Z SBZ" — raport 30 go nie miał).
+- **Mapa III strefy** z komunikatem o braku pozycji; mapy 1–4 mówią też o CZĘŚCI
+  zdarzeń bez pozycji („N z M bez pozycji — nie ma ich na mapie").
+
+### Aplikacja
+- Pokrycie bez „poza analizą" i „pominięte"; lista „Tagi spoza słownika klubu"
+  mówi, że są w raporcie pod surową nazwą. Przycisk rewizji zostaje.
+- `club_ignored_tags` nie wpływa na raport, pokrycie ani import: `AutoImport`
+  dopisuje także te tagi; na ekranie różnic [op] „Nie pytaj o ten tag (dane zostają
+  w raporcie)" — wyłącznie wyciszenie pytania.
+- Słownik: „Nierozpoznane" = wyłącznie zmienne bez kanonu w sekcjach, które go wymagają.
+- Lista „dodane przy imporcie" zapisana w pokryciu importu (`sections_json`) i przeżywa
+  regenerację; baner = historia templatu ∪ ta lista.
+- Zawodnicy: grupa „Zawodnicy rywala" (W4 ją wyciął — błędnie). Drużyna bez zmian.
+- Seed: konto `trener.klub2@example.com` (klub 2).
+
+### Testy
+- `engine/tests/test_w5.py` (12) — syntetyczny eksport „Hetmana": pokrycie = raport,
+  wyszarzenie, numeracja po ukryciu Bilansu, makro = tagi CSV (Node), baner etykiety.
+- `app/tests/integracja/test_golden_w5_http.php` (17, port 9101): pełny potok, pokrycie
+  bez „poza analizą", zawodnicy CSV = nasi + rywal.
+- `app/tests/integracja/test_wgraj.js` (15): cały skrypt panelu na atrapie DOM — pastylki,
+  walidacja typu/liczby/rozmiaru/nagłówka.
+- `test_golden_w2_http` +6: trener klubu 2 — raport 30, mecz 27, 404 na /import,
+  /klub/ustawienia, /mecze/10.
+- Przestawione na regułę W5: `test_regression` (1b), `test_render` (baner, siatka),
+  `test_import_n1_http`, `test_auto_import_http`, `test_rewizja_http`, `test_golden_w3_http`,
+  `test_mapowania` (klucze tekstów).
+
 ## Aplikacja — 2026-09-28 · Golden layout W4: poprawki po odbiorze W0–W3
 
 Silnik bez zmian (0.16.7), szablony v17/v21 nietknięte, bez migracji.

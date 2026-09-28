@@ -784,13 +784,14 @@ def test_baner_informacyjny_przy_zmiennych_dodanych_automatycznie():
     assert raport["unresolved_placeholders"] == []
 
 
-def test_baner_ostrzegawczy_dla_pominietych():
+def test_pominiety_tag_nie_daje_baneru_w5():
+    """W5: „pominięty" (club_ignored_tags) nie istnieje dla raportu — tag z pliku
+    jest w tabeli makro, a decyzja wycisza wyłącznie pytania w panelu."""
     cfg = {"dictionary_notice": {"ignored": ["POMINIĘTY", "NISKUTECZNY"]}}
     html, _ = render.render(_ramka("POMINIĘTY", "POMINIĘTY", "NISKUTECZNY"), template_path="v21",
                             report_template=_templat_w3(), config=cfg)
-    ostrz = _baner(html, "niewliczone")
-    assert ostrz is not None and "POMINIĘTY (2) — pominięty" in ostrz
-    assert "NISKUTECZNY" not in ostrz, "tag wbudowany liczy się mimo decyzji — nie kłamiemy"
+    assert _baner(html, "niewliczone") is None
+    assert "pominięty" not in (html.split("<header")[0])
     assert _baner(html, "info") is None
 
 
@@ -814,12 +815,14 @@ def test_bez_templatu_bez_banerow():
     assert _baner(html, "info") is None and _baner(html, "niewliczone") is None
 
 
-def test_inne_zdarzenia_tylko_gdy_cos_nie_wliczone():
+def test_inne_zdarzenia_decyduje_wylacznie_uklad_w5():
+    """W5: „Inne zdarzenia" są w raporcie, gdy są w Układzie — bez automatu z W3."""
     html, _ = render.render(RAMKA, template_path="v21", report_template=_templat_w3())
-    assert 'data-widget="siatka"' not in html
-    cfg = {"dictionary_notice": {"ignored": ["POMINIĘTY"]}}
-    html, _ = render.render(_ramka("POMINIĘTY"), template_path="v21", report_template=_templat_w3(), config=cfg)
     assert 'data-widget="siatka"' in html
+    # Sekcję spoza układu CLI dokłada do `drop_sections` (cmd_build) — tu wprost.
+    html, _ = render.render(RAMKA, template_path="v21", config={"drop_sections": ["siatka"]},
+                            report_template=_templat_w3(uklad=("przeglad", "makro")))
+    assert 'data-widget="siatka"' not in html
 
 
 def test_znaczniki_trybu_i_karty_przechodza_nietkniete():

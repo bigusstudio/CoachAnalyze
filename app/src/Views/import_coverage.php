@@ -209,89 +209,29 @@ $liczby = [
   <h2 class="h2"><?= View::e(View::t('coverage.excluded')) ?></h2>
 
   <?php /*
-    RAPORT NIE OBEJMUJE WSZYSTKIEGO — i to musi być widoczne.
-
-    Dwa źródła zdarzeń poza analizą, i drugie jest groźniejsze:
-      1. tagi nierozpoznane — nikt jeszcze nie zdecydował, co z nimi zrobić,
-      2. tagi świadomie pominięte — decyzja jest poprawna, ale wygląda na
-         „obsłużone" i po pół roku nikt nie pamięta, że część zdarzeń
-         nie wchodzi do liczb.
-
-    Bez tej sekcji raport pokrycia sugeruje kompletność, której nie ma.
+    ZASADA NADRZĘDNA (golden layout W5): nic z pliku LiveTag nie wypada
+    z raportu. Pojęcia „poza analizą" i „świadomie pominięte" zniknęły —
+    tag bez zmiennej w słowniku klubu JEST w raporcie (tabela makro, pod
+    surową nazwą). Ta sekcja mówi tylko, których tagów słownik jeszcze nie zna.
   */ ?>
-  <?php
-    /*
-     * Adres rewizji mapowania dla pojedynczej pozycji. Chip w tej sekcji ma
-     * prowadzić WPROST do tego taga, a nie do listy, na której trzeba go szukać.
-     *
-     * Rewizja ma sens wyłącznie dla klubu z templatem — bez niego decyzje
-     * o tagach zapadają w kreatorze mapowań i tam kieruje istniejący odsyłacz.
-     */
-    $rewizjaMozliwa = !empty($pozaTemplatem);
-    $adresRewizji = function (string $typ, string $nazwa) use ($import): string {
-        $k = \CoachAnalyze\TemplateDiff::kluczHtml($typ, $nazwa);
-        return '/import/' . (int) $import['id'] . '/diff?rewizja=1&tag=' . $k . '#poz-' . $k;
-    };
-  ?>
-  <?php if (($excluded['unrecognised'] ?? []) === [] && ($excluded['ignored'] ?? []) === []): ?>
+  <?php if (($excluded['unrecognised'] ?? []) === []): ?>
     <p class="empty"><?= View::e(View::t('coverage.excluded.none')) ?></p>
   <?php else: ?>
-    <?php if ($excluded['count'] !== null): ?>
-      <p class="alert" role="alert">
-        <?= View::e($excluded['total'] !== null
-            ? View::t('coverage.excluded.count_of', (int) $excluded['count'], (int) $excluded['total'])
-            : View::t('coverage.excluded.count', (int) $excluded['count'])) ?>
-      </p>
-    <?php else: ?>
-      <?php /*
-        Liczby zdarzeń poza analizą nie ma dziś w wyniku `inspect`
-        (docs/KONTRAKT_CLI.md). Mówimy to wprost zamiast pokazywać zero —
-        zero znaczyłoby „wszystko policzone", a to nieprawda.
-      */ ?>
-      <p class="notice" role="status"><?= View::e(View::t('coverage.excluded.count_unknown')) ?></p>
-    <?php endif; ?>
-
-    <?php if (($excluded['unrecognised'] ?? []) !== []): ?>
-      <h3 class="h3"><?= View::e(View::t('coverage.excluded.unrecognised')) ?></h3>
-      <p class="tagi">
-        <?php foreach ($excluded['unrecognised'] as $tag): ?>
-          <code class="tag-nazwa"><?= View::e((string) $tag) ?></code>
-        <?php endforeach; ?>
-      </p>
-      <p class="hint">
-        <a class="link" href="/import/<?= (int) $import['id'] ?>/mapowanie">
-          <?= View::e(View::t('coverage.excluded.map_now')) ?>
-        </a>
-      </p>
-    <?php endif; ?>
-
-    <?php if (($excluded['ignored'] ?? []) !== []): ?>
-      <h3 class="h3"><?= View::e(View::t('coverage.excluded.ignored')) ?></h3>
-      <p class="tagi">
-        <?php foreach ($excluded['ignored'] as $tag): ?>
-          <?php if ($rewizjaMozliwa): ?>
-            <?php /* Chip klikalny — prowadzi do rewizji z fokusem na tym tagu. */ ?>
-            <a class="tag-nazwa tag-nazwa--pominiety"
-               href="<?= View::e($adresRewizji('tag', (string) $tag)) ?>"
-               title="<?= View::e(View::t('rev.chip.hint')) ?>"><?= View::e((string) $tag) ?></a>
-          <?php else: ?>
-            <code class="tag-nazwa tag-nazwa--pominiety"><?= View::e((string) $tag) ?></code>
-          <?php endif; ?>
-        <?php endforeach; ?>
-      </p>
-      <p class="hint"><?= View::e(View::t('coverage.excluded.ignored.hint')) ?></p>
-      <?php if ($rewizjaMozliwa): ?>
-        <?php /* DROGA WYJŚCIA PRZY LIŚCIE, nie do wyszukania w panelu.
-                 Sekcja mówiła dotąd „te zdarzenia nie wchodzą do liczb"
-                 i na tym kończyła — operator musiał sam znaleźć, gdzie to
-                 zmienić. */ ?>
-        <p>
-          <a class="btn btn--ghost" href="/import/<?= (int) $import['id'] ?>/diff?rewizja=1">
-            <?= View::e(View::t('rev.act.open')) ?>
-          </a>
-        </p>
-      <?php endif; ?>
-    <?php endif; ?>
+    <p class="tagi">
+      <?php foreach ($excluded['unrecognised'] as $tag): ?>
+        <code class="tag-nazwa"><?= View::e((string) $tag) ?></code>
+      <?php endforeach; ?>
+    </p>
+    <p class="hint"><?= View::e(View::t('coverage.excluded.unrecognised')) ?></p>
+  <?php endif; ?>
+  <?php if (!empty($pozaTemplatem)): ?>
+    <?php /* Droga do rewizji słownika zostaje zawsze, nie tylko przy liście —
+             także po to, żeby cofnąć „nie pytaj". */ ?>
+    <p>
+      <a class="btn btn--ghost" href="/import/<?= (int) $import['id'] ?>/diff?rewizja=1">
+        <?= View::e(View::t('rev.act.open')) ?>
+      </a>
+    </p>
   <?php endif; ?>
 </section>
 
@@ -320,12 +260,17 @@ $liczby = [
 <?php endif; ?>
 
 <?php /*
-  POZA TEMPLATEM KLUBU. Pozycje, o które operator został zapytany na ekranie
-  diffu i których nie dopisał, oraz te zignorowane na stałe. Ich zdarzenia
-  NIE wchodzą do metryk — i to musi być widoczne przed kliknięciem „Generuj",
-  a nie odkryte pół roku później.
+  POZA TEMPLATEM KLUBU. Pozycje z eksportu, których templat jeszcze nie zna.
+  W5: ich zdarzenia SĄ w raporcie (tabela makro); lista „zignorowanych"
+  zniknęła, bo „nie pytaj" wycisza tylko pytanie, a nie dane.
 */ ?>
-<?php if (!empty($pozaTemplatem) && (($pozaTemplatem['nowe'] ?? []) !== [] || ($pozaTemplatem['ignorowane'] ?? []) !== [])): ?>
+<?php
+  $adresRewizji = function (string $typ, string $nazwa) use ($import): string {
+      $k = \CoachAnalyze\TemplateDiff::kluczHtml($typ, $nazwa);
+      return '/import/' . (int) $import['id'] . '/diff?rewizja=1&tag=' . $k . '#poz-' . $k;
+  };
+?>
+<?php if (!empty($pozaTemplatem) && ($pozaTemplatem['nowe'] ?? []) !== []): ?>
   <section class="panel">
     <h2 class="h2"><?= View::e(View::t('cov.excluded.template')) ?></h2>
     <p class="hint"><?= View::e(View::t('cov.excluded.template.hint')) ?></p>
@@ -335,17 +280,6 @@ $liczby = [
       <p class="tagi">
         <?php foreach ($pozaTemplatem['nowe'] as $poz): ?>
           <a class="tag-nazwa"
-             href="<?= View::e($adresRewizji((string) $poz['type'], (string) $poz['name'])) ?>"
-             title="<?= View::e(View::t('rev.chip.hint')) ?>"><?= View::e((string) $poz['name']) ?></a>
-        <?php endforeach; ?>
-      </p>
-    <?php endif; ?>
-
-    <?php if (($pozaTemplatem['ignorowane'] ?? []) !== []): ?>
-      <h3 class="h3"><?= View::e(View::t('diff.ignored')) ?></h3>
-      <p class="tagi">
-        <?php foreach ($pozaTemplatem['ignorowane'] as $poz): ?>
-          <a class="tag-nazwa tag-nazwa--pominiety"
              href="<?= View::e($adresRewizji((string) $poz['type'], (string) $poz['name'])) ?>"
              title="<?= View::e(View::t('rev.chip.hint')) ?>"><?= View::e((string) $poz['name']) ?></a>
         <?php endforeach; ?>

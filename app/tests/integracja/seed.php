@@ -223,6 +223,12 @@ function ca_test_db(string $file, bool $withData = true): PDO
         ['RIV5K2NX', 'Rywal C']);
     Db::run('INSERT INTO clubs (owner_id,club_key,name,is_own_team) VALUES (1,?,?,1)',
         ['STL9R4WQ', 'Klub D']);
+    /*
+     * KONTO TESTOWE TRENERA przypięte do klubu 2 (golden layout W5, pkt 6).
+     * Osobny adres — `trener@example.com` zakładają same zestawy W2/W3 (klub 1).
+     */
+    Db::run('INSERT INTO users (email, pass_hash, display_name, role, club_id) VALUES (?,?,?,?,?)',
+        ['trener.klub2@example.com', Auth::hashPassword('bardzo-dlugie-haslo-testowe'), 'Trener klubu 2', 'viewer', 2]);
 
     $mecze = [
         ['2026-08-09', 1, 2, 'done'],

@@ -143,6 +143,46 @@ def tag_stats(frame):
     return stats
 
 
+# TAGI, Z KTÓRYCH SZABLON v21 SAM BUDUJE SEKCJĘ (golden layout W5, pkt 1).
+#
+# Kopia z JS szablonu (`renderSBZTimeline`, `renderIIITimeline`, `renderDuels`,
+# `renderMetricMaps`) — liczone po kluczach `VARS`, czyli PO ALIASACH. Do W5
+# dostępność sekcji przy templacie liczyła się WYŁĄCZNIE ze zmiennych templatu
+# przypisanych do sekcji. Templat Pogoni (v9) nie przypisywał `ZDOBYCIE SBZ` do
+# osi SBZ, więc pokrycie mówiło „Żadna zmienna tej sekcji nie ma zdarzeń", a
+# `drop_sections` wycinało oś SBZ, oś III strefy i pojedynki z raportu 30 —
+# choć szablon miał 20 wejść w SBZ, 20 w III strefę i 50 pojedynków, i pokazywał
+# je w Mapach. Dwie ścieżki liczenia jednej rzeczy, dwie odpowiedzi.
+#
+# Test `test_tagi_sekcji_zgodne_z_szablonem` pilnuje, że każdy tag z tej listy
+# występuje w odpowiedniej funkcji szablonu.
+TAGI_SEKCJI_SZABLONU = {
+    "mapy": ("STRZAŁ", "ZDOBYCIE SBZ", "III STREFA"),
+    "tl_sbz": ("ZDOBYCIE SBZ",),
+    "tl_iii": ("III STREFA",),
+    "duels": ("1x1 OFF", "1x1 DEF.", "STRATA", "PIERWSZY KONTAKT", "ODBIÓR"),
+}
+
+
+def tagi_sekcji(template=None):
+    """{sekcja: {nazwy tagów z eksportu}} — to, z czego sekcja faktycznie się liczy.
+
+    Zmienne templatu przypisane do sekcji (z aliasami) PLUS tagi wbudowane
+    szablonu z aliasami silnika i templatu — dokładnie ten zbiór, który szablon
+    przemianowuje na klucz `VARS` (`ALIAS[e.tag]`) i liczy.
+    """
+    from . import aliasy
+
+    mapa = {k: set(v) for k, v in tpl.tags_by_section(template).items()}
+    slownik = aliasy.scal_z_templatem(tpl.variable_overrides(template))
+    for sekcja, klucze in TAGI_SEKCJI_SZABLONU.items():
+        zbior = mapa.setdefault(sekcja, set())
+        for klucz in klucze:
+            zbior.add(klucz)
+            zbior.update(str(a) for a in (slownik.get(klucz) or {}).get("aliases") or ())
+    return mapa
+
+
 def _powody_z_templatu(template, stats):
     """Powody niedostępności sekcji liczone z SUROWYCH TAGÓW templatu.
 
@@ -161,7 +201,7 @@ def _powody_z_templatu(template, stats):
     ktoś nazwał je pojęciem kanonicznym.
     ═══════════════════════════════════════════════════════════════════════════
     """
-    po_sekcjach = tpl.tags_by_section(template)
+    po_sekcjach = tagi_sekcji(template)
     reasons = {}
 
     def zdarzen(sekcja, klucz="count"):
@@ -185,12 +225,11 @@ def _powody_z_templatu(template, stats):
     if not zdarzen("duels"):
         reasons["duels"] = "Żadna zmienna tej sekcji nie ma zdarzeń w tym eksporcie"
 
-    # III strefa zachowuje ROZRÓŻNIENIE Z PUŁAPKI 3: brak zdarzeń to co innego
-    # niż zdarzenia bez pozycji, i operator ma widzieć, które z dwojga.
+    # III strefa: OŚ CZASU nie potrzebuje współrzędnych (W5). Pułapka 3 dotyczy
+    # MAPY III strefy — tam szablon mówi o braku pozycji z licznikiem zdarzeń.
+    # Wycinanie osi przy zdarzeniach bez `pos_*` chowało dane, które są.
     if not zdarzen("tl_iii"):
         reasons["tl_iii"] = "Żadna zmienna tej sekcji nie ma zdarzeń w tym eksporcie"
-    elif not zdarzen("tl_iii", "with_pos"):
-        reasons["tl_iii"] = "Eksport nie zawiera pozycji III STREFY (kolumny pos_* puste)"
 
     return reasons
 

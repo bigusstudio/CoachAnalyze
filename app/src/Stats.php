@@ -528,6 +528,49 @@ final class Stats
     }
 
     /**
+     * Zawodnicy RYWALA ze zdarzeń (golden layout W5, zasada nadrzędna).
+     *
+     * W4 wyciął ich z listy „Zawodnicy", bo lądowali razem z naszymi — to było
+     * błędne: nazwisko z pliku LiveTag ma być widoczne. Teraz osobna grupa,
+     * liczona tą samą stroną tenanta co `players()` (zdarzenie drużyny
+     * przeciwnej wobec `matches.club_id`).
+     *
+     * @return list<array<string,mixed>>
+     */
+    public static function rivalPlayers(int $clubId, ?int $seasonId = null): array
+    {
+        $warunek = $seasonId !== null ? 'AND m.season_id = :sid' : '';
+        $p = ['club' => $clubId, 'tag' => self::TAG_STRZAL] + ($seasonId !== null ? ['sid' => $seasonId] : []);
+        $rywal = "(CASE WHEN m.club_away_id = m.club_id AND (m.club_home_id IS NULL OR m.club_home_id <> m.club_id)
+                        THEN 'us' ELSE 'them' END)";
+        $wiersze = Db::all(
+            "SELECT e.player,
+                    COUNT(DISTINCT e.match_id) AS matches,
+                    SUM(CASE WHEN e.tag_name = :tag THEN 1 ELSE 0 END) AS shots,
+                    SUM(CASE WHEN e.xg IS NOT NULL THEN e.xg ELSE 0 END) AS xg,
+                    SUM(e.is_goal) AS goals,
+                    COUNT(e.id) AS events
+               FROM events e
+               JOIN matches m ON m.id = e.match_id
+              WHERE m.club_id = :club AND e.player IS NOT NULL AND e.player <> ''
+                AND e.team_side = {$rywal} {$warunek}
+              GROUP BY e.player",
+            $p
+        );
+        $out = array_map(static fn(array $z): array => [
+            'player'  => (string) $z['player'],
+            'matches' => (int) $z['matches'],
+            'shots'   => (int) $z['shots'],
+            'xg'      => round((float) $z['xg'], 2),
+            'goals'   => (int) $z['goals'],
+            'events'  => (int) $z['events'],
+        ], $wiersze);
+        usort($out, static fn(array $a, array $b): int
+            => [$b['events'], $a['player']] <=> [$a['events'], $b['player']]);
+        return $out;
+    }
+
+    /**
      * Mecze klubu w przedziale dat — do widoku miesięcznego kalendarza.
      *
      * Mecz BEZ DATY nie trafia do żadnego miesiąca i to jest poprawne: kalendarz

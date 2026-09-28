@@ -287,11 +287,11 @@ check('jest przycisk „Zmień mapowanie"', str_contains($pokrycie['body'], 'Zmi
 check('przycisk prowadzi do rewizji na tym imporcie',
     str_contains($pokrycie['body'], '/import/' . $importId . '/diff?rewizja=1'));
 
-check('chip zignorowanego na stałe jest klikalny',
-    str_contains($pokrycie['body'], 'tag=' . $kluczDosr),
-    'chip ma prowadzić wprost do tej pozycji, nie do listy');
-check('chip prowadzi do kotwicy pozycji',
-    str_contains($pokrycie['body'], '#poz-' . $kluczDosr));
+// Golden layout W5: pokrycie nie wylicza „zignorowanych na stałe" — „nie pytaj"
+// wycisza pytanie, zdarzenia zostają w raporcie. Droga do rewizji: przycisk wyżej.
+check('pokrycie nie wymienia tagu z „nie pytaj" jako wyrzuconego (W5)',
+    !str_contains($pokrycie['body'], 'tag=' . $kluczDosr)
+    && !str_contains($pokrycie['body'], 'Zignorowanych na stałe'));
 check('tag ZOSTAWIONY w templacie NIE jest „poza templatem"',
     !str_contains($pokrycie['body'], 'tag=' . $kluczPress),
     'jest zmienną i liczy się w raporcie — wymienianie go tutaj byłoby nieprawdą');
@@ -533,8 +533,11 @@ check('G2: slownik wrocil do artefaktu',
     str_contains((string) $poInspekcji['coverage_json'], '"dictionary"'));
 
 $rewG3 = http('GET', '/import/' . $g1 . '/diff?rewizja=1');
+// W5: ponowna inspekcja dopisuje tag z „nie pytaj" do słownika (AutoImport),
+// więc rewizja pokazuje go jako dodany automatycznie albo nadal wyciszony.
 check('G2: po przeliczeniu rewizja listuje pozycje',
-    $rewG3['status'] === 200 && str_contains($rewG3['body'], 'zignorowana na stałe'),
+    $rewG3['status'] === 200 && (str_contains($rewG3['body'], 'zignorowana na stałe')
+        || str_contains($rewG3['body'], 'dodana automatycznie')),
     'to jest zamkniecie petli z produkcji');
 
 // --- G3: nic nowego i nic zignorowanego -> komunikat, nadal nie redirect.

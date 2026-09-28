@@ -1,6 +1,25 @@
 # Golden layout — układ panelu CoachAnalyze
 
-Stan po etapach W0–W4 (2026-09-28). Dokument opisuje **jak panel jest poukładany**
+## 0. ZASADA NADRZĘDNA (decyzja Tomasa, 2026-09-28)
+
+**Wszystko, co jest w plikach LiveTag — tagi, etykiety, zawodnicy, pozycje,
+czasy — jest widoczne w aplikacji, na każdym ekranie.**
+
+Jedyne trzy dozwolone ukrycia:
+
+1. **sekcja ukryta przez klub w Układzie raportu**,
+2. **martwe zmienne w Słowniku** — nazwy, których nie ma w żadnym pliku klubu
+   (widoczne w Ustawienia → Zaawansowane [op]),
+3. **warstwa operatora** — metadane aplikacji (silnik, templat, kolejka…).
+
+Każde inne filtrowanie danych z pliku jest błędem. Brak danych na sekcję nie
+jest powodem do jej wycięcia: sekcja zostaje, wyszarzona, z powodem po polsku
+(pułapka 3). „Nie pytaj o ten tag" wycisza wyłącznie pytanie w panelu — tag
+zostaje w raporcie, w tabeli makro i w Słowniku.
+
+---
+
+Stan po etapach W0–W5 (2026-09-28). Dokument opisuje **jak panel jest poukładany**
 i dlaczego — zanim dołożysz ekran, sprawdź, gdzie jest jego rodzic i czy nie łamie
 reguły powrotu.
 
@@ -21,6 +40,9 @@ Pulpit ─┬─ Sezon ── Mecz (karta) ── Raport
   [op]: Pokrycie, Wersje, Zadania.
 - **Raport** (`/raport/{id}`) — samowystarczalny HTML v21 (bez JS panelu).
   Klips „← CA" wraca na `/pulpit` (link publiczny: strona sprzedażowa).
+  Sekcje raportu = lista z Układu raportu, te same numery 01–NN w Ustawieniach,
+  zakładkach, nagłówkach, PDF i slajdach. Oś SBZ, oś III strefy i Pojedynki to
+  OSOBNE sekcje (nie podsekcje Map) — Mapy mają własne wiersze SBZ i III strefy.
 
 Ekrany poza hierarchią (ustawiane raz, nie przy każdym meczu) mają za rodzica Pulpit.
 
@@ -71,7 +93,7 @@ Wgraj (/import) ──► Przygotuj (/import/{id}/przygotuj) ──► Postęp (
 - Bez ekranu różnic i bez kreatora mapowań na drodze analityka (to [op]).
 - Import **dopisuje nowe tagi do templatu sam** (surowa nazwa = etykieta) i mówi o tym
   banerem informacyjnym w raporcie („sprawdź etykiety w Słowniku klubu", zamykany per
-  raport). Baner ostrzegawczy — tylko tagi świadomie pominięte i zmienne bez znaczenia
+  raport). Baner ostrzegawczy (W5) — wyłącznie zmienne bez znaczenia
   w osi SBZ / osi III strefy / pojedynkach.
 - Administrator po wgraniu trafia na stronę zadania (mechanika w tle).
 - W4: jedna strefa upuszczenia na oba pliki (`pliki[]`); serwer rozdziela CSV/JSON.
@@ -109,11 +131,11 @@ Wgraj (/import) ──► Przygotuj (/import/{id}/przygotuj) ──► Postęp (
 ## 7. Ustawienia klubu (W3)
 
 - **Układ raportu** — kolejność (strzałki), Ukryj/Pokaż; numery 01–NN bez luk;
-  Przegląd zawsze pierwszy i widoczny; „Inne zdarzenia" tylko przy nierozpoznanych tagach.
+  Przegląd zawsze pierwszy i widoczny; „Inne zdarzenia" jak każdy kafel (W5) — decyduje Układ.
 - **Słownik klubu** — Wliczane (tag → nazwa w raporcie → sekcje, kontynuacje;
   malejąco po liczbie w sezonie, bez zmiennych martwych — te w Zaawansowanych [op]
   z „Usuń martwe…")
-  i Nierozpoznane = pominięte + bez znaczenia (nie nowe), z „Wlicz jako…".
+  i Nierozpoznane = wyłącznie zmienne bez kanonu w sekcjach, które go wymagają (W5), z „Wlicz jako…".
   Tag wbudowany szablonu (`VARS`, np. SKUTECZNY) liczy się sam i nie jest „nierozpoznany".
 - **[op] Zaawansowane** — historia wersji z „Przywróć", zmienne martwe, konfigurator
   (typ, barwa, kanon), mapowania, szerokości kafli, dane klubu.

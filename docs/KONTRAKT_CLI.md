@@ -94,7 +94,7 @@ Znaczniki **tylko w generacji v21**, opcjonalne całą grupą (v17 nie ma żadne
 | `__TEAM_*_COLOR_L__` · `__TEAM_*_DIM_L__` | `motyw_jasny` | Barwa klubu dla `data-theme="light"` — `color_light` albo przyciemnienie `color` |
 | `__SEZON__` · `__KOLEJKA__` · `__DATA_MECZU__` | `meta_meczu` | Meta meczu z `config.match`; brak wartości = pusty napis |
 | `__BANER__` | `baner` | Pasek nad raportem. Dziś jeden przypadek: `KIERUNEK_ZMIANA_POLOWY`. Brak powodu = pusty napis |
-| `__BANER_NIEWLICZONE__` | `baner_niewliczone` | Od 0.16.6, treść od 0.16.7 (golden layout W3-b). Do dwóch pasków: **informacyjny** (`.baner--info`, `data-baner="info"`) — „N nowych rodzajów zdarzeń dodanych automatycznie: … → sprawdź etykiety w Słowniku klubu", zamykany, zamknięcie w `localStorage` pod `ca-baner-info:{adres raportu}`; **ostrzegawczy** (`.baner--niewliczone`) — tagi z `config.dictionary_notice.ignored` obecne w zdarzeniach (bez tagów wbudowanych szablonu) i zmienne bez kanonu w sekcjach znaczeniowych (`render.SEKCJE_ZNACZENIOWE`: oś SBZ, oś III strefy, pojedynki), które mają zdarzenia i nie są tagiem wbudowanym. Bez templatu albo bez powodu = pusty napis. Odsyłacz: `/klub/ustawienia?zakladka=slownik`; w raporcie publicznym i u trenera schowane przez `data-tryb` |
+| `__BANER_NIEWLICZONE__` | `baner_niewliczone` | Od 0.16.6, treść od 0.16.7 (golden layout W3-b). Do dwóch pasków: **informacyjny** (`.baner--info`, `data-baner="info"`) — „N nowych rodzajów zdarzeń dodanych automatycznie: … → sprawdź etykiety w Słowniku klubu", zamykany, zamknięcie w `localStorage` pod `ca-baner-info:{adres raportu}`; **ostrzegawczy** (`.baner--niewliczone`) — od 0.16.8 wyłącznie zmienne bez kanonu w sekcjach znaczeniowych (`render.SEKCJE_ZNACZENIOWE`: oś SBZ, oś III strefy, pojedynki), które mają zdarzenia i nie są tagiem wbudowanym. Bez templatu albo bez powodu = pusty napis. Odsyłacz: `/klub/ustawienia?zakladka=slownik`; w raporcie publicznym i u trenera schowane przez `data-tryb` |
 | `__PROGI__` | `progi` | Progi faktów Przeglądu jako literał obiektu JS — patrz niżej |
 | `__VARS_TEMPLATU__` | `vars_templatu` | Nadpisania słownika zmiennych szablonu (`display`, `aliases`) — patrz niżej |
 
@@ -195,6 +195,23 @@ dokładnie tym, czego zakazuje pułapka 2: lustrzeniem „bo połowa druga", opa
 na medianie kilku strzałów. Całego meczu też nie odbijamy, bo taki mecz nie ma
 jednego kierunku — mediana miesza dwa przeciwne rozkłady i ląduje koło środka
 boiska. Zgłaszamy i zostawiamy plik, jaki jest.
+
+#### Sekcje bez danych: wyszarzone w v21, wycięte w v17 (od 0.16.8)
+
+`cmd_build` przekazuje do renderu `config.sections_unavailable`
+(`{sekcja: powód}`, tylko sekcje wybrane). Generacja z kafelkami `data-widget`
+(v21) **nie wycina** takich sekcji: zostawia `<section data-brak-danych="1">`
+z nagłówkiem i komunikatem „Brak danych w tym eksporcie. {powód}"
+(`render.wyszarz_sekcje`). Wycina wyłącznie sekcje spoza wyboru (Układ raportu).
+Zasada nadrzędna: docs/GOLDEN_LAYOUT.md §0. v17 bez zmian — wycina jak dotąd
+(test złoty). Log renderu niesie `sections_greyed`.
+
+**Dostępność sekcji przy templacie** liczy się z tego, z czego sekcja FAKTYCZNIE
+się liczy (`coverage.tagi_sekcji`): zmienne templatu przypisane do sekcji
++ tagi wbudowane szablonu (`coverage.TAGI_SEKCJI_SZABLONU`: oś SBZ ← `ZDOBYCIE SBZ`,
+oś III strefy ← `III STREFA`, pojedynki ← `1x1 OFF`, `1x1 DEF.`, `STRATA`,
+`PIERWSZY KONTAKT`, `ODBIÓR`, mapy ← `STRZAŁ`, `ZDOBYCIE SBZ`, `III STREFA`),
+z aliasami silnika i templatu. Oś III strefy nie wymaga współrzędnych.
 
 #### Sekcje raportu: dwie listy
 
@@ -601,10 +618,12 @@ Opcjonalny obiekt w `config.json`, wypełniany przez `run_job.php` (`zapowiedzSl
 | Klucz | Treść |
 |---|---|
 | `auto_added` | surowe nazwy zmiennych, które templat dostał automatycznie przy TYM imporcie (`ReportTemplates::autoForImport`); silnik pokazuje tylko te, które templat nadal ma |
-| `ignored` | tagi klubu z `club_ignored_tags` („pomiń na stałe") |
+| `ignored` | **od 0.16.8 nieużywany** — panel wysyła pustą listę, silnik go nie czyta. `club_ignored_tags` nie wpływa na raport (docs/GOLDEN_LAYOUT.md §0) |
 
 Brak klucza = oba pusto (raport bez baneru słownika). Silnik nie chodzi do bazy —
-dostaje decyzje gotowe.
+dostaje decyzje gotowe. `auto_added` obejmuje także zmienne-ETYKIETY (od 0.16.8);
+panel składa listę z historii templatu i z listy zapisanej w pokryciu importu
+(`sections_json.dodane_przy_imporcie`, `Imports::zapiszDodane`).
 
 ### Znaczniki serwowania (od silnika 0.16.4)
 

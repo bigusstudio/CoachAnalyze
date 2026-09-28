@@ -390,9 +390,11 @@ echo "\n== krok 3: pokrycie templat × eksport PRZED generowaniem ==\n";
 $pokrycie = http('GET', '/import/' . $importId);
 check('pokrycie odpowiada — diff domknięty', $pokrycie['status'] === 200,
     $pokrycie['status'] . ' → ' . (string) $pokrycie['location']);
-check('pokrycie wymienia pozycje POZA templatem',
-    str_contains($pokrycie['body'], 'Poza templatem klubu'),
-    'zero cichego wyrzucania danych');
+// Golden layout W5: „zignorowane na stałe" nie są już listą „poza templatem" —
+// „nie pytaj" wycisza pytanie, a zdarzenia zostają w raporcie.
+check('pokrycie nie nazywa „nie pytaj" wyrzuceniem danych (W5)',
+    !str_contains($pokrycie['body'], 'Zignorowanych na stałe')
+    && !str_contains(mb_strtolower(strip_tags($pokrycie['body'])), 'poza analizą'));
 check('zignorowany na stałe jest wyliczony z nazwy',
     str_contains($pokrycie['body'], 'DOŚRODKOWANIE'));
 check('pominięty w tym imporcie też jest wyliczony',
@@ -475,16 +477,16 @@ http('POST', '/import/' . $import3 . '/meta', ['form' => [
 ]]);
 
 ca_test_db($baza);
-check('drugi import NIE zakłada zmiennych po raz drugi',
-    ReportTemplates::currentVersion(1) === 3,
-    'wszystko z tego eksportu jest już w templacie albo zignorowane — wersja '
-    . 'różniąca się wyłącznie numerem unieważniłaby raporty bez powodu');
+// W5: „nie pytaj" nie zatrzymuje zmiennej — drugi import dopisuje DOŚRODKOWANIE
+// wersją AUTOMATYCZNĄ, która nie unieważnia raportów (ręczna zostaje v3).
+check('drugi import dopisuje tag z „nie pytaj" wersją automatyczną (W5)',
+    ReportTemplates::currentVersion(1) === 4 && ReportTemplates::currentManualVersion(1) === 3,
+    'v' . ReportTemplates::currentVersion(1) . ', ręczna v' . ReportTemplates::currentManualVersion(1));
 
 $config4 = ReportTemplates::decodeConfig(ReportTemplates::current(1)['config']);
 $nazwy4 = array_column(array_column($config4['variables'], 'source'), 'raw');
-check('tag zignorowany na stałe NIE wraca do templatu',
-    !in_array('DOŚRODKOWANIE', $nazwy4, true),
-    'to była decyzja „nie pytaj więcej" i ma przeżyć kolejny import');
+check('tag z „nie pytaj" jest w słowniku (W5: wszystko z pliku widoczne)',
+    in_array('DOŚRODKOWANIE', $nazwy4, true));
 
 $pokrycie3 = http('GET', '/import/' . $import3);
 check('kolejny import idzie prosto na pokrycie, bez bramki',

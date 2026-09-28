@@ -60,6 +60,7 @@ html[data-tryb="trener"] .tylko-analityk{display:none!important}
 /* zakładki sekcji numerowane 01–07, przewijane poziomo, z cieniem na krawędziach */
 #topbar{top:52px;-webkit-mask-image:linear-gradient(90deg,transparent 0,#000 18px,#000 calc(100% - 18px),transparent 100%);
   mask-image:linear-gradient(90deg,transparent 0,#000 18px,#000 calc(100% - 18px),transparent 100%)}
+section[data-brak-danych]{opacity:.7}
 #topbar a .nr,section>h2 .nr{font-family:'IBM Plex Mono',monospace;color:var(--ink3);margin-right:6px;font-weight:500}
 /* opis sekcji: jedno zdanie, reszta pod „i" */
 .sub details.wiecej{display:inline}
@@ -514,6 +515,16 @@ function kubelkiPressingu(evs){
   evs.forEach(e=>{const k=PRESS_KOLEJNOSC.find(k=>e.labels.includes(k)); n[k||'INNE']++;});
   return PRESS_WIERSZE.map(k=>[k,n[k]]);
 }
+/* v29 (golden layout W5): WIERSZE TABELI MAKRO = KAŻDY TAG Z PLIKU. Najpierw
+   zmienne słownika (kolejność VARS), potem tagi bez zmiennej, alfabetycznie.
+   Dotąd tag spoza VARS nie miał wiersza — zasada nadrzędna (wszystko z pliku
+   widoczne) była łamana w kafelku, który ma pokazywać liczby zdarzeń. */
+function kluczeMakro(ev, vars){
+  const w=new Set(ev.map(e=>e.tag).filter(Boolean));
+  const zeSlownika=Object.keys(vars).filter(k=>w.has(k));
+  const reszta=[...w].filter(t=>!vars[t]).sort((a,b)=>a.localeCompare(b,'pl'));
+  return zeSlownika.concat(reszta);
+}
 /*</liczby-v21>*/
 atrybujGole(DATA.events);
 const E = DATA.events, HS = DATA.half_split;
@@ -779,7 +790,7 @@ function budujSzkieletMap(){
         <button class="chip on" data-ictx="NIEUDANA">Nieudane</button>
         <button class="chip on" data-ictx="BRAK PODANIA">Brak podania</button>
       </div>
-      ${pitchSVG('mp4')}<div class="legend" id="lg4"></div></div>
+      ${pitchSVG('mp4')}<div class="nodata" id="np4"></div><div class="legend" id="lg4"></div></div>
     <div class="pitchbox"><h3>Skumulowane wejścia w III strefę</h3>${chartSVG('mc4')}</div>
   </div>
   <div class="grid" id="sources"></div>
@@ -842,9 +853,13 @@ function mapaBezPozycji(svgId, noteId, zdarzenia, czego){
   if(!sv||!nt) return false;
   const zPoz=zdarzenia.filter(e=>e.x!=null).length;
   const pusto=zdarzenia.length>0&&zPoz===0;
+  /* v29 (W5): CZĘŚĆ bez pozycji też jest mówiona — z licznikiem. Mapa rysuje
+     tylko zdarzenia ze współrzędnymi, a reszta znikała bez śladu. */
+  const czesc=zPoz>0&&zPoz<zdarzenia.length;
   sv.style.display=pusto?'none':'';
-  nt.style.display=pusto?'block':'none';
+  nt.style.display=(pusto||czesc)?'block':'none';
   if(pusto) nt.innerHTML=`<b>Brak pozycji w eksporcie.</b> ${zdarzenia.length} ${czego} policzono w tym fragmencie, ale kolumny <code>pos_x_meters</code> i <code>pos_y_meters</code> są dla nich puste — mapy nie da się narysować. Liczby w bilansie i na osiach czasu są kompletne.`;
+  else if(czesc) nt.innerHTML=`<b>${zdarzenia.length-zPoz} z ${zdarzenia.length}</b> ${czego} bez pozycji w eksporcie — nie ma ich na mapie; są w liczbach bilansu i na osiach czasu.`;
   return pusto;
 }
 function renderMetricMaps(){
@@ -967,6 +982,8 @@ function renderMetricMaps(){
   }).join('');
   /* mapa 4: III strefa — kolor = drużyna, pełna linia+grot = udana, przerywana = nieudana */
   const I3=mcIII();
+  /* W5: III STREFA bez współrzędnych (pułapka 3) — komunikat z licznikiem, jak mapy 1–3. */
+  mapaBezPozycji('mp4','np4',I3,'wejść w III strefę');
   s=`<defs><marker id="ah3-hut" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--team-home)"/></marker>
      <marker id="ah3-pog" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--team-away)"/></marker></defs>`+pitchBase();
   I3.filter(e=>e.x!=null).forEach(e=>{
@@ -1362,13 +1379,12 @@ const pctTxt=(n,tot)=>tot?Math.round(100*n/tot)+'%':'–';
 const kom=(tekst)=>`<div class="nodata" style="display:block">${tekst}</div>`;
 
 /* ---------------------------------------------------------------- makro */
-/* Wiersze po ZMIENNYCH ze słownika VARS, kolumny po drużynach i połowach.
-   Tag spoza słownika nie ma tu wiersza — od tego jest „Siatka ilości", która
-   pokazuje plik takim, jaki jest. */
+/* Wiersze: zmienne ze słownika VARS, potem KAŻDY inny tag pliku (W5,
+   `kluczeMakro`) — z dopiskiem „bez zmiennej". Kolumny po drużynach i połowach. */
 function renderMakro(el, ctx){
   const box=el.querySelector('#makro-box'); if(!box) return;
-  const klucze=Object.keys(VARS).filter(k=>ctx.E.some(e=>e.tag===k));
-  if(!klucze.length){ box.innerHTML=kom('<b>Brak zmiennych ze słownika w tym eksporcie.</b> Żaden tag pliku nie ma odpowiednika w VARS.'); return; }
+  const klucze=kluczeMakro(ctx.E, VARS);
+  if(!klucze.length){ box.innerHTML=kom('<b>Eksport nie zawiera zdarzeń.</b>'); return; }
   const g=k=>ctx.Ev.filter(e=>e.tag===k);
   const n=(arr,t,h)=>arr.filter(e=>(t===null?!e.team:e.team===t)&&(h?e.half===h:true)).length;
   const wiersze=klucze.map(k=>{
@@ -1383,7 +1399,7 @@ function renderMakro(el, ctx){
       <tr><th>I poł.</th><th>II poł.</th><th>razem</th><th>I poł.</th><th>II poł.</th><th>razem</th></tr>
     </thead>
     <tbody>${wiersze.map(([k,,h,a,bez])=>
-      `<tr><td>${disp(k)}</td>${num(h[0])}${num(h[1])}${num(h[2],'sum')}${num(a[0])}${num(a[1])}${num(a[2],'sum')}${num(bez,'mut')}</tr>`
+      `<tr><td>${disp(k)}${VARS[k]?'':' <span class="mut">(bez zmiennej)</span>'}</td>${num(h[0])}${num(h[1])}${num(h[2],'sum')}${num(a[0])}${num(a[1])}${num(a[2],'sum')}${num(bez,'mut')}</tr>`
     ).join('')}</tbody></table>`;
 }
 
@@ -1680,9 +1696,12 @@ function slideDefs(){
   let nr=0;
   document.querySelectorAll('[data-widget]').forEach(el=>{
     const id=el.dataset.widget, w=WIDGETS[id];
+    if(w&&w.nav) nr++;
     if(!w||!w.slide) return;
-    nr++;
-    const pre=String(nr).padStart(2,'0');
+    /* NUMER SLAJDU = NUMER ZAKŁADKI I NAGŁÓWKA (W5). Dotąd slajdy liczyły się
+       osobno i kafelek bez slajdu (Inne zdarzenia) przesuwał numery kolejnych. */
+    const nrH=el.querySelector('h2 .nr');
+    const pre=nrH?nrH.textContent.trim():String(nr).padStart(2,'0');
     const czesci=(w.slajdy?w.slajdy(el,{q,qa,naglowek}):null)
       || [{nodes:[el.querySelector('.tblwrap,.donuts,.grid,.tlbox')||el]}];
     czesci.forEach((c,i)=>defs.push({

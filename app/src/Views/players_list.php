@@ -19,12 +19,14 @@ use CoachAnalyze\View;
  *
  * @var array<string,mixed>       $club
  * @var list<array<string,mixed>> $zawodnicy
+ * @var list<array<string,mixed>> $rywale     zawodnicy rywala ze zdarzeń (W5)
  * @var list<array<string,mixed>> $sezony
  * @var int|null                  $sezonId
  * @var string|null               $sezonLabel
  */
 $kreska = View::t('common.dash');
 $dziesietna = static fn($w): string => number_format((float) $w, 2, ',', ' ');
+$rywale ??= [];
 $bezMinut = true;
 foreach ($zawodnicy as $z) {
     if ($z['minutes'] !== null) {
@@ -50,6 +52,7 @@ foreach ($zawodnicy as $z) {
 <?php endif; ?>
 
 <section class="panel">
+  <h2 class="h2"><?= View::e(View::t('players.nasi', count($zawodnicy))) ?></h2>
   <?php if ($zawodnicy === []): ?>
     <p class="empty"><?= View::e(View::t('players.empty')) ?></p>
   <?php else: ?>
@@ -89,3 +92,38 @@ foreach ($zawodnicy as $z) {
     </div>
   <?php endif; ?>
 </section>
+
+<?php if ($rywale !== []): ?>
+  <?php /* ZASADA NADRZĘDNA (W5): nazwiska rywala z pliku są widoczne — osobno,
+           żeby nie sugerować, że to nasi zawodnicy. */ ?>
+  <section class="panel">
+    <h2 class="h2"><?= View::e(View::t('players.rywale', count($rywale))) ?></h2>
+    <p class="hint"><?= View::e(View::t('players.rywale.hint')) ?></p>
+    <div class="tbl-scroll">
+      <table class="tbl" data-grupa="rywal">
+        <thead>
+          <tr>
+            <th><?= View::e(View::t('roster.col.player')) ?></th>
+            <th class="num"><?= View::e(View::t('players.col.matches')) ?></th>
+            <th class="num"><?= View::e(View::t('players.col.events')) ?></th>
+            <th class="num"><?= View::e(View::t('dash.col.shots')) ?></th>
+            <th class="num"><?= View::e(View::t('dash.col.xg')) ?></th>
+            <th class="num"><?= View::e(View::t('players.col.goals')) ?></th>
+          </tr>
+        </thead>
+        <tbody>
+        <?php foreach ($rywale as $z): ?>
+          <tr>
+            <td><?= View::e((string) $z['player']) ?></td>
+            <td class="num"><?= (int) $z['matches'] ?></td>
+            <td class="num"><?= (int) $z['events'] ?></td>
+            <td class="num"><?= (int) $z['shots'] ?: View::e($kreska) ?></td>
+            <td class="num"><?= (float) $z['xg'] > 0 ? View::e($dziesietna($z['xg'])) : View::e($kreska) ?></td>
+            <td class="num"><?= (int) $z['goals'] ?: View::e($kreska) ?></td>
+          </tr>
+        <?php endforeach; ?>
+        </tbody>
+      </table>
+    </div>
+  </section>
+<?php endif; ?>

@@ -338,15 +338,17 @@ check('„Załóż klub" zniknął — nie ma czego zakładać',
  * komplet swoich zdarzeń, co było nieprawdą o raporcie, który je pokazywał.
  */
 $raportPokrycia = Imports::report(Imports::find($importId));
-check('zdarzeń poza analizą: 0',
-    $raportPokrycia['excluded']['count'] === 0,
-    'poza analizą: ' . var_export($raportPokrycia['excluded']['count'], true));
+// Golden layout W5: pokrycie w ogóle nie liczy „poza analizą" — nic z pliku
+// nie wypada z raportu, więc nie ma czego liczyć.
+check('pokrycie bez licznika „poza analizą" (W5)',
+    $raportPokrycia['excluded']['count'] === null,
+    var_export($raportPokrycia['excluded']['count'], true));
 check('lista tagów poza analizą pusta',
     $raportPokrycia['excluded']['unrecognised'] === []
     && $raportPokrycia['excluded']['ignored'] === [],
     implode(',', $raportPokrycia['excluded']['unrecognised']));
 check('ekran mówi to wprost',
-    str_contains($pokrycie['body'], 'Wszystkie zdarzenia z eksportu wchodzą do analizy'));
+    str_contains($pokrycie['body'], 'Każdy tag z eksportu ma zmienną w słowniku klubu'));
 
 // ---------------------------------------------------------------- generowanie
 echo "\n== raport bez ani jednego kliknięcia w diffie ==\n";

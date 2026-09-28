@@ -630,39 +630,23 @@ def dodane_automatycznie(template=None, config=None):
     zmienne = _zmienne(template)
     if zmienne is None:
         return []
+    # WSZYSTKIE surowe nazwy templatu, także ETYKIETY (W5): import dopisuje
+    # zmienne-etykiety („STRZAŁ Z SBZ"), a `_nazwy_zmiennej` zwraca pusto dla
+    # etykiet — baner raportu 30 milczał o jedynej nowej zmiennej.
     obecne = set()
     for z in zmienne:
+        if not isinstance(z, dict):
+            continue
         obecne.update(_nazwy_zmiennej(z))
+        raw = str((z.get("source") or {}).get("raw") or "").strip()
+        if raw:
+            obecne.add(raw)
     out = []
     for n in _powiadomienie(config).get("auto_added") or ():
         n = str(n)
         if n in obecne and n not in out:
             out.append(n)
     return out
-
-
-def pominiete_tagi(frame, template=None, config=None, wbudowane=()):
-    """[(tag, liczba)] zdarzeń tagów ŚWIADOMIE POMINIĘTYCH (club_ignored_tags).
-
-    Tag wbudowany szablonu liczy się mimo decyzji — nie nazywamy go pominiętym,
-    bo liczby pod banerem by temu przeczyły. Od najczęstszego, potem alfabetycznie.
-    """
-    zmienne = _zmienne(template)
-    if zmienne is None:
-        return []
-    pominiete = {str(n) for n in (_powiadomienie(config).get("ignored") or ())}
-    if not pominiete:
-        return []
-    znane = set(wbudowane)
-    for z in zmienne:
-        znane.update(_nazwy_zmiennej(z))
-    znane = _z_aliasami_silnika(znane)
-    licznik = {}
-    for e in frame.get("events") or []:
-        tag = e.get("tag")
-        if tag in pominiete and tag not in znane:
-            licznik[tag] = licznik.get(tag, 0) + 1
-    return sorted(licznik.items(), key=lambda kv: (-kv[1], kv[0]))
 
 
 def bez_znaczenia(frame, template=None, wbudowane=()):
@@ -688,9 +672,13 @@ def bez_znaczenia(frame, template=None, wbudowane=()):
 
 
 def niewliczone(frame, template=None, config=None, wbudowane=()):
-    """Czy raport ma co ostrzegać: pominięte tagi albo zmienne bez znaczenia."""
-    return bool(pominiete_tagi(frame, template, config, wbudowane)
-                or bez_znaczenia(frame, template, wbudowane))
+    """Czy raport ma co ostrzegać: zmienne bez znaczenia w sekcjach znaczeniowych.
+
+    W5: „pominięty" (club_ignored_tags) przestał istnieć dla raportu — każdy tag
+    z pliku jest w tabeli makro, a decyzja „nie pytaj" wycisza wyłącznie pytania
+    w panelu. `config` zostaje w sygnaturze dla zgodności wywołań.
+    """
+    return bool(bez_znaczenia(frame, template, wbudowane))
 
 
 # Adres Słownika klubu w panelu — stała ścieżka, nie zależy od meczu.
@@ -709,8 +697,9 @@ def baner_niewliczone_slot(frame, template=None, wbudowane=(), config=None):
     INFORMACYJNY (W3-b): import dopisał nowe zmienne sam — liczą się, ale nikt
     nie sprawdził ich nazw. Zamykany; zamknięcie zapamiętane per raport
     (`localStorage`, klucz z adresu raportu).
-    OSTRZEGAWCZY: zdarzenia pominięte świadomie i zmienne bez znaczenia
-    w sekcjach, które go wymagają — to, czego raport NIE liczy.
+    OSTRZEGAWCZY (W5): wyłącznie zmienne bez kanonu w sekcjach, które go
+    wymagają (oś SBZ, oś III strefy, pojedynki) — tam raport pokazuje „–".
+    Tagów „pominiętych" już nie ma: wszystko z pliku jest w tabeli makro.
     """
     czesci = []
     nowe = dodane_automatycznie(template, config)
@@ -725,9 +714,7 @@ def baner_niewliczone_slot(frame, template=None, wbudowane=(), config=None):
                             "nowych rodzajów zdarzeń dodanych automatycznie"),
                 ", ".join(html_mod.escape(t) for t in nowe[:6]) + (", …" if n > 6 else ""),
                 ADRES_SLOWNIKA))
-    pozycje = ["{} ({}) — pominięty".format(html_mod.escape(t), k)
-               for t, k in pominiete_tagi(frame, template, config, wbudowane)]
-    pozycje += ["{} — bez znaczenia: {}".format(
+    pozycje = ["{} — bez znaczenia: {}".format(
                     html_mod.escape(r), ", ".join(SEKCJE_ZNACZENIOWE[s] for s in sek))
                 for r, sek in bez_znaczenia(frame, template, wbudowane)]
     if pozycje:
@@ -1206,6 +1193,46 @@ def drop_sections(html, section_ids):
     return html, usuniete
 
 
+def wyszarz_sekcje(html, powody):
+    """Sekcje BEZ DANYCH zostają w raporcie, z nagłówkiem i powodem (golden layout W5).
+
+    Zasada nadrzędna (docs/GOLDEN_LAYOUT.md §0): z raportu znika wyłącznie to,
+    co klub ukrył w Układzie raportu. Sekcja bez danych w tym eksporcie to nie
+    decyzja klubu — dotąd `drop_sections` ją wycinało, numeracja zakładek
+    rozjeżdżała się z listą w Ustawieniach, a czytelnik nie wiedział, że sekcja
+    istnieje (pułapka 3: brak danych = wyszarzenie z wyjaśnieniem).
+
+    Treść sekcji zastępujemy komunikatem: skrypt szablonu szuka swoich węzłów
+    po `id` i przy ich braku kończy cicho (jak przy `drop_sections`).
+
+    `powody` — {sekcja: powód po polsku}. Zwraca `(html, wyszarzone[])`.
+    """
+    wyszarzone = []
+    for sid, powod in (powody or {}).items():
+        dom_id = SECTION_DOM_ID.get(sid)
+        zakres = _zakres_sekcji(html, dom_id) if dom_id else None
+        if zakres is None:
+            continue
+        start, koniec = zakres
+        blok = html[start:koniec]
+        h2 = blok.find("</h2>")
+        if h2 == -1:
+            continue
+        otwarcie = blok[:blok.find(">") + 1].replace(
+            "<section ", '<section data-brak-danych="1" ', 1)
+        nowy = (otwarcie + blok[blok.find(">") + 1:h2 + len("</h2>")]
+                + '\n  <div class="nodata" style="display:block"><b>Brak danych w tym eksporcie.</b> '
+                + html_mod.escape(str(powod)) + "</div>\n</section>")
+        html = html[:start] + nowy + html[koniec:]
+        wyszarzone.append(sid)
+    return html, wyszarzone
+
+
+def szablon_z_widzetami(szablon_html):
+    """Generacja z kafelkami `data-widget` (v21). v17 ich nie ma i zostaje przy wycinaniu."""
+    return 'data-widget="' in (szablon_html or "")
+
+
 # Kontener układu sekcji (sesja 5). Wstawiany WYŁĄCZNIE wtedy, gdy templat
 # faktycznie coś o układzie mówi — bez niego sekcje zostają zwykłymi blokami
 # jeden pod drugim, tak jak przed tą sesją.
@@ -1420,16 +1447,23 @@ def render(frame, palette=None, metrics=None, canon_result=None, config=None,
     #
     # GENEROWANIE NIGDY NIE PADA Z TEGO POWODU: brak danych na sekcje to stan
     # normalny (pulapka 3 — III STREFA bywa bez wspolrzednych), a nie awaria.
-    html, sekcje_usuniete = drop_sections(html, (config or {}).get("drop_sections"))
+    #
+    # W5: generacja z kafelkami (v21) NIE WYCINA sekcji bez danych — wyszarza je
+    # z powodem (`wyszarz_sekcje`). Wycina wyłącznie to, czego klub nie wybrał.
+    # v17 bez zmian: bajt w bajt jak dotąd (test złoty).
+    niedostepne = dict((config or {}).get("sections_unavailable") or {})
+    do_wyciecia = list((config or {}).get("drop_sections") or ())
+    if szablon_z_widzetami(template):
+        do_wyciecia = [s for s in do_wyciecia if s not in niedostepne]
+    else:
+        niedostepne = {}
+    html, sekcje_usuniete = drop_sections(html, do_wyciecia)
+    html, sekcje_wyszarzone = wyszarz_sekcje(html, niedostepne)
 
-    # „INNE ZDARZENIA" TYLKO GDY SĄ (golden layout W3): przy komplecie tagów
-    # w słowniku klubu sekcja nie ma czego pokazać. Bez templatu — bez zmian.
-    # Wyłącznie przy układzie schematu 2 — o tej sekcji decyduje ekran Układu
-    # raportu; templat schematu 1 ma dawać raport bez zmian w kolejności.
-    if (report_template is not None and report_template_layout(report_template)
-            and not niewliczone(frame, report_template, config, wbudowane)):
-        html, dodatkowo = drop_sections(html, ["siatka"])
-        sekcje_usuniete = list(sekcje_usuniete) + [s for s in dodatkowo if s not in sekcje_usuniete]
+    # „INNE ZDARZENIA" (W5): o tej sekcji decyduje WYŁĄCZNIE Układ raportu, jak
+    # o każdej innej. Automatyczne wycinanie z W3 („gdy nie ma czego ostrzegać")
+    # rozjeżdżało numerację z listą w Ustawieniach i chowało kafelek, który
+    # pokazuje plik takim, jaki jest.
 
     # UKLAD SEKCJI Z TEMPLATU (schemat 2). Po wycieciu, nie przed: przestawiamy
     # to, co faktycznie zostalo w dokumencie.
@@ -1445,6 +1479,8 @@ def render(frame, palette=None, metrics=None, canon_result=None, config=None,
 
     return html, {
         "sections_dropped": sekcje_usuniete,
+        # Sekcje bez danych, zostawione z powodem zamiast wycięcia (W5, v21).
+        "sections_greyed": sekcje_wyszarzone,
         # Kolejnosc sekcji po zastosowaniu ukladu z templatu. Pusta lista znaczy
         # „templat nie mowil o ukladzie" — czyli kolejnosc szablonu.
         "sections_order": kolejnosc_sekcji,

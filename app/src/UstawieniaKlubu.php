@@ -84,8 +84,10 @@ final class UstawieniaKlubu
     }
 
     /**
-     * Kafle do pokazania (ukryte). „Inne zdarzenia" tylko przy nierozpoznanych
-     * tagach — bez nich byłaby pustą zakładką.
+     * Kafle do pokazania (ukryte). W5: „Inne zdarzenia" jak każdy kafel —
+     * pokazuje WSZYSTKIE tagi pliku, więc nigdy nie jest pusta, a o jej
+     * obecności w raporcie decyduje wyłącznie Układ (zasada nadrzędna).
+     * `$saNierozpoznane` zostaje w sygnaturze dla zgodności wywołań.
      *
      * @param list<array<string,mixed>> $sekcje
      * @return list<string>
@@ -95,9 +97,6 @@ final class UstawieniaKlubu
         $out = [];
         foreach (array_keys(ReportLayout::WIDGETY) as $w) {
             if (in_array($w, ReportLayout::widgety($sekcje), true)) {
-                continue;
-            }
-            if ($w === self::INNE && !$saNierozpoznane) {
                 continue;
             }
             $out[] = $w;
@@ -204,16 +203,13 @@ final class UstawieniaKlubu
     public const BEZ_ZNACZENIA = 'bez_znaczenia';
 
     /**
-     * NIEROZPOZNANE (W3-b) = to, czego raport NIE liczy, choć w eksportach jest:
-     *
-     *   pominięty      — tag z `club_ignored_tags` (świadome „pomiń"), którego
-     *                    templat nie zna i który nie jest tagiem wbudowanym,
-     *   bez znaczenia  — zmienna bez kanonu w sekcji znaczeniowej, niebędąca
-     *                    tagiem wbudowanym, z wystąpieniami w katalogu klubu.
+     * NIEROZPOZNANE (W5) = zmienne bez kanonu w sekcji znaczeniowej (oś SBZ,
+     *   oś III strefy, pojedynki), niebędące tagiem wbudowanym, z wystąpieniami
+     *   w katalogu klubu — tam raport pokazuje „–". Stan „pominięty" zniknął.
      *
      * NOWE TAGI TU NIE TRAFIAJĄ: import dopisuje je do templatu sam (sesja 8),
      * a raport mówi o nich banerem informacyjnym. Ta sama definicja co baner
-     * ostrzegawczy w silniku (`render.pominiete_tagi`, `render.bez_znaczenia`).
+     * ostrzegawczy w silniku (`render.bez_znaczenia`).
      *
      * @param array<string,mixed> $config
      * @return list<array<string,mixed>>
@@ -235,14 +231,13 @@ final class UstawieniaKlubu
             'color'   => isset($katalog[$n]['color']) ? (string) $katalog[$n]['color'] : null,
         ];
 
+        /*
+         * W5: „POMINIĘTY" NIE JEST JUŻ STANEM TAGU. `club_ignored_tags` wycisza
+         * wyłącznie pytania w panelu — tag jest w raporcie (tabela makro), więc
+         * nie ma czego „wliczać". Nierozpoznane = wyłącznie zmienne bez kanonu
+         * w sekcjach, które go wymagają.
+         */
         $out = [];
-        foreach (array_keys(IgnoredTags::lookup($clubId)[IgnoredTags::TAG] ?? []) as $nazwa) {
-            $nazwa = (string) $nazwa;
-            if (in_array($nazwa, $wbud, true) || Configurator::dopasuj(Suggester::TAG, $nazwa, $indeks) !== null) {
-                continue;
-            }
-            $out[] = $wiersz($nazwa, ['powod' => self::POMINIETY, 'sekcje' => [], 'i' => null]);
-        }
 
         foreach (array_values((array) ($config['variables'] ?? [])) as $i => $z) {
             if (!is_array($z) || (string) ($z['source']['type'] ?? Suggester::TAG) !== Suggester::TAG

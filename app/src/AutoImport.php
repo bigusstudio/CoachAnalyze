@@ -253,10 +253,16 @@ final class AutoImport
             return [[], null];
         }
 
+        /*
+         * `club_ignored_tags` NIE ZATRZYMUJE ZMIENNEJ (golden layout W5). Zasada
+         * nadrzędna: wszystko z pliku jest widoczne na każdym ekranie, także
+         * w Słowniku klubu. „Nie pytaj o ten tag" wycisza wyłącznie pytanie na
+         * ekranie różnic [op].
+         */
         $nowe = Configurator::autoZmienne(
             $meta,
             $config,
-            IgnoredTags::lookup($clubId),
+            [Suggester::TAG => [], Suggester::ETYKIETA => []],
             is_array($meta['palette'] ?? null) ? $meta['palette'] : [],
             self::BARWY
         );

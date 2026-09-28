@@ -661,11 +661,13 @@ def test_1b_xg_sum_zgadza_sie_z_przegladem(case):
 
 @pytest.mark.parametrize("case", load_cases(), ids=lambda c: c["id"])
 def test_1b_sekcja_bez_zmiennej_jest_niedostepna_z_powodem(case):
-    """Templat, który nie przypisał do map ANI JEDNEJ zmiennej, map nie dostaje.
+    """Templat, który nie przypisał do map ani pojedynków ŻADNEJ zmiennej.
 
-    To jest druga strona tej samej reguły: dostępność liczy się z tego, co
-    templat do sekcji przypisał, więc pusta sekcja zostaje pusta — z powodem,
-    nie po cichu.
+    GOLDEN LAYOUT W5 ODWRACA TEN TEST. Dotąd sekcja bez przypisanej zmiennej
+    była niedostępna — a szablon v21 i tak liczył mapy i pojedynki z własnych
+    tagów (`STRZAŁ`, `1x1 OFF`…), więc pokrycie mówiło „brak zdarzeń" o sekcji,
+    którą raport miał (raport 30, Hetman). Dostępność liczy się teraz z tego,
+    z czego sekcja FAKTYCZNIE się liczy (`coverage.tagi_sekcji`).
     """
     src = wymagaj_csv(case)
     frame = parse.prep_frame(str(src))
@@ -683,8 +685,8 @@ def test_1b_sekcja_bez_zmiennej_jest_niedostepna_z_powodem(case):
 
     niedostepne = {s["id"]: s["reason"] for s in meta["sections_unavailable"]}
     for sekcja in ("mapy", "duels"):
-        assert sekcja in niedostepne, sekcja
-        assert niedostepne[sekcja].strip(), "każda usunięta sekcja niesie powód"
+        assert sekcja not in niedostepne, (sekcja, niedostepne.get(sekcja))
+        assert sekcja in meta["sections_available"], sekcja
 
 
 @pytest.mark.parametrize("case", load_cases(), ids=lambda c: c["id"])

@@ -521,19 +521,19 @@ return [
 
     'diff.title'          => 'Nowe tagi w tym imporcie',
     'diff.crumb'          => 'Nowe tagi',
-    'diff.lead'           => 'Te pozycje nie występują jeszcze w templacie klubu. Zdecyduj o każdej — pozycje pominięte i zignorowane trafią do raportu pokrycia, żeby nic nie wypadło po cichu.',
+    'diff.lead'           => 'Te pozycje nie występują jeszcze w templacie klubu. Każda jest w raporcie pod surową nazwą (tabela makro) — decyzja dotyczy tylko słownika i pytań.',
     'diff.new'            => 'Nowych pozycji',
     'diff.known'          => 'Znanych templatowi',
     'diff.known.note'     => 'mapują się bez pytania',
-    'diff.ignored'        => 'Zignorowanych na stałe',
-    'diff.ignored.note'   => 'wcześniejsza decyzja klubu',
+    'diff.ignored'        => 'Z wyciszonym pytaniem',
+    'diff.ignored.note'   => 'klub nie chce pytań o te tagi — dane zostają w raporcie',
     'diff.act.add'        => 'Dodaj do templatu',
-    'diff.act.skip'       => 'Pomiń w tym imporcie',
-    'diff.act.never'      => 'Zignoruj na stałe',
+    'diff.act.skip'       => 'Nie dopisuj teraz',
+    'diff.act.never'      => 'Nie pytaj o ten tag (dane zostają w raporcie)',
     'diff.submit'         => 'Zatwierdź decyzje',
     'diff.submit.hint'    => 'Dopisanie czegokolwiek do templatu tworzy JEDNĄ nową wersję na cały import, nie po jednej na tag.',
-    'diff.saved.version'  => 'Templat zapisany jako wersja %d. Zignorowanych na stałe: %d.',
-    'diff.saved.no_version' => 'Templat bez zmian — nic nie dopisano. Zignorowanych na stałe: %d.',
+    'diff.saved.version'  => 'Templat zapisany jako wersja %d. Wyciszonych pytań: %d.',
+    'diff.saved.no_version' => 'Templat bez zmian — nic nie dopisano. Wyciszonych pytań: %d.',
     'diff.required'       => 'W tym imporcie są tagi, o których templat jeszcze nie wie. Zdecyduj o nich przed wygenerowaniem raportu.',
     // --- rewizja mapowania z ekranu pokrycia ---
     //
@@ -541,7 +541,7 @@ return [
     // wcześniejszą decyzję, więc widzi także pozycje zignorowane na stałe.
     'rev.title'           => 'Rewizja mapowania',
     'rev.crumb'           => 'Rewizja mapowania',
-    'rev.lead'            => 'Wszystko, co nie weszło do templatu klubu: pozycje pominięte w tym imporcie i zignorowane na stałe. Przy każdej widać obecny stan i liczbę zdarzeń. Zatwierdzenie tworzy JEDNĄ nową wersję templatu.',
+    'rev.lead'            => 'Wszystko, czego templat klubu jeszcze nie zna: pozycje niedopisane w tym imporcie i te z wyciszonym pytaniem. Wszystkie są w raporcie pod surową nazwą. Zatwierdzenie tworzy JEDNĄ nową wersję templatu.',
     'rev.act.open'        => 'Zmień mapowanie',
     'rev.act.open.hint'   => 'Otwiera ten sam ekran, co przy nowych tagach — tym razem z pozycjami, o których już zdecydowano.',
     'rev.act.keep'        => 'Zostaw jak jest',
@@ -568,7 +568,7 @@ return [
     'diff.err.no_club'    => 'Mecz nie ma przypisanego klubu, więc nie ma do czego dopisać templatu.',
 
     'cov.excluded.template' => 'Poza templatem klubu',
-    'cov.excluded.template.hint' => 'Pozycje obecne w eksporcie, których templat nie zna, oraz zignorowane na stałe. Ich zdarzenia nie wchodzą do metryk.',
+    'cov.excluded.template.hint' => 'Pozycje obecne w eksporcie, których templat jeszcze nie zna. Ich zdarzenia są w raporcie pod surową nazwą.',
     'reports.tplv'        => 'templat v%d',
     'reports.tplv.none'   => 'sprzed templatów',
     'reports.tplv.klub'   => 'templat klubu %s',
@@ -823,6 +823,12 @@ return [
     'players.empty' => 'Brak zawodników: eksporty nie mają kolumny zawodnika, a składy nie zostały wpisane.',
     'players.no_roster' => 'Kreska w kolumnie minut znaczy, że dla tych meczów nie wpisano składu — minuty biorą się z formularza meta meczu, nie z eksportu.',
     'players.not_in_roster' => 'spoza składu',
+    // Golden layout W5: dwie grupy — nasi (skład + zdarzenia naszej drużyny
+    // i bez drużyny) oraz rywal ze zdarzeń.
+    'players.nasi'          => 'Nasza drużyna i zdarzenia bez drużyny (%d)',
+    'players.rywale'        => 'Zawodnicy rywala (%d)',
+    'players.rywale.hint'   => 'Nazwiska z tagów drużyny przeciwnej w meczach klubu. Liczba zdarzeń w sezonie.',
+    'players.col.events'    => 'Zdarzeń',
     'players.col.matches' => 'Mecze',
     'players.col.goals' => 'Gole',
 
@@ -831,8 +837,8 @@ return [
     // --- import bez tarcia (Sesja 8 pivotu „viewer") ---
     'cov.auto.title' => 'Nowe zmienne dodane automatycznie',
     'cov.auto.hint' => 'Tagi i etykiety, których templat jeszcze nie znał, weszły do raportu jako zmienne (wersja templatu %d). Nazwa wyświetlana to surowa nazwa z eksportu — możesz ją zmienić.',
-    'cov.auto.edit' => 'Popraw nazwy, aliasy albo zignoruj',
-    'cov.auto.edit.hint' => 'Zmiana nazwy, „to kontynuacja zmiennej X" albo „nie pytaj o ten tag".',
+    'cov.auto.edit' => 'Popraw nazwy albo aliasy',
+    'cov.auto.edit.hint' => 'Zmiana nazwy albo „to kontynuacja zmiennej X". „Nie pytaj o ten tag" wycisza tylko pytanie — tag zostaje w raporcie.',
     'cov.team.auto' => 'klub założony automatycznie z nazwy w eksporcie',
     'cov.team.auto.edit' => 'uzupełnij skrót i herb',
 
@@ -1204,10 +1210,10 @@ return [
     'mapping.club.link'    => 'Mapowania',
     'mapping.club.title'   => 'Mapowania tagów',
     'mapping.club.back'    => 'Wróć do klubu',
-    'mapping.club.ignored' => 'Tagi pominięte w analizie',
+    'mapping.club.ignored' => 'Tagi bez pojęcia kanonicznego („nie analizuj")',
     'mapping.club.ignored.hint' => 'Te tagi nie wracają przy kolejnych importach. '
                               . 'Decyzję można zmienić tutaj — kolejny raport uwzględni je od nowej wersji profilu.',
-    'mapping.club.ignored.empty' => 'Żaden tag nie jest pominięty.',
+    'mapping.club.ignored.empty' => 'Każdy tag ma pojęcie albo czeka na decyzję.',
     'mapping.club.assigned' => 'Tagi przypisane do pojęć',
     'mapping.club.assigned.empty' => 'Klub korzysta wyłącznie ze słownika domyślnego silnika.',
     'mapping.club.requests' => 'Zgłoszone brakujące pojęcia',
@@ -1225,16 +1231,10 @@ return [
                               . 'więc silnik nie wie, że to strzał. Po zmapowaniu liczba xG zostanie policzona.',
     'coverage.warn.fix_mapping' => 'Przypisz pojęcie',
 
-    'coverage.excluded'    => 'Poza analizą',
-    'coverage.excluded.none' => 'Wszystkie zdarzenia z eksportu wchodzą do analizy.',
-    'coverage.excluded.count' => 'Zdarzeń poza analizą: %d. Raport ich nie obejmuje.',
-    'coverage.excluded.count_of' => 'Zdarzeń poza analizą: %d z %d. Raport ich nie obejmuje.',
-    'coverage.excluded.count_unknown' => 'Poniższe tagi nie wchodzą do metryk. '
-                              . 'Silnik nie podaje jeszcze liczby pominiętych zdarzeń, więc nie pokazujemy jej zmyślonej.',
-    'coverage.excluded.unrecognised' => 'Tagi nierozpoznane',
+    'coverage.excluded'    => 'Tagi spoza słownika klubu',
+    'coverage.excluded.none' => 'Każdy tag z eksportu ma zmienną w słowniku klubu.',
+    'coverage.excluded.unrecognised' => 'Te tagi są w raporcie pod surową nazwą (tabela makro). Nazwę w raporcie nadasz w Słowniku klubu.',
     'coverage.excluded.map_now' => 'Przypisz je do pojęć kanonicznych',
-    'coverage.excluded.ignored' => 'Tagi świadomie pominięte',
-    'coverage.excluded.ignored.hint' => 'Decyzja z profilu klubu. Do zmiany w ustawieniach klubu.',
 
     // --- strona zapowiedzi ---
     // Kafle pulpitu, dla których danych jeszcze nie ma. Kreska plus podpis,
@@ -1438,7 +1438,7 @@ return [
     'ust.przeliczanie'      => 'odświeżam w tle',
     'ust.nierozpoznane'     => 'Nierozpoznane (%d)',
     'ust.nierozpoznane.brak'=> 'Raport liczy wszystko, co jest w eksportach klubu. Nowe tagi dopisują się same przy imporcie — ich nazwy sprawdzisz niżej, w „Wliczanych”.',
-    'ust.nierozpoznane.hint'=> 'To, czego raport nie liczy: tagi świadomie pominięte i zmienne bez znaczenia w sekcjach, które go wymagają (tam raport pokazuje „–”). Wybierz „Wlicz jako…”.',
+    'ust.nierozpoznane.hint'=> 'Zmienne bez znaczenia w sekcjach, które go wymagają (oś SBZ, oś III strefy, pojedynki) — tam raport pokazuje „–”. Wybierz „Wlicz jako…”.',
     'ust.wliczane'          => 'Wliczane (%d)',
     'ust.wliczane.hint'     => 'Tag z eksportu zostaje taki, jak w LiveTag — zmieniasz tylko nazwę w raporcie i sekcje. Kolejność: najczęstsze w sezonie na górze.',
     'ust.kol.tag'           => 'Tag w eksporcie',

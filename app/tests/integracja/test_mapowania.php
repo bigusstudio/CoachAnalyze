@@ -278,7 +278,6 @@ foreach (array_merge(
      'mapping.err.no_club', 'mapping.err.unknown_concept',
      'mapping.club.title', 'mapping.club.ignored', 'mapping.club.history',
      'coverage.excluded', 'coverage.excluded.none', 'coverage.excluded.unrecognised',
-     'coverage.excluded.ignored', 'coverage.excluded.count_unknown',
      'mail.match.on_date', 'mail.match.unknown'],
     array_map(static fn($p) => 'concept.' . $p, Mappings::POJECIA)
 ) as $klucz) {
