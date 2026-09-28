@@ -77,6 +77,31 @@ idzie inną ścieżką niż na produkcji.
 **Wspólnego `LIKE` świadomie NIE używamy** — nie odróżnia etykiety `PRESSING`
 od `PRESSING WYSOKI`, czyli powtarza pułapkę 7 (`CELNY` wewnątrz `NIECELNY`).
 
+## `019` — metoda importu v3 (W7)
+
+Addytywna: pięć kolumn NULL i indeks na `imports` (`sha256_zdarzen`,
+`profil_json`, `profil_nowy`, `profil_import_id`, `niezmienniki_ok`).
+
+| Kolumna | Kto pisze | Po co |
+|---|---|---|
+| `sha256_zdarzen` | `handleImport` (`Upload::sha256Zdarzen`), inspekcja | ten sam mecz nie tworzy drugiego meczu, także przy innej kolejności wierszy |
+| `profil_json` | inspekcja (`meta.profil`) | odcisk profilu analityka: UUID tagów i nazwy znormalizowane |
+| `profil_nowy` · `profil_import_id` | zadanie budowy raportu (`ProfilAnalityka::ocen`) | baner „Nowy układ tagów" w raporcie |
+| `niezmienniki_ok` | zadanie budowy raportu | alert „raport niezgodny z plikiem" dla admina |
+
+**Kolejność wdrożenia: migracja PRZED kodem W7.** Kod W7 zapisuje te kolumny
+przy każdym imporcie — bez migracji import kończy się błędem bazy.
+
+```bash
+mysqldump --single-transaction --quick --default-character-set=utf8mb4 \
+  serwer400227_coachanalyze > ~/CoachAnalyze/shared/backups/przed_019_$(date +%F).sql
+mysql --defaults-group-suffix=caproba serwer400227_caproba < app/migrations/019_metoda_importu.sql
+mysql serwer400227_coachanalyze < app/migrations/019_metoda_importu.sql
+```
+
+Stare importy zostają z NULL; wypełni je regeneracja raportów (inspekcja
+i budowa zapisują skrót, profil i niezmienniki).
+
 ## ZASADA OD `014`: WYŁĄCZNIE MIGRACJE ADDYTYWNE
 
 Od migracji `014` obowiązuje twardo:
