@@ -11,7 +11,8 @@
 --   profil_json       odcisk profilu analityka z `meta.profil`:
 --                     {uuid:[..], nazwy:[znormalizowane], nazwa_uuid:{tag:uuid}}
 --   profil_nowy       1 = układ tagów, którego klub jeszcze nie widział
---                     (Jaccard UUID i nazw < 0,8 do każdego wcześniejszego importu)
+--                     (pokrycie mniejszego zbioru UUID i nazw < 0,8, przy min. 5
+--                     elementach, do każdego wcześniejszego importu klubu)
 --   profil_import_id  import, do którego profil się dopasował (NULL przy nowym)
 --   niezmienniki_ok   0 = raport niezgodny z plikiem (alert dla admina), 1 = zgodny,
 --                     NULL = import sprzed W7 albo jeszcze nie policzony

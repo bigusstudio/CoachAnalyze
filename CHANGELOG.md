@@ -14,7 +14,9 @@ NULL i indeks w `imports`.
   jest" i przejście na kartę istniejącego meczu. Ponowne wgranie do tego samego
   meczu działa jak dotąd.
 - **Profil analityka** (D, `ProfilAnalityka`): odcisk z `meta.profil` w
-  `imports.profil_json`; ocena Jaccard UUID ≥ 0,8, zapasowo nazw ≥ 0,8; nowy
+  `imports.profil_json`; ocena: pokrycie mniejszego zbioru UUID
+  |A∩B| / min(|A|,|B|) ≥ 0,8 przy min ≥ 5, zapasowo ta sama miara po nazwach
+  (stara Pogoń 11 ⊂ 16 UUID łączy się z nową; Jaccard dawał 0,69); nowy
   profil → `config.profil.nowy` (baner w raporcie) i nota na karcie meczu.
 - **Słownik klubu** (C): kolumny „Znaczenie" (pojęcia kanoniczne + prezentacji:
   gol, posiadanie, podanie, wprowadzenie, akcja defensywna) i „Strona" (nasza /

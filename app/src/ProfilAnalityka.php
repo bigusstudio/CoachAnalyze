@@ -10,10 +10,13 @@ namespace CoachAnalyze;
  * i zbiór nazw znormalizowanych. Import zapisuje go w `imports.profil_json`
  * (migracja 019). Tu porównujemy go z wcześniejszymi importami klubu.
  *
- * DWA PROGI, BO UUID NIE WYSTARCZA. Stara Pogoń z LiveTag 1.12.11 ma z nową
- * tylko 0,69 po UUID (analityk odtworzył część tagów od nowa), a to ten sam
- * analityk i te same nazwy. Zapasowo liczymy więc Jaccarda NAZW; dopasowanie
- * po którymkolwiek z nich ≥ 0,8 znaczy „znany profil".
+ * MIARA: POKRYCIE MNIEJSZEGO ZBIORU (W7-b), |A∩B| / min(|A|,|B|) ≥ 0,8, przy
+ * min(|A|,|B|) ≥ 5. Jaccard (W7) karał analityka za DOKŁADANIE tagów: stara
+ * Pogoń (LiveTag 1.12.11, 11 tagów) ma z nową (16 tagów) Jaccarda UUID 0,69
+ * i nazw 0,50, choć wszystkie 11 starych UUID siedzi w nowym profilu — to ten
+ * sam analityk, który dopisał pięć tagów. Pokrycie daje tu 1,0 po UUID.
+ * Próg minimalnej wielkości chroni przed „pokryciem" przez 2-tagowy plik.
+ * Zapasowo ta sama miara po NAZWACH znormalizowanych.
  *
  * Znany profil nie wymaga niczego od panelu: przypisania ze Słownika stosuje
  * silnik (UUID tagu, zapasowo nazwa znormalizowana). Nowy profil daje baner
@@ -23,13 +26,19 @@ final class ProfilAnalityka
 {
     public const PROG = 0.8;
 
-    /** Jaccard dwóch zbiorów napisów; dwa puste zbiory = 0 (nic nie wiadomo). */
-    public static function jaccard(array $a, array $b): float
+    /** Mniejszy zbiór musi mieć co najmniej tyle elementów, żeby pokrycie coś znaczyło. */
+    public const MIN_ZBIOR = 5;
+
+    /**
+     * Pokrycie mniejszego zbioru: |A∩B| / min(|A|,|B|); 0, gdy mniejszy zbiór
+     * ma mniej niż `MIN_ZBIOR` elementów (za mało, żeby orzec o profilu).
+     */
+    public static function pokrycie(array $a, array $b): float
     {
         $a = array_unique(array_map('strval', $a));
         $b = array_unique(array_map('strval', $b));
-        $suma = count(array_unique(array_merge($a, $b)));
-        return $suma === 0 ? 0.0 : round(count(array_intersect($a, $b)) / $suma, 3);
+        $min = min(count($a), count($b));
+        return $min < self::MIN_ZBIOR ? 0.0 : round(count(array_intersect($a, $b)) / $min, 3);
     }
 
     /** @return array{uuid:list<string>, nazwy:list<string>, nazwa_uuid:array<string,string>}|null */
@@ -49,7 +58,7 @@ final class ProfilAnalityka
     /**
      * Ocena profilu importu wobec wcześniejszych importów klubu.
      *
-     * @return array{nowy:bool, import_id:?int, jaccard_uuid:float, jaccard_nazwy:float}|null
+     * @return array{nowy:bool, import_id:?int, pokrycie_uuid:float, pokrycie_nazw:float}|null
      *         null, gdy import nie ma odcisku (silnik < 0.17 albo brak inspekcji)
      */
     public static function ocen(int $importId): ?array
@@ -71,20 +80,20 @@ final class ProfilAnalityka
               ORDER BY i.id DESC',
             ['club' => (int) $import['club_id'], 'mecz' => (int) $import['match_id']]
         );
-        $najlepszy = ['nowy' => true, 'import_id' => null, 'jaccard_uuid' => 0.0, 'jaccard_nazwy' => 0.0];
+        $najlepszy = ['nowy' => true, 'import_id' => null, 'pokrycie_uuid' => 0.0, 'pokrycie_nazw' => 0.0];
         foreach ($inne as $w) {
             $o = self::odcisk($w);
             if ($o === null) {
                 continue;
             }
-            $ju = self::jaccard($moj['uuid'], $o['uuid']);
-            $jn = self::jaccard($moj['nazwy'], $o['nazwy']);
-            if (max($ju, $jn) > max($najlepszy['jaccard_uuid'], $najlepszy['jaccard_nazwy'])) {
+            $pu = self::pokrycie($moj['uuid'], $o['uuid']);
+            $pn = self::pokrycie($moj['nazwy'], $o['nazwy']);
+            if (max($pu, $pn) > max($najlepszy['pokrycie_uuid'], $najlepszy['pokrycie_nazw'])) {
                 $najlepszy = [
-                    'nowy'          => !($ju >= self::PROG || $jn >= self::PROG),
+                    'nowy'          => !self::dopasowane($pu, $pn),
                     'import_id'     => (int) $w['id'],
-                    'jaccard_uuid'  => $ju,
-                    'jaccard_nazwy' => $jn,
+                    'pokrycie_uuid' => $pu,
+                    'pokrycie_nazw' => $pn,
                 ];
             }
         }
@@ -92,6 +101,12 @@ final class ProfilAnalityka
             $najlepszy['import_id'] = null;
         }
         return $najlepszy;
+    }
+
+    /** Czy dwa odciski to ten sam profil: pokrycie UUID albo — zapasowo — nazw ≥ próg. */
+    public static function dopasowane(float $pokrycieUuid, float $pokrycieNazw): bool
+    {
+        return $pokrycieUuid >= self::PROG || $pokrycieNazw >= self::PROG;
     }
 
     /** Zapis oceny w `imports` (migracja 019). */

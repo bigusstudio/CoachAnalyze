@@ -14,8 +14,8 @@ declare(strict_types=1);
  *      (`Upload::sha256Zdarzen`, bliźniak `parse.sha256_zdarzen`),
  *   3. przepuszcza każdy mecz przez `coachanalyze build` do katalogu
  *      tymczasowego (raport v21, meta) — baza nie jest dotykana,
- *   4. grupuje mecze w profile analityka (Jaccard UUID albo nazw ≥ 0,8,
- *      `ProfilAnalityka`) i drukuje tabelę.
+ *   4. grupuje mecze w profile analityka (pokrycie mniejszego zbioru UUID
+ *      albo nazw ≥ 0,8 przy min. 5 elementach, `ProfilAnalityka`) i drukuje tabelę.
  *
  * WYJŚCIE BEZ NAZWISK I TREŚCI KOMENTARZY: mecz to skrót zdarzeń i nazwy
  * drużyn z kolumny `team`; anomalie — typy i liczby, bez opisów.
@@ -246,7 +246,7 @@ foreach ($mecze as $skrot => $m) {
     ];
 }
 
-// ---------------------------------------------------- profile (Jaccard ≥ 0,8)
+// ------------------------------------ profile (pokrycie mniejszego zbioru ≥ 0,8)
 $profile = [];   // indeks profilu => lista indeksów wierszy
 foreach ($wiersze as $i => $w) {
     if (!isset($w['profil_odcisk'])) {
@@ -256,8 +256,10 @@ foreach ($wiersze as $i => $w) {
     foreach ($profile as $p => $czlonkowie) {
         foreach ($czlonkowie as $inny) {
             $o = $wiersze[$inny]['profil_odcisk'];
-            if (ProfilAnalityka::jaccard($w['profil_odcisk']['uuid'], $o['uuid']) >= ProfilAnalityka::PROG
-                || ProfilAnalityka::jaccard($w['profil_odcisk']['nazwy'], $o['nazwy']) >= ProfilAnalityka::PROG) {
+            if (ProfilAnalityka::dopasowane(
+                ProfilAnalityka::pokrycie($w['profil_odcisk']['uuid'], $o['uuid']),
+                ProfilAnalityka::pokrycie($w['profil_odcisk']['nazwy'], $o['nazwy'])
+            )) {
                 $przydzial = $p;
                 break 2;
             }

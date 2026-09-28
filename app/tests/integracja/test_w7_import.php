@@ -140,8 +140,14 @@ check('import sprzed W7 (bez skrótu) dopasowany po skrócie pliku',
 // ============================================================ D profil analityka
 echo "\n== D: profil analityka ==\n";
 
-check('Jaccard', ProfilAnalityka::jaccard(['a', 'b', 'c'], ['b', 'c', 'd']) === 0.5);
-check('Jaccard dwóch pustych = 0 (nic nie wiadomo)', ProfilAnalityka::jaccard([], []) === 0.0);
+$p5 = ['a', 'b', 'c', 'd', 'e'];
+check('pokrycie mniejszego zbioru: 5 z 5 zawartych w 8 = 1,0',
+    ProfilAnalityka::pokrycie($p5, array_merge($p5, ['f', 'g', 'h'])) === 1.0);
+check('pokrycie 4 z 5 = 0,8 (próg włącznie)', ProfilAnalityka::pokrycie($p5, ['a', 'b', 'c', 'd', 'x', 'y']) === 0.8
+    && ProfilAnalityka::dopasowane(0.8, 0.0));
+check('mniejszy zbiór < 5 elementów — pokrycie 0 (za mało, żeby orzec)',
+    ProfilAnalityka::pokrycie(['a', 'b', 'c', 'd'], $p5) === 0.0);
+check('dwa puste = 0 (nic nie wiadomo)', ProfilAnalityka::pokrycie([], []) === 0.0);
 check('normalizacja nazw jak w silniku (kropki, wielkość liter, spacje)',
     NazwaZmiennej::klucz(' 1x1  DEF. ') === NazwaZmiennej::klucz('1x1 def')
     && NazwaZmiennej::klucz('SBZ PODAJĄCY/OTRZYMUJĄCY') !== NazwaZmiennej::klucz('SBZ PODAJĄCY'));
@@ -154,14 +160,29 @@ $profilStary = ['uuid' => array_map($uuid, range(1, 10)), 'nazwy' => $nazwy10,
 Db::run('UPDATE imports SET profil_json = :p WHERE id = :id', ['p' => json_encode($profilStary), 'id' => $impA]);
 
 $impB = Imports::create(1, $c, null, 'x', 1, 'y');
-// 7 z 10 UUID wspólnych (Jaccard 7/13 ≈ 0,54 < 0,8), ale NAZWY te same — stara Pogoń.
+// 7 z 10 UUID wspólnych (pokrycie 0,7 < 0,8), ale NAZWY te same — dopasowanie zapasowe.
 Db::run('UPDATE imports SET profil_json = :p WHERE id = :id', ['p' => json_encode([
     'uuid' => array_merge(array_map($uuid, range(1, 7)), array_map($uuid, range(51, 53))),
     'nazwy' => $nazwy10, 'nazwa_uuid' => []]), 'id' => $impB]);
 $ocena = ProfilAnalityka::ocen($impB);
 check('profil znany zapasowo po nazwach, choć UUID < 0,8',
     $ocena !== null && $ocena['nowy'] === false && $ocena['import_id'] === $impA
-    && $ocena['jaccard_uuid'] < 0.8 && $ocena['jaccard_nazwy'] === 1.0, json_encode($ocena));
+    && $ocena['pokrycie_uuid'] < 0.8 && $ocena['pokrycie_nazw'] === 1.0, json_encode($ocena));
+
+// Stara Pogoń: 11 tagów, wszystkie UUID w nowym profilu z 16 — dokładanie tagów
+// nie robi z analityka „nowego profilu" (Jaccard dawał tu 0,69).
+$impPogon = Imports::create(1, $c, null, 'xp', 1, 'yp');
+Db::run('UPDATE imports SET profil_json = :p WHERE id = :id', ['p' => json_encode([
+    'uuid' => array_merge(array_map($uuid, range(1, 10)), array_map($uuid, range(61, 66))),
+    'nazwy' => ['inne'], 'nazwa_uuid' => []]), 'id' => $impPogon]);
+$impStara = Imports::create(1, $c, null, 'xs', 1, 'ys');
+Db::run('UPDATE imports SET profil_json = :p WHERE id = :id', ['p' => json_encode([
+    'uuid' => array_merge(array_map($uuid, range(1, 10)), [$uuid(61)]),
+    'nazwy' => ['stare'], 'nazwa_uuid' => []]), 'id' => $impStara]);
+$ocenaStara = ProfilAnalityka::ocen($impStara);
+check('stara Pogoń (11 ⊂ 16 UUID) = znany profil',
+    $ocenaStara !== null && $ocenaStara['nowy'] === false && $ocenaStara['pokrycie_uuid'] === 1.0,
+    json_encode($ocenaStara));
 
 $impC = Imports::create(1, $c, null, 'x2', 1, 'y2');
 Db::run('UPDATE imports SET profil_json = :p WHERE id = :id', ['p' => json_encode([
