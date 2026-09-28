@@ -519,6 +519,104 @@ wykryte w danych, a wszystkie zdarzenia mają `team_side: "none"`.
 
 ---
 
+## Metoda importu v3 (W7, silnik 0.17.0)
+
+Każdy eksport pokazany w całości, znaczenia bez zgadywania, bez AI. Moduły:
+`sources/livetag/projekt.py` (plik JSON), `znaczenie.py`, `plik.py` (warstwa 1),
+`kontrola.py` (anomalie, niezmienniki), `metoda.py` (kolejność kroków, wspólna
+dla `build` i `inspect`).
+
+### Plik projektu (`--json`)
+
+Oprócz palety silnik czyta z `dependencies[]`: tagi (`uuid`, `name`,
+`params.cm`, `params.activation_tags`, `params.deactivation_tags`,
+`time_before`), drużyny, etykiety, zawodników. UUID w powiązaniach zamieniane
+na nazwy; UUID bez definicji → anomalia `nieznany_uuid`.
+
+### xG w komentarzu — kształt
+
+Cały komentarz: przedrostek 1–3 liter (`xG`, `x`, `X`, `Xg`, `XG`, także
+polskie litery), opcjonalnie `:` albo `=`, liczba z przecinkiem albo kropką.
+Wartość spoza 0..1 NIE jest xG — trafia do anomalii `xg_poza_zakresem`.
+„3 zawodników w polu karnym" i „5 minut" nie są xG (do 0.16 parser brał
+pierwszą liczbę z dowolnego komentarza).
+
+### Znaczenie tagu — kolejność
+
+1. Słownik klubu: zmienna templatu z `canon` (albo samą `side`), dopasowana po
+   `variables[].uuids` (UUID tagu z pliku), zapasowo po nazwie znormalizowanej
+   (nazwa główna i `aliases`). Zmienna z `canon: null` bez `side` to ślad
+   importu, nie decyzja — nie blokuje reguł 2–3.
+2. xG w komentarzu → `shot`.
+3. Nazwa po normalizacji (`znaczenie.normalizuj`: casefold, łączniki i kropki
+   jako spacje, jedna spacja) + `config/aliasy.json`. Równość całej nazwy.
+4. Brak → tag bez interpretacji; dane zostają w warstwie 1.
+
+Znaczenie trafia:
+- do modelu kanonicznego jako reguła tam, gdzie profil nie ma pojęcia
+  (`canon.profil_meczu`) — nigdy nad pojęciem nadanym wprost ani nad „nie
+  analizuj" z kreatora;
+- do szablonu v21 jako ALIAS tagu wbudowanego w `__VARS_TEMPLATU__`
+  (`Strzał` → alias `STRZAŁ`, `GOL` → alias `Gol`). `DATA` zostaje pod
+  surową nazwą.
+
+Pojęcia Słownika poza `canon.CONCEPTS` (`goal`, `possession`, `pass`,
+`zone_entry`, `defensive_action`) nie są metrykami archiwum; Przegląd v21
+pokazuje je jako kafle.
+
+**`variables[].side`** (`us` / `them`) — strona tagu drużynowego (posiadanie).
+Stosowana do zdarzeń z pustą albo nierozpoznaną kolumną `team`. Drużyny NIGDY
+nie wywodzimy z nazwy tagu. **`variables[].uuids`** — UUID tagu z plików klubu
+(zapisuje panel przy zapisie Słownika).
+
+### Gol
+
+Drużyna gola ZAWSZE ze strzału (tagi o znaczeniu `goal` / `shot`), także gdy
+kolumna `team` przy golu jest wypełniona. Strzał: najbliższy WCZEŚNIEJSZY albo
+równoczesny w chwili kliknięcia (`begin` + `time_before` z pliku projektu,
+tolerancja 1 s), w oknie 30 s. Bez pliku projektu — najbliższy w czasie, jak
+do 0.16. Gol bez strzału w oknie nie ma drużyny (`team: null`,
+`team_side: none`) i jest anomalią. Szablon v21 nie przypisuje goli drugi raz
+(`PLIK.gole_z_silnika`).
+
+### Nowe wejście `config.json`
+
+| Klucz | Znaczenie |
+|---|---|
+| `match.score` | `{us, them}` — wynik wpisany ręcznie (strona tenanta / rywala). Raport pokazuje go, gdy eksport nie ma tagu gola |
+| `profil` | `{nowy: bool, ...}` — ocena profilu analityka przez panel. `nowy: true` = baner „Nowy układ tagów…" |
+| `znane_druzyny` | nazwy klubów znanych panelowi — do anomalii „drużyna spoza meczu w nazwie tagu" |
+
+### Nowe klucze `meta.json` (`build` i `inspect`)
+
+| Klucz | Znaczenie |
+|---|---|
+| `sha256_zdarzen` | skrót zbioru wierszy niezależny od kolejności (`parse.sha256_zdarzen`); bliźniak PHP: `Upload::sha256Zdarzen` |
+| `wersja_livetag` | `software.version` z pliku projektu albo `null` |
+| `profil` | `{uuid: [..], nazwy: [znormalizowane], nazwa_uuid: {tag: uuid}}` — odcisk profilu analityka |
+| `znaczenia` | `{tag: {pojecie, kwalifikatory, strona, zrodlo, klucz}}`; `zrodlo` ∈ `slownik`/`xg`/`nazwa`/`null` |
+| `nierozpoznane` | tagi bez pojęcia i bez strony |
+| `wynik_strzalu` · `gol_w_eksporcie` | czy eksport niesie etykiety wyniku strzału / tag gola |
+| `anomalie` | `[{typ, opis, count, …}]`: `gol_inna_druzyna_niz_strzal`, `gol_bez_druzyny`, `gol_bez_strzalu`, `trzecia_druzyna`, `druzyna_w_nazwie_tagu`, `xg_poza_zakresem`, `xg_zmienia_znaczenie`, `nieznany_uuid`. Opisy bez nazwisk i treści komentarzy |
+| `niezmienniki` · `niezmienniki_ok` | `[{kod, ok, opis}]`: `wiersze_warstwa1`, `tagi_warstwa1`, `wiersze_zdarzenia`*, `zawodnicy`*, `xg`, `kierunek` (* tylko `build`) |
+
+### Warstwa 1 — `__PLIK__` (v21)
+
+Sekcja `#sec-plik` „Wszystkie tagi z pliku" jest w KAŻDYM raporcie v21,
+celowo bez `data-widget`: Układ raportu i wycinanie sekcji jej nie dotyczą.
+`__PLIK__` to literał obiektu (`plik.zbuduj` + fakty W7): tagi pod nazwą
+z pliku z liczbą na drużynę z kolumny `team` (w kolejności `druzyny`),
+`bez`, połowy, etykiety, xG, pozycje (układ po odbiciu), czas i udział
+w nagraniu dla tagów `cm`; etykiety, zawodnicy, pary aktywacji (`n` par
+z `z` zdarzeń A), dezaktywacje, tagi i etykiety bez zdarzeń.
+Nazwiska — jak w `DATA`: tylko z kafelkiem Zawodnicy w Układzie; bez niego
+`zawodnicy_ukryci` niesie liczbę. v17 nie ma tego znacznika (test złoty).
+
+Banery W7 w `__BANER_NIEWLICZONE__`: `data-baner="profil"` (nowy profil)
+i `data-baner="niezmienniki"` (naruszenie niezmiennika).
+
+---
+
 ## Wejście — `config.json`
 
 ```json

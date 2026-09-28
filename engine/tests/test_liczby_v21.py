@@ -91,9 +91,16 @@ def test_pressing_akcja_w_jednym_kubelku():
 
 
 def test_szablon_pokazuje_kreske_przy_braku_tagu():
-    """Wyświetlanie: KPI i nagłówek biorą „–” z `DOST`, a fakt xG → gole znika."""
+    """Wyświetlanie: nagłówek bierze „–” z `DOST`, a fakt xG → gole znika.
+
+    W7 E: Przegląd nie pokazuje już kafli z „–" — pojęcie nieobecne idzie do
+    jednej linii „nie występuje w tym eksporcie" (`dodaj`). Wynik meczu bez
+    tagu gola to „brak w eksporcie", nie kreska ani 0:0 (`wynikMeczu`).
+    """
     szablon = render.load_template(render.template_path_for("v21"))
-    assert "k('Gole',h.gole,p.gole,undefined,DOST.strzaly)" in szablon
-    assert "${DOST.strzaly?h.gole:KRESKA}" in szablon
+    assert "dodaj(DOST.gole, k('Gole',h.gole,p.gole), 'gole');" in szablon
+    assert "Nie występuje w tym eksporcie:" in szablon
+    assert "if(DOST.gole) return" in szablon and "brak w eksporcie" in szablon
+    assert "${DOST.strzaly?h.strzaly:KRESKA} strzałów" in szablon
     assert "if(DOST.strzaly)push(" in szablon
     assert "const KRESKA = '–';" in szablon

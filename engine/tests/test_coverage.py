@@ -24,6 +24,13 @@ KLUCZE_META = {
     "direction", "mirrored",
 }
 
+# W7 (metoda importu v3): klucze dokładane przez `metoda.meta_w7` w `build`
+# i `inspect` — rozszerzenie kontraktu, nic nie zostało usunięte.
+KLUCZE_META_W7 = {
+    "sha256_zdarzen", "wersja_livetag", "profil", "znaczenia", "nierozpoznane",
+    "wynik_strzalu", "gol_w_eksporcie", "anomalie", "niezmienniki", "niezmienniki_ok",
+}
+
 KLUCZE_COVERAGE = {
     "events", "unanalysed", "shots", "duels", "sbz", "sbz_with_vector", "third",
     "third_pos", "teams", "no_team", "xg_parsed", "xg_missing", "xg_sum",
@@ -176,7 +183,7 @@ def test_inspect_zapisuje_out_meta(write_csv, row, tmp_path, capsys):
     assert kod == 0
     zapisane = json.loads(sciezka.read_text(encoding="utf-8"))
     assert zapisane["engine_version"]
-    assert set(zapisane) == KLUCZE_META
+    assert set(zapisane) == KLUCZE_META | KLUCZE_META_W7
 
 
 def test_inspect_zwraca_wykryte_nazwy_druzyn(write_csv, row, capsys):

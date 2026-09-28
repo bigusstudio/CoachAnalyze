@@ -62,49 +62,79 @@ def minuta(sekundy, half):
     return m
 
 
-def atrybucja_goli(events):
+# Tolerancja „równocześnie" przy porównaniu momentów kliknięcia. Gol i strzał
+# tej samej akcji analityk klika w tej samej chwili; moment liczony z `begin`
+# i okna taga (`time_before`) ma zaokrąglenia rzędu setnych sekundy.
+TOLERANCJA_MOMENTU_S = 1.0
+
+
+def _moment(e, przesuniecia):
+    """Chwila kliknięcia taga: `begin` + `time_before` z pliku projektu."""
+    return e["b"] + (przesuniecia or {}).get(e.get("tag"), 0.0)
+
+
+def przypisz_gole(events, tagi_goli=(TAG_GOL,), tagi_strzalow=(TAG_STRZAL,), przesuniecia=None):
+    """{indeks gola: indeks strzału albo None}.
+
+    ═══════════════════════════════════════════════════════════════════════════
+    DRUŻYNA GOLA ZAWSZE ZE STRZAŁU — takze gdy kolumna `team` przy golu jest
+    wypełniona. W eksporcie Naprzód – Pogoń 2 z 3 goli mają w wierszu POGOŃ,
+    a strzał, który je dał, należy do NAPRZODU. Rozbieżność to anomalia
+    (`kontrola.anomalie`), a nie powód, żeby zaufać wierszowi gola.
+    ═══════════════════════════════════════════════════════════════════════════
+
+    KTÓRY STRZAŁ: najbliższy WCZEŚNIEJSZY (albo równoczesny) w chwili
+    kliknięcia, w oknie `OKNO_GOLA_S`. Chwila kliknięcia to `begin` + okno taga
+    przed kliknięciem (`time_before` z pliku projektu): gol ma zwykle dłuższe
+    okno niż strzał, więc jego `begin` wypada PRZED `begin` strzału tej samej
+    akcji (w korpusie o 2 s), choć kliknięty był razem z nim. Porównanie
+    samych `begin` wybrałoby strzał sprzed kilku minut, zwykle rywala.
+
+    BEZ PLIKU PROJEKTU (`przesuniecia` puste) okna taga nie znamy — wtedy
+    najbliższy strzał w czasie, w obie strony, jak do 0.16.
+
+    Gol bez strzału w oknie dostaje `None`: nie ma drużyny i trafia do anomalii.
+    """
+    tagi_goli, tagi_strzalow = set(tagi_goli), set(tagi_strzalow)
+    strzaly = [i for i, e in enumerate(events)
+               if e.get("tag") in tagi_strzalow and e.get("b") is not None]
+    wynik = {}
+    for idx, gol in enumerate(events):
+        if gol.get("tag") not in tagi_goli:
+            continue
+        if gol.get("b") is None or not strzaly:
+            wynik[idx] = None
+            continue
+        if przesuniecia:
+            m_gola = _moment(gol, przesuniecia)
+            kandydaci = [
+                s for s in strzaly
+                if -TOLERANCJA_MOMENTU_S <= m_gola - _moment(events[s], przesuniecia) <= OKNO_GOLA_S
+            ]
+            wynik[idx] = max(kandydaci, key=lambda s: _moment(events[s], przesuniecia)) if kandydaci else None
+        else:
+            najblizszy = min(strzaly, key=lambda s: abs(events[s]["b"] - gol["b"]))
+            wynik[idx] = najblizszy if abs(events[najblizszy]["b"] - gol["b"]) <= OKNO_GOLA_S else None
+    return wynik
+
+
+def atrybucja_goli(events, tagi_goli=(TAG_GOL,), tagi_strzalow=(TAG_STRZAL,), przesuniecia=None):
     """(indeksy strzałów będących golem, {indeks gola: drużyna ze strzału}).
-
-    ═══════════════════════════════════════════════════════════════════════════
-    `team_uuid` PRZY GOLU W EKSPORCIE BYWA BŁĘDNY — to nie jest podejrzenie,
-    tylko obserwacja z danych klienta. Dlatego drużyny gola NIE bierzemy z jego
-    własnego wiersza, tylko ze STRZAŁU najbliższego w czasie.
-    ═══════════════════════════════════════════════════════════════════════════
-
-    Szablon raportu robi dokładnie to samo, w JS, przy wczytaniu danych. Ta
-    funkcja jest jego odpowiednikiem po stronie silnika i musi dawać ten sam
-    wynik — inaczej raport i tabela rozjadą się na wyniku meczu, czyli na
-    jedynej liczbie, którą każdy sprawdza najpierw.
 
     Wynik: strzał dostaje `is_goal = 1`, a WIERSZ GOLA ZOSTAJE, ze skorygowaną
     drużyną. Nie sklejamy ich w jedno zdarzenie: gol jest osobnym tagiem
     analityka i skasowanie go zmieniłoby sumę zdarzeń w meczu.
 
-    Gol bez żadnego strzału w oknie zostaje z drużyną z własnego wiersza —
-    zgadywanie na podstawie strzału sprzed trzech minut byłoby gorsze niż
-    wartość, którą i tak mamy.
+    OD W7 GOL BEZ STRZAŁU W OKNIE NIE MA DRUŻYNY (`None` w słowniku) — dotąd
+    zostawał przy drużynie z własnego wiersza, czyli z pola, które bywa błędne.
+    Który strzał — `przypisz_gole`.
     """
-    strzaly = [i for i, e in enumerate(events) if e.get("tag") == TAG_STRZAL
-               and e.get("b") is not None]
-    gole_indeksy = [i for i, e in enumerate(events) if e.get("tag") == TAG_GOL]
-
-    strzaly_z_golem = set()
-    druzyna_gola = {}
-
-    for idx in gole_indeksy:
-        czas = events[idx].get("b")
-        if czas is None or not strzaly:
-            continue
-
-        najblizszy = min(strzaly, key=lambda s: abs(events[s]["b"] - czas))
-        if abs(events[najblizszy]["b"] - czas) > OKNO_GOLA_S:
-            continue
-
-        strzaly_z_golem.add(najblizszy)
-        team = events[najblizszy].get("team")
-        if team is not None:
-            druzyna_gola[idx] = team
-
+    przypisanie = przypisz_gole(events, tagi_goli, tagi_strzalow, przesuniecia)
+    strzaly_z_golem = {s for s in przypisanie.values() if s is not None}
+    druzyna_gola = {
+        g: (events[s].get("team") if s is not None else None)
+        for g, s in przypisanie.items()
+    }
     return strzaly_z_golem, druzyna_gola
 
 
@@ -124,7 +154,8 @@ def strona_druzyny(raw_team, lookup):
     return lookup.get(_norm_team(raw_team), "none")
 
 
-def build(frame, config=None, players=None):
+def build(frame, config=None, players=None, tagi_goli=(TAG_GOL,), tagi_strzalow=(TAG_STRZAL,),
+          przesuniecia=None):
     """Wiersze do tabeli `events`. Kolejność jak w eksporcie.
 
     `xg_source` to `analyst` przy każdym xG, bo ramka renderu niesie wyłącznie
@@ -142,7 +173,7 @@ def build(frame, config=None, players=None):
     markery = ((config or {}).get("team_us_rule") or {}).get("markers")
     lookup = build_team_lookup(teams, markery)
 
-    strzaly_z_golem, druzyna_gola = atrybucja_goli(events)
+    strzaly_z_golem, druzyna_gola = atrybucja_goli(events, tagi_goli, tagi_strzalow, przesuniecia)
     players = players or frame.get("players") or []
 
     wiersze = []
@@ -154,8 +185,9 @@ def build(frame, config=None, players=None):
             bez_czasu += 1
             continue
 
-        # Drużyna gola ze strzału — patrz `atrybucja_goli`.
-        raw_team = druzyna_gola.get(i, e.get("team"))
+        # Drużyna gola ze strzału — patrz `atrybucja_goli`. Gol bez strzału
+        # w oknie ma `None` w słowniku, a nie drużynę z własnego wiersza.
+        raw_team = druzyna_gola[i] if i in druzyna_gola else e.get("team")
         koniec = e.get("e")
         zawodnik = players[i] if i < len(players) else None
         xg = e.get("xg")

@@ -135,6 +135,7 @@ def test_render_nie_zmienia_niczego_poza_placeholderami(generacja):
     slots.update(render.progi_slot())
     slots.update(render.vars_slot(templat))
     slots.update(render.roster_slot(config))
+    slots.update(render.plik_slot(None, None, config))
     # Malejąco po długości wstawionej wartości — krótsza nie może zjeść fragmentu dłuższej.
     for placeholder in sorted(slots, key=lambda p: len(slots[p]), reverse=True):
         odwrocone = odwrocone.replace(slots[placeholder], placeholder)

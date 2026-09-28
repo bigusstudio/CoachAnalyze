@@ -8,7 +8,7 @@ import json
 import sys
 
 from . import (__version__, canon, coverage, direction as direction_mod,
-               events as events_mod, metrics, render, report_template)
+               events as events_mod, metoda, metrics, render, report_template)
 from .errors import EngineError, MissingColumns
 from .sources.livetag import parse
 
@@ -100,7 +100,7 @@ def write_canon(path, canon_result, config, expected_count):
     return payload
 
 
-def ustal_kierunek(frame, config, templat):
+def ustal_kierunek(frame, config, templat, znaczenia=None):
     """(kierunek, ramka do renderu, czy odbito).
 
     Kierunek liczy się RAZ, na oryginalnej ramce, i ta sama odpowiedź obsługuje
@@ -119,10 +119,7 @@ def ustal_kierunek(frame, config, templat):
     # porządek pierwszeństwa (templat wygrywa z profilem kreatora) i ta sama
     # funkcja dopasowania nazw. Druga, „prawie taka sama" ścieżka dałaby kierunek
     # liczony na innym podziale drużyn niż reszta raportu.
-    z_templatu = report_template.mapping_profile(templat)
-    profil = canon.resolve_profile(
-        z_templatu if z_templatu is not None else config.get("mapping_profile")
-    )
+    _, profil = canon.profil_meczu(config.get("mapping_profile"), templat, znaczenia)
     lookup = canon.build_team_lookup(
         config.get("teams"), report_template.team_markers(templat)
     )
@@ -141,7 +138,7 @@ def ustal_kierunek(frame, config, templat):
     return kierunek, (direction_mod.odbij_ramke(frame) if odbic else frame), odbic
 
 
-def write_events(path, frame, config):
+def write_events(path, frame, config, stan=None):
     """Wiersze tabeli `events` — artefakt dla warstwy PHP.
 
     Powstaje PRZED renderem, tak samo jak `--out-canon`: awaria szablonu nie może
@@ -151,7 +148,7 @@ def write_events(path, frame, config):
     wraca w `skipped_no_time` i na stderr. Cicha utrata zdarzenia przy imporcie
     ujawniłaby się dopiero przy porównaniu z raportem, miesiące później.
     """
-    wynik = events_mod.build(frame, config=config, players=frame.get("players"))
+    wynik = zdarzenia_tabeli(frame, config, stan)
 
     if wynik["skipped_no_time"]:
         print(
@@ -171,6 +168,17 @@ def write_events(path, frame, config):
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(payload, fh, ensure_ascii=False, indent=1)
     return payload
+
+
+def zdarzenia_tabeli(frame, config, stan=None):
+    """Wiersze tabeli `events`. Gole i strzały PO ZNACZENIU (W7), nie po nazwie."""
+    stan = stan or {}
+    return events_mod.build(
+        frame, config=config, players=frame.get("players"),
+        tagi_goli=stan.get("tagi_goli") or (events_mod.TAG_GOL,),
+        tagi_strzalow=stan.get("tagi_strzalow") or (events_mod.TAG_STRZAL,),
+        przesuniecia=stan.get("przesuniecia") or None,
+    )
 
 
 def write_json(path, payload, indent=1):
@@ -264,18 +272,24 @@ def cmd_build(args) -> int:
         # „wylaczona" — templat sprzed ich istnienia nie mial jak ich wymienic.
         config = dict(config, sections=coverage.sekcje_z_templatu(sekcje, templat))
 
+    # METODA IMPORTU v3 (W7): znaczenia tagów bez zgadywania, drużyna gola ze
+    # strzału. `ramka` różni się od `frame` wyłącznie drużyną w wierszach goli;
+    # warstwa 1 i anomalie liczą się z `frame` — z tego, co jest w pliku.
+    ramka, stan = metoda.przygotuj(frame, args.json_path, templat)
+
     canon_result = canon.build(
-        frame,
+        ramka,
         mapping_profile=config.get("mapping_profile"),
         teams=config.get("teams"),
         report_template=templat,
         # Model xG — OPT-IN z konfiguracji (M3). Domyślnie wyłączony: sam fakt
         # istnienia modelu nie może zmienić liczby w żadnym raporcie.
         xg_model=bool((config.get("options") or {}).get("xg_model")),
+        znaczenia=stan["znaczenia"],
     )
     # KIERUNEK ATAKU Z DANYCH (sesja 4a). Liczony PRZED zapisem artefaktów,
     # bo tabela `events` i render mają dostać tę samą, odbitą ramkę.
-    kierunek, frame_widok, odbito = ustal_kierunek(frame, config, templat)
+    kierunek, frame_widok, odbito = ustal_kierunek(ramka, config, templat, stan["znaczenia"])
 
     meta = coverage.build_meta(
         frame, canon_result, config=config,
@@ -296,7 +310,16 @@ def cmd_build(args) -> int:
         # RAMKA PO ODBICIU. Tabela `events` ma JEDEN układ współrzędnych —
         # tenant atakuje w prawo — żeby porównanie sezonowe nie sumowało map
         # z dwóch przeciwnych stron boiska (docs/STAN_PIVOTU.md §7.7 c).
-        write_events(args.out_events, frame_widok, config)
+        wiersze = write_events(args.out_events, frame_widok, config, stan)["events"]
+    else:
+        wiersze = zdarzenia_tabeli(frame_widok, config, stan)["events"]
+
+    # W7: anomalie importu, niezmienniki i dane warstwy 1 („Wszystkie tagi
+    # z pliku"). Z ramki ORYGINALNEJ; pozycje mapy z ramki po odbiciu.
+    klucze_w7, warstwa1 = metoda.meta_w7(
+        frame, stan, config=config, template=templat, frame_widok=frame_widok,
+        wiersze_zdarzen=wiersze, direction=kierunek)
+    meta.update(klucze_w7)
 
     # CO ZNIKA Z RAPORTU — dwie rozne rzeczy, jedna lista.
     #
@@ -327,6 +350,7 @@ def cmd_build(args) -> int:
         direction=kierunek, mirrored=odbito,
         # Progi faktow Przegladu: globalne z pliku, nadpisane przez templat klubu.
         report_template=templat,
+        warstwa1=warstwa1, w7=klucze_w7, znaczenia=stan["znaczenia"],
     )
     render.write(args.out_html, html)
     log_render(report)
@@ -365,13 +389,18 @@ def cmd_inspect(args) -> int:
     """
     frame = parse.prep_frame(args.csv)
     palette = parse.prep_palette(args.json_path) if args.json_path else None
-    canon_result = canon.build(frame)
+    ramka, stan = metoda.przygotuj(frame, args.json_path)
+    canon_result = canon.build(ramka, znaczenia=stan["znaczenia"])
     meta = coverage.build_meta(
         frame,
         canon_result,
         has_json=bool(args.json_path),
         palette=palette,
     )
+    # W7: te same znaczenia, profil i anomalie co w `build` — ekran
+    # przygotowania importu i deduplikacja czytają je stąd.
+    klucze_w7, _ = metoda.meta_w7(frame, stan)
+    meta.update(klucze_w7)
     write_meta(getattr(args, "out_meta", None), meta)
     return 0
 

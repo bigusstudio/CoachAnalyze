@@ -217,6 +217,15 @@ svg text{font-family:'IBM Plex Mono',monospace}
 .tbl td.sum{font-weight:700}
 .tbl td.mut,.tbl th.mut{color:var(--ink3)}
 .tbl tbody tr:last-child td{border-bottom:none}
+/* v30 (W7): warstwa 1 */
+.warstwa1 h3{margin:18px 0 6px;font-size:13px}
+.w1-chips{display:flex;flex-wrap:wrap;gap:6px}
+.w1-chip{background:var(--panel2);border-radius:999px;padding:3px 10px;font-size:12px;color:var(--ink2)}
+.w1-chip b{color:var(--ink);font-family:'IBM Plex Mono',monospace;font-weight:600;margin-left:4px}
+.w1-mapy{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px}
+.w1-mapa{background:var(--panel2);border-radius:10px;padding:8px}
+.w1-mapa h4{margin:0 0 4px;font-size:12px;font-weight:600}
+.w1-zn{color:var(--ink3);font-size:11.5px}
 /* v22: donuty */
 .donuts{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px}
 .donut{display:flex;align-items:center;gap:14px}
@@ -264,7 +273,7 @@ svg text{font-family:'IBM Plex Mono',monospace}
 #hdr2 .crest{width:52px;height:52px;margin:0}
 #hdr2 .club h1{font-size:30px;text-transform:none}#hdr2 .club .sub{font-size:12px;color:var(--ink2)}
 #hdr2 .kicker{width:auto;font-size:11px}
-#hdr2 .score{text-align:center}#hdr2 .score .n{font-family:'Barlow Condensed',sans-serif;font-size:64px;font-weight:800;line-height:1;display:flex;gap:14px;justify-content:center;align-items:center}
+#hdr2 .score{text-align:center}#hdr2 .score .n.brakwyn{font-size:22px;color:var(--ink3);font-weight:600;letter-spacing:.04em}#hdr2 .score .n{font-family:'Barlow Condensed',sans-serif;font-size:64px;font-weight:800;line-height:1;display:flex;gap:14px;justify-content:center;align-items:center}
 #hdr2 .score .n small{font-size:26px;color:var(--ink3);font-weight:500}#hdr2 .score .xg{font-size:12px;color:var(--ink2);margin-top:2px}
 #hdr2 .h{color:var(--team-home)}#hdr2 .p{color:var(--team-away)}
 .race{display:grid;grid-template-columns:52px 1fr 52px;align-items:center;gap:8px;margin-top:8px;font-size:12px;font-weight:600;font-family:'IBM Plex Mono',monospace}
@@ -284,6 +293,8 @@ svg text{font-family:'IBM Plex Mono',monospace}
   .facts{grid-template-columns:1fr}
 }
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(128px,1fr));gap:10px}
+.kpi .pod{font-size:10.5px;color:var(--ink3);margin-top:3px;line-height:1.35}
+.ov-brak{margin:10px 0 0;font-size:12px;color:var(--ink3)}
 .kpi{background:var(--panel2);border-radius:10px;padding:10px 12px}.kpi .l{font-size:10.5px;text-transform:uppercase;letter-spacing:.09em;color:var(--ink2)}
 .kpi .v{font-family:'Barlow Condensed',sans-serif;font-size:30px;font-weight:700;display:flex;gap:8px;align-items:baseline;line-height:1.1}.kpi .v .sep{color:var(--ink3);font-weight:400;font-size:20px}
 .facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
@@ -416,6 +427,15 @@ __BANER_NIEWLICZONE__
   <div class="grid" id="cards"></div>
 </section>
 
+<!-- v30 (W7): WARSTWA 1 — eksport w całości, 1:1. CELOWO BEZ `data-widget`:
+     nie podlega Układowi raportu ani wycinaniu przez silnik (drop_sections,
+     uklad_sekcji znają wyłącznie sekcje z rejestru). Jest w każdym raporcie. -->
+<section id="sec-plik" class="warstwa1">
+  <h2>Wszystkie tagi z pliku</h2>
+  <div class="sub">Eksport LiveTag w całości, pod nazwami z pliku — niezależnie od Słownika klubu i układu raportu. Drużyny z kolumny „team”, bez przypisywania; połowy według przerwy wykrytej w nagraniu.</div>
+  <div id="plik-box"></div>
+</section>
+
 </div>
 <div id="tip"></div>
 
@@ -436,6 +456,10 @@ const PROGI = __PROGI__;
    Pusta tablica znaczy „nie wpisano składu" — i to jest co innego niż „wpisano
    pusty", więc kafelek zawodników mówi to wprost, zamiast pokazywać pustą tabelę. */
 const SKLAD = __SKLAD__;
+/* v30 (W7, metoda importu v3): WARSTWA 1 i fakty importu, policzone przez silnik
+   (`plik.zbuduj`, `metoda.meta_w7`). Szablon ich NIE liczy — wyświetla. */
+const PLIK = __PLIK__;
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const tagCol=t=>PAL.tags[t]||'#9DAFA6';
 const labCol=l=>PAL.labels[l]||'#9DAFA6';
 /* v19: słownik zmiennych. Liczymy po kluczu; `display` to nazwa na raporcie.
@@ -526,9 +550,20 @@ function kluczeMakro(ev, vars){
   return zeSlownika.concat(reszta);
 }
 /*</liczby-v21>*/
-atrybujGole(DATA.events);
+/* W7: drużynę gola ustala silnik (najbliższy wcześniejszy strzał w chwili
+   kliknięcia, `events.przypisz_gole`) — drugi, prostszy przydział tutaj
+   rozjechałby się z tabelą zdarzeń na golu bez strzału w oknie. */
+if(!PLIK.gole_z_silnika) atrybujGole(DATA.events);
 const E = DATA.events, HS = DATA.half_split;
 const DOST = dostepnosc(E);
+/* W7 E/F: czy eksport W OGÓLE niesie gole, wynik strzału i xG. Brak tagu gola
+   to „brak w eksporcie", a nie 0:0; brak etykiet wyniku to mapa bez podziału
+   na celne/niecelne, a nie same „niecelne". */
+DOST.gole=E.some(e=>e.tag==='Gol');
+DOST.wynik=E.some(e=>e.tag==='STRZAŁ'&&['CELNY','NIECELNY','ZABLOKOWANY'].some(l=>e.labels.includes(l)));
+DOST.xg=E.some(e=>e.tag==='STRZAŁ'&&e.xg!=null);
+DOST.str=E.some(e=>e.tag==='STRATA');
+DOST.odbior=E.some(e=>e.tag==='ODBIÓR');
 const KRESKA = '–';
 const HUT='__TEAM_HOME__', POG='__TEAM_AWAY__';
 /* PERSPEKTYWA KLUBU-TENANTA. Od sesji 4a lewy slot (HOME/HUT) to klub, dla którego
@@ -666,6 +701,7 @@ const rXG=xg=>6+Math.sqrt(Math.max(xg||0,0.01))*17;
 function glyph(kind,cx,cy,r,color,attrs=''){
   if(kind==='filled') return `<circle ${attrs} cx="${cx}" cy="${cy}" r="${r}" fill="${color}" fill-opacity=".95" stroke="var(--stroke)" stroke-width="1.5"/>`;
   if(kind==='ring')   return `<circle ${attrs} cx="${cx}" cy="${cy}" r="${r-1.5}" fill="${color}" fill-opacity=".07" stroke="${color}" stroke-width="3"/>`;
+  if(kind==='plain')  return `<circle ${attrs} cx="${cx}" cy="${cy}" r="${r*0.8}" fill="${color}" fill-opacity=".55" stroke="${color}" stroke-width="1.5"/>`;
   if(kind==='diamond')return `<rect ${attrs} x="${cx-r*0.85}" y="${cy-r*0.85}" width="${r*1.7}" height="${r*1.7}" transform="rotate(45 ${cx} ${cy})" fill="${color}" fill-opacity=".28" stroke="${color}" stroke-width="2.5" stroke-linejoin="round"/>`;
 }
 function legendGlyph(kind,color){
@@ -714,13 +750,15 @@ function mcIII(){
   return E.filter(e=>e.tag==='III STREFA'&&inSet(MC.qs,e)&&MC.teams.has(e.team)&&MC.ist.has(istOf(e)));
 }
 /* zakresy: QRANGES + inSet/envQ (globalne) */
-const outcomeOf=e=>has(e,'CELNY')?'CELNY':has(e,'ZABLOKOWANY')?'ZABLOKOWANY':'NIECELNY';
-const kindOf=o=>o==='CELNY'?'filled':o==='ZABLOKOWANY'?'diamond':'ring';
+const outcomeOf=e=>!DOST.wynik?'BRAK':has(e,'CELNY')?'CELNY':has(e,'ZABLOKOWANY')?'ZABLOKOWANY':'NIECELNY';
+const kindOf=o=>o==='CELNY'?'filled':o==='ZABLOKOWANY'?'diamond':o==='BRAK'?'plain':'ring';
+/* W7 F: filtr wyniku nie dotyczy eksportu, który wyniku strzału nie niesie. */
+const outOk=e=>!DOST.wynik||MC.outs.has(outcomeOf(e));
 const col=t=>t===HUT?'var(--team-home)':'var(--team-away)';
 const tName=t=>t===HUT?'__TEAM_HOME_LABEL__':'__TEAM_AWAY_LABEL__';
 
 function mcShots(){
-  return shots.filter(e=>e.x!=null&&inSet(MC.qs,e)&&MC.teams.has(e.team)&&MC.outs.has(outcomeOf(e)));
+  return shots.filter(e=>e.x!=null&&inSet(MC.qs,e)&&MC.teams.has(e.team)&&outOk(e));
 }
 function mcShotsCtx(){
   return shots.filter(e=>e.x!=null&&inSet(MC.qs,e)&&MC.teams.has(e.team)&&ctxOf(e)&&MC.ctx.has(ctxOf(e)));
@@ -812,6 +850,15 @@ const goalOf=e=>e.tag==='STRZAŁ'&&E.some(g=>g.tag==='Gol'&&g.team===e.team&&Mat
 const metaCzesc=(etykieta,wartosc)=>{const w=(wartosc||'').trim();return w?(etykieta?etykieta+' '+w:w):'';};
 const metaLinia=(...czesci)=>czesci.filter(Boolean).join(' · ');
 const hdrTip=e=>`class="pt" data-tip="<b>${e.tag}</b><div class='t'>${e.team?tName(e.team)+' · ':''}${mmss(e.b)}${e.labels.length?'<br>'+e.labels.join(', '):''}</div>"`;
+/* W7 F: WYNIK MECZU. Z tagów gola, gdy eksport je niesie; bez nich — wynik
+   wpisany ręcznie na karcie meczu, a bez niego napis „brak w eksporcie".
+   NIGDY 0:0 z braku danych: dwa zera wyglądają jak wynik, a są niewiedzą. */
+function wynikMeczu(h,p){
+  if(DOST.gole) return `<div class="n"><span class="h">${h.gole}</span><small>:</small><span class="p">${p.gole}</span></div>`;
+  const r=PLIK.wynik_reczny;
+  if(r) return `<div class="n"><span class="h">${r.us}</span><small>:</small><span class="p">${r.them}</span></div><div class="xg">wynik wpisany ręcznie — eksport nie zawiera tagu gola</div>`;
+  return `<div class="n brakwyn">brak w eksporcie</div><div class="xg tylko-analityk">wynik: wpisz ręcznie na karcie meczu</div>`;
+}
 function renderHeader2(){
   const A=ovStats(E),h=A[HUT],p=A[POG],tot=h.xg+p.xg||1;
   const Wd=1200,X=b=>Math.min(1,b/TEND0)*Wd,shots=E.filter(e=>e.tag==='STRZAŁ'),sbz=E.filter(e=>e.tag==='ZDOBYCIE SBZ');
@@ -822,19 +869,68 @@ function renderHeader2(){
   shots.forEach(e=>{const y=e.team===HUT?30:52,r=3+Math.sqrt(e.xg||0.01)*12;if(goalOf(e))st+=`<circle cx="${X(e.b)}" cy="${y}" r="${r+6}" fill="none" stroke="${col(e.team)}" stroke-width="2.5" stroke-dasharray="3 3"/>`;st+=glyph(kindOf(outcomeOf(e)),X(e.b),y,r,col(e.team),shotTip(e));});
   document.getElementById('hdr2').innerHTML=`
    <div class="club"><span class="crest hutc"><img src="__LOGO_HOME__" alt=""></span><div><div class="kicker">__TEAM_HOME_SHORT__</div><h1 class="h">__TEAM_HOME_LABEL__</h1><div class="sub">${DOST.strzaly?h.strzaly:KRESKA} strzałów · ${DOST.sbz?h.sbz:KRESKA} wejść w SBZ</div></div></div>
-   <div class="score"><div class="kicker">${metaLinia('Raport pomeczowy',metaCzesc('sezon','__SEZON__'),metaCzesc('kolejka','__KOLEJKA__'),metaCzesc('','__DATA_MECZU__'))}</div><div class="n"><span class="h">${DOST.strzaly?h.gole:KRESKA}</span><small>:</small><span class="p">${DOST.strzaly?p.gole:KRESKA}</span></div>
+   <div class="score"><div class="kicker">${metaLinia('Raport pomeczowy',metaCzesc('sezon','__SEZON__'),metaCzesc('kolejka','__KOLEJKA__'),metaCzesc('','__DATA_MECZU__'))}</div>${wynikMeczu(h,p)}
      <div class="xg">xG <b class="h">${DOST.strzaly?fmt(h.xg,2):KRESKA}</b> · <b class="p">${DOST.strzaly?fmt(p.xg,2):KRESKA}</b></div>
      <div class="race"><span class="h">${DOST.strzaly?fmt(h.xg,2):KRESKA}</span><div class="t"><i class="a" style="width:${DOST.strzaly?h.xg/tot*100:0}%"></i><i class="b" style="width:${DOST.strzaly?p.xg/tot*100:0}%"></i></div><span class="p" style="text-align:right">${DOST.strzaly?fmt(p.xg,2):KRESKA}</span></div></div>
    <div class="club r"><div><div class="kicker">__TEAM_AWAY_SHORT__</div><h1 class="p">__TEAM_AWAY_LABEL__</h1><div class="sub">${DOST.strzaly?p.strzaly:KRESKA} strzałów · ${DOST.sbz?p.sbz:KRESKA} wejść w SBZ</div></div><span class="crest pogc"><img src="__LOGO_AWAY__" alt=""></span></div>
    <div class="strip">${st}</svg></div>`;
 }
 function mcLabel(){const q=MC.qs,all=ALLQ.every(x=>q.has(x));if(all)return 'CAŁY MECZ';if(['q1','q2','q3'].every(x=>q.has(x))&&!['q4','q5','q6'].some(x=>q.has(x)))return 'I POŁOWA';if(['q4','q5','q6'].every(x=>q.has(x))&&!['q1','q2','q3'].some(x=>q.has(x)))return 'II POŁOWA';return ALLQ.filter(x=>q.has(x)).map(x=>QLBL[x]).join(' · ');}
+/* W7 E: kafle pojęć spoza tagów wbudowanych szablonu — ze znaczeń silnika.
+   Liczone po tagach Z PLIKU (`PLIK.tagi[].znaczenie`), po stronie z kolumny
+   `team` (albo ze strony nadanej w Słowniku, gdy kolumna pusta — robi to silnik
+   w `DATA`). Zdarzenia bez strony NIE są dopisywane żadnej drużynie. */
+const POJECIA_PL={possession:'Posiadanie',pass:'Podania',zone_entry:'Wprowadzenia',set_piece:'SFG',
+  defensive_action:'Akcje defensywne',transition:'Transformacje',foul:'Faule',card:'Kartki',
+  keeper_action:'Interwencje bramkarza',duel:'Pojedynki',press:'Pressing'};
+function kafleZnaczen(Ev){
+  const grupy={};
+  (PLIK.tagi||[]).forEach(t=>{const z=t.znaczenie; if(!z||!z.pojecie||z.klucz||!POJECIA_PL[z.pojecie]) return;
+    (grupy[z.pojecie]=grupy[z.pojecie]||[]).push(t.nazwa);});
+  const out=[];
+  Object.keys(POJECIA_PL).forEach(poj=>{
+    const tagi=grupy[poj]; if(!tagi) return;
+    const ev=Ev.filter(e=>tagi.includes(e.tag));
+    const bez=ev.filter(e=>e.team!==HUT&&e.team!==POG);
+    const sklad=tagi.length>1?tagi.map(t=>`${esc(t)} ${ev.filter(e=>e.tag===t).length}`).join(' · '):'';
+    const pod=[sklad, bez.length?`${bez.length} bez drużyny`:''].filter(Boolean).join(' · ');
+    if(poj==='possession'){
+      const cz=t=>ev.filter(e=>e.team===t).reduce((a,e)=>a+Math.max(0,(e.e||e.b)-e.b),0);
+      const a=cz(HUT),b=cz(POG),s=a+b;
+      out.push(`<div class="kpi"><div class="l">Posiadanie</div><div class="v"><span class="h">${s?Math.round(100*a/s)+'%':KRESKA}</span><span class="sep">:</span><span class="p">${s?Math.round(100*b/s)+'%':KRESKA}</span></div>${!s?'<div class="pod">przypisz stronę tagów posiadania w Słowniku</div>':pod?`<div class="pod">${pod}</div>`:''}</div>`);
+      return;
+    }
+    out.push(`<div class="kpi"><div class="l">${POJECIA_PL[poj]}</div><div class="v"><span class="h">${ev.filter(e=>e.team===HUT).length}</span><span class="sep">:</span><span class="p">${ev.filter(e=>e.team===POG).length}</span></div>${pod?`<div class="pod">${pod}</div>`:''}</div>`);
+  });
+  return out;
+}
 function renderOverview(){
   if(!document.getElementById('ov-kpi')) return;
   const Ev=E.filter(e=>inSet(MC.qs,e)&&(e.team?MC.teams.has(e.team):MC.teams.has(TENANT)));
   const A=ovStats(Ev),h=A[HUT],p=A[POG],u=A.us,them=A.them,pc=(a,b)=>b?Math.round(100*a/b)+'%':'–';
-  const k=(l,a,b,f=x=>x,ok=true)=>`<div class="kpi"><div class="l">${l}</div><div class="v"><span class="h">${ok?f(a):KRESKA}</span><span class="sep">:</span><span class="p">${ok?f(b):KRESKA}</span></div></div>`;
-  document.getElementById('ov-kpi').innerHTML=`<h3>Kluczowe liczby<span class="hint">${mcLabel()} · __TEAM_HOME_SHORT__ : __TEAM_AWAY_SHORT__</span></h3><div class="kpis">${k('Gole',h.gole,p.gole,undefined,DOST.strzaly)}${k('xG',h.xg,p.xg,x=>fmt(x,2),DOST.strzaly)}${k('Strzały',h.strzaly,p.strzaly,undefined,DOST.strzaly)}${k('Celne',h.celne,p.celne,undefined,DOST.strzaly)}${k('Zdobycie SBZ',h.sbz,p.sbz,undefined,DOST.sbz)}${k('Odbiory',u.odb,them.odb,undefined,DOST.odb)}${k('1x1 wygrane',u.won,them.won,undefined,DOST.duele)}${k('III strefa (udane)',h.p3ok,p.p3ok,undefined,DOST.p3)}</div>`;
+  const k=(l,a,b,f=x=>x,ok=true,pod='')=>`<div class="kpi"><div class="l">${l}</div><div class="v"><span class="h">${ok?f(a):KRESKA}</span><span class="sep">:</span><span class="p">${ok?f(b):KRESKA}</span></div>${pod?`<div class="pod">${pod}</div>`:''}</div>`;
+  const kpi1=(l,v)=>`<div class="kpi"><div class="l">${l}</div><div class="v"><span class="h">${v}</span></div></div>`;
+  /* W7 E: PRZEGLĄD Z PLIKU. Kafel tylko dla pojęcia, które eksport niesie;
+     pojęcia nieobecne idą do JEDNEJ linii „nie występuje w tym eksporcie"
+     zamiast pustych kafli z „–". Pojęcia spoza tagów wbudowanych szablonu
+     (posiadanie, podania, SFG…) przychodzą ze znaczeń silnika (PLIK.tagi). */
+  const kafle=[],brak=[];
+  const dodaj=(jest,html,nazwa)=>{ if(jest) kafle.push(html); else brak.push(nazwa); };
+  dodaj(DOST.gole, k('Gole',h.gole,p.gole), 'gole');
+  dodaj(DOST.xg, k('xG',h.xg,p.xg,x=>fmt(x,2)), 'xG');
+  dodaj(DOST.strzaly, k('Strzały',h.strzaly,p.strzaly), 'strzały');
+  dodaj(DOST.strzaly&&DOST.wynik, k('Celne',h.celne,p.celne), 'wynik strzału');
+  dodaj(DOST.sbz, k('Zdobycie SBZ',h.sbz,p.sbz), 'SBZ');
+  dodaj(DOST.p3, k('III strefa (udane)',h.p3ok,p.p3ok), 'III strefa');
+  dodaj(DOST.pressing, kpi1('Pressing skuteczny',`${u.pr[0]}/${u.pr[0]+u.pr[1]}`), 'pressing');
+  dodaj(DOST.duele, k('1x1 wygrane',u.won,them.won), 'pojedynki 1x1');
+  dodaj(DOST.odbior, k('Odbiory',u.odb,them.odb), 'odbiory');
+  dodaj(DOST.str, k('Straty',u.str,u.odb), 'straty');
+  kafle.push(...kafleZnaczen(Ev));
+  const sfg=Ev.filter(e=>e.tag==='STRZAŁ'&&has(e,'SFG'));
+  if(E.some(e=>e.tag==='STRZAŁ'&&has(e,'SFG'))) kafle.push(k('Strzały z SFG',sfg.filter(e=>e.team===HUT).length,sfg.filter(e=>e.team===POG).length));
+  document.getElementById('ov-kpi').innerHTML=`<h3>Kluczowe liczby<span class="hint">${mcLabel()} · __TEAM_HOME_SHORT__ : __TEAM_AWAY_SHORT__</span></h3><div class="kpis">${kafle.join('')}</div>`+
+    (brak.length?`<p class="ov-brak">Nie występuje w tym eksporcie: ${brak.join(', ')}.</p>`:'');
   const f=[],push=(c,b,t)=>f.push({c,b,t}),[pok,pno]=u.pr,pn=pok+pno,me=A[TENANT],ry=A[RIVAL],short='__TEAM_HOME_SHORT__';
   if(pn)push(pok/pn>=PROGI.pressing/100?'ok':'bad',pc(pok,pn),`pressingów skutecznych (${pok} z ${pn})`);
   if(me.sbz)push(me.sbz_shot/me.sbz>=PROGI.sbz_strzal/100?'ok':'bad',`${me.sbz_shot}/${me.sbz}`,`wejść w SBZ zakończonych strzałem (${pc(me.sbz_shot,me.sbz)}); rywal ${ry.sbz_shot}/${ry.sbz}`);
@@ -869,7 +965,7 @@ function renderMetricMaps(){
   const S1=mcShots(), Z=mcSBZ();
   /* zdarzenia fragmentu BEZ filtra pozycji — do odroznienia „nic nie bylo"
      od „bylo, ale bez wspolrzednych" */
-  const S1all=shots.filter(e=>inSet(MC.qs,e)&&MC.teams.has(e.team)&&MC.outs.has(outcomeOf(e)));
+  const S1all=shots.filter(e=>inSet(MC.qs,e)&&MC.teams.has(e.team)&&outOk(e));
   const S2all=shots.filter(e=>inSet(MC.qs,e)&&MC.teams.has(e.team)&&ctxOf(e)&&MC.ctx.has(ctxOf(e)));
   const Zall=E.filter(e=>e.tag==='ZDOBYCIE SBZ'&&inSet(MC.qs,e)&&MC.teams.has(e.team)&&MC.zctx.has(zctxOf(e)));
   mapaBezPozycji('mp1','np1',S1all,'strzałów');
@@ -901,9 +997,10 @@ function renderMetricMaps(){
   document.getElementById('mp3').innerHTML=s;
   /* legendy */
   document.getElementById('lg1').innerHTML=
-    `<span>${legendGlyph('filled','var(--ink2)')} celny</span>
+    (DOST.wynik?`<span>${legendGlyph('filled','var(--ink2)')} celny</span>
      <span>${legendGlyph('ring','var(--ink2)')} niecelny</span>
-     <span>${legendGlyph('diamond','var(--ink2)')} zablokowany</span>
+     <span>${legendGlyph('diamond','var(--ink2)')} zablokowany</span>`:`<span>${legendGlyph('plain','var(--ink2)')} strzał — wynik strzału nie występuje w tym eksporcie</span>`)+
+    `
      <span style="border-left:1px solid var(--line);padding-left:14px"><span class="dot" style="background:var(--team-home)"></span>__TEAM_HOME_LABEL__</span>
      <span><span class="dot" style="background:var(--team-away)"></span>__TEAM_AWAY_LABEL__</span>
      <span style="color:var(--ink3)">powierzchnia ∝ xG</span>
@@ -1132,6 +1229,7 @@ document.querySelectorAll('[data-mteam]').forEach(b=>b.addEventListener('click',
   else{MC.teams.add(t);b.classList.add('on');}
   odswiezWidgety();
 }));
+if(!DOST.wynik) document.querySelectorAll('[data-mout]').forEach(b=>{b.style.display='none';});
 document.querySelectorAll('[data-mout]').forEach(b=>b.addEventListener('click',()=>{
   const o=b.dataset.mout;
   if(MC.outs.has(o)&&MC.outs.size>1){MC.outs.delete(o);b.classList.remove('on');}
@@ -1594,6 +1692,11 @@ const WIDGETS={
     const h=el.querySelector('h2');
     if(h&&!h.querySelector('.nr')){const hn=document.createElement('span');hn.className='nr';hn.textContent=numer+' ';h.insertBefore(hn,h.firstChild);}
   });
+  /* W7: warstwa 1 — zawsze ostatnia, bez numeru (nie jest sekcją Układu). */
+  if(document.getElementById('sec-plik')){
+    const a=document.createElement('a'); a.href='#sec-plik'; a.textContent='Z pliku';
+    nav.insertBefore(a, pierwszyPrzycisk);
+  }
   /* [op] zakładka Pokrycie — odsyłacz do karty meczu w panelu. */
   const karta=document.querySelector('#pasek a.tylko-panel');
   if(karta&&karta.getAttribute('href')){
@@ -1617,6 +1720,42 @@ const WIDGETS={
   });
 })();
 
+/* ---------------------------------------------------------------- warstwa 1 */
+/* W7 B: WSZYSTKIE TAGI Z PLIKU. Liczby z silnika (`PLIK`), bez filtra
+   fragmentu i bez Słownika: to jest plik, jaki jest. Nazwy z pliku idą przez
+   `esc` — raport wisi pod publicznym adresem, a nazwy wpisał analityk. */
+const ZRODLO_PL={slownik:'ze Słownika',xg:'xG w komentarzu',nazwa:'po nazwie'};
+const STRONA_PL={us:'__TEAM_HOME_SHORT__',them:'__TEAM_AWAY_SHORT__'};
+function renderPlik(){
+  const box=document.getElementById('plik-box'); if(!box||!PLIK.tagi) return;
+  const D=PLIK.druzyny||[], num=(v,c='')=>`<td class="num ${c}">${v||'–'}</td>`;
+  const znacz=z=>!z?'<span class="w1-zn">bez interpretacji</span>':
+    `<span class="w1-zn">${esc(z.klucz?disp(z.klucz):(POJECIA_PL[z.pojecie]||z.pojecie||''))}${z.strona?' · strona '+STRONA_PL[z.strona]:''}${z.zrodlo?' · '+ZRODLO_PL[z.zrodlo]:''}</span>`;
+  const czas=t=>t.cm?`${fmt(t.czas_s/60,1)} min${t.proc_nagrania!=null?' ('+fmt(t.proc_nagrania,1)+'%)':''}`:'';
+  let h=`<p class="w1-zn">${PLIK.zdarzen} zdarzeń · ${PLIK.tagi.length} tagów · ${(PLIK.etykiety||[]).length} etykiet · ${(PLIK.zawodnicy||[]).length||PLIK.zawodnicy_ukryci||0} zawodników${PLIK.xg_n?' · xG z komentarzy: '+fmt(PLIK.xg_suma,2)+' ('+PLIK.xg_n+')':''}</p>`;
+  h+=`<div class="tblwrap"><table class="tbl"><thead><tr><th>Tag w pliku</th>${D.map(([n])=>`<th>${esc(n)}</th>`).join('')}<th class="mut">bez drużyny</th><th>I poł.</th><th>II poł.</th><th>razem</th><th>xG</th><th>czas (cm)</th><th>znaczenie</th></tr></thead><tbody>`+
+    PLIK.tagi.map(t=>`<tr><td>${esc(t.nazwa)}</td>${t.d.map(v=>num(v)).join('')}${num(t.bez,'mut')}${num(t.p[0])}${num(t.p[1])}${num(t.n,'sum')}<td class="num">${t.xg_n?fmt(t.xg_suma,2)+' ('+t.xg_n+')':''}</td><td class="num">${czas(t)}</td><td>${znacz(t.znaczenie)}</td></tr>`).join('')+
+    `</tbody></table></div>`;
+  if((PLIK.pary||[]).length) h+=`<h3>Pary z aktywacji</h3><div class="w1-chips">${PLIK.pary.map(p=>`<span class="w1-chip">${esc(p.a)} → ${esc(p.b)}<b>${p.n}</b> <span class="w1-zn">z ${p.z}</span></span>`).join('')}</div>`;
+  if((PLIK.dezaktywacje||[]).length) h+=`<h3>Dezaktywacje</h3><div class="w1-chips">${PLIK.dezaktywacje.map(p=>`<span class="w1-chip">${esc(p.a)} ⊣ ${esc(p.b)}</span>`).join('')}</div>`;
+  h+=`<h3>Etykiety</h3>`+((PLIK.etykiety||[]).length?`<div class="w1-chips">${PLIK.etykiety.map(([n,c])=>`<span class="w1-chip">${esc(n)}<b>${c}</b></span>`).join('')}</div>`:'<p class="w1-zn">Eksport nie zawiera etykiet.</p>');
+  h+=`<h3>Zawodnicy</h3>`+((PLIK.zawodnicy||[]).length?`<div class="w1-chips">${PLIK.zawodnicy.map(([n,c])=>`<span class="w1-chip">${esc(n)}<b>${c}</b></span>`).join('')}</div>`:
+    PLIK.zawodnicy_ukryci?`<p class="w1-zn">${PLIK.zawodnicy_ukryci} zawodników w pliku — nazwiska pokazuje sekcja Zawodnicy, wyłączona w Układzie raportu.</p>`:'<p class="w1-zn">Kolumna zawodnika jest pusta albo jej nie ma.</p>');
+  const bez=[...(PLIK.tagi_bez_zdarzen||[]).map(n=>'tag '+esc(n)),...(PLIK.etykiety_bez_zdarzen||[]).map(n=>'etykieta '+esc(n))];
+  if(bez.length) h+=`<p class="w1-zn">Zdefiniowane w projekcie, bez zdarzeń: ${bez.join(', ')}.</p>`;
+  const zPoz=PLIK.tagi.filter(t=>t.pozycje&&t.pozycje.length);
+  if(zPoz.length){
+    h+=`<h3>Mapy tagów z pozycją</h3><div class="w1-mapy">`+zPoz.map(t=>{
+      let sv=pitchBase();
+      t.pozycje.forEach(([x,y,tx,ty,,di])=>{const c=di<0?'var(--neut)':tagCol(t.nazwa);
+        if(tx!=null&&ty!=null) sv+=`<line x1="${x*S}" y1="${y*S}" x2="${tx*S}" y2="${ty*S}" stroke="${c}" stroke-width="2" stroke-opacity=".7"/>`;
+        sv+=`<circle cx="${x*S}" cy="${y*S}" r="7" fill="${c}" fill-opacity="${di<0?'.25':'.8'}" stroke="${c}" stroke-width="1.5"/>`;});
+      return `<div class="w1-mapa"><h4>${esc(t.nazwa)} <span class="w1-zn">${t.pozycje.length} z ${t.n}</span></h4><svg viewBox="0 0 1050 680" width="100%">${sv}</svg></div>`;
+    }).join('')+`</div><p class="w1-zn">Kółko pełne — zdarzenie z drużyną, blade — bez drużyny; kreska — kierunek do punktu docelowego (pos_target).</p>`;
+  }
+  box.innerHTML=h;
+}
+
 function odswiezWidgety(tylko){
   const ctx=widgetCtx();
   document.querySelectorAll('[data-widget]').forEach(el=>{
@@ -1631,6 +1770,7 @@ function odswiezWidgety(tylko){
    rejestr decyduje, co się renderuje, a sekcja wycięta przez silnik nie ma
    w DOM-ie elementu, więc po prostu nie zostanie dotknięta. */
 odswiezWidgety(Object.keys(WIDGETS));
+try{ renderPlik(); }catch(err){ console.warn('warstwa 1', err); }
 </script>
 <script>
 /* v19: eksport kafelka do PNG (SVG -> canvas, style z CSS wpisane inline) */

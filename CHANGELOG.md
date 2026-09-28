@@ -3,6 +3,50 @@
 Format: [wersja silnika] — data — opis.
 Każda zmiana, która modyfikuje wyjście silnika, MUSI mieć tu wpis wraz z powodem.
 
+## [0.17.0] — 2026-09-28 · W7: metoda importu v3 — plik w całości, znaczenia bez zgadywania
+
+Każdy eksport LiveTag pokazany 1:1, znaczenia tagów bez AI. v17 i test złoty
+nietknięte (wyjście parsera co do bajtu: nowy kształt xG sprawdzony na
+eksportach referencyjnych i na całym korpusie klienta — każda wartość xG
+czyta się tak samo). Kontrakt: docs/KONTRAKT_CLI.md, „Metoda importu v3".
+
+### Zmiany wyjścia (świadome)
+- **xG tylko w ścisłym kształcie** (A): przedrostek 1–3 liter, opcjonalne `:`/`=`,
+  liczba. „5 minut", „uwaga, 5", „.5" bez przedrostka nie są już xG. Wartość spoza
+  0..1 → anomalia `xg_poza_zakresem`, nie xG.
+- **Znaczenia tagów** (C): Słownik (UUID, zapasowo nazwa znormalizowana) → xG
+  w komentarzu → nazwa po normalizacji + aliasy. „Strzał" = „STRZAŁ" (raport 32:
+  Stal miała STRZAŁY – i xG 0,00, choć plik ma 33 strzały z xG). Znaczenie
+  wchodzi do modelu (gdzie profil nie ma pojęcia) i do szablonu jako alias tagu
+  wbudowanego. Tabela `events` zostaje pod surowymi nazwami.
+- **Gol** (F): drużyna ZAWSZE ze strzału — najbliższego wcześniejszego
+  w chwili kliknięcia (`begin` + `time_before`), także przy wypełnionej kolumnie
+  `team` (Jędrzejów: 2 z 3 goli z błędną drużyną w wierszu). Gol bez strzału
+  w oknie: bez drużyny + anomalia (do 0.16 zostawał przy drużynie wiersza).
+  Tagi gola/strzału po znaczeniu, nie po nazwie `Gol`/`STRZAŁ`.
+- **v21 — nagłówek**: brak tagu gola → wynik ręczny (`config.match.score`)
+  albo „brak w eksporcie", nigdy 0:0. Brak etykiet wyniku strzału → mapa bez
+  podziału celny/niecelny + „wynik strzału nie występuje w tym eksporcie".
+- **v21 — Przegląd z pliku** (E): kafle tylko dla pojęć obecnych w eksporcie,
+  nieobecne w jednej linii; nowe kafle ze znaczeń (posiadanie — czas po stronie
+  ze Słownika, podania/wprowadzenia/SFG z rozbiciem na tagi, straty).
+- **v21 — „Wszystkie tagi z pliku"** (B, `#sec-plik`, `__PLIK__`): każdy tag
+  1:1 z liczbą na drużynę z kolumny `team` (trzecia drużyna osobno), połowy,
+  etykiety, zawodnicy, mapy per tag z wektorem, pary aktywacji, tagi `cm` jako
+  przedziały, xG. Poza Układem raportu — jest zawsze.
+
+### Nowe
+- `meta.json`: `sha256_zdarzen`, `profil`, `znaczenia`, `nierozpoznane`,
+  `anomalie`, `niezmienniki`(`_ok`), `wynik_strzalu`, `gol_w_eksporcie`,
+  `wersja_livetag` — w `build` i w `inspect`.
+- Anomalie (G): gol vs strzał, gol bez drużyny, gol bez strzału, trzecia
+  drużyna, drużyna spoza meczu w nazwie tagu, xG poza zakresem.
+- Niezmienniki (H): wiersze CSV = zdarzenia = suma warstwy 1, każdy tag
+  w warstwie 1, zawodnicy, suma xG z komentarzy = xG raportu, kierunek.
+  Naruszenie = baner w raporcie.
+- `sha256_zdarzen` przeniesiony z `tools/karta_dowodowa.py` do `parse.py`.
+- `crosscheck` liczy aliasy znaczeń (bez fałszywego „rozjazdu" przy „Strzał").
+
 ## Aplikacja — 2026-09-28 · Golden layout W6: poprawki przed przeglądem u klienta
 
 Silnik bez zmian (0.16.8), bez migracji, v17 i test złoty nietknięte.

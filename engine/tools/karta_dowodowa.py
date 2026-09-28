@@ -33,7 +33,7 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from coachanalyze.sources.livetag.parse import (  # noqa: E402
-    PLAYER_COLUMNS, is_na, read_rows, split_labels, to_float,
+    PLAYER_COLUMNS, is_na, read_rows, sha256_zdarzen, split_labels, to_float,
 )
 
 TOP_ETYKIET = 12
@@ -68,18 +68,6 @@ def sha256_pliku(path):
     with open(path, "rb") as fh:
         for blok in iter(lambda: fh.read(1 << 16), b""):
             h.update(blok)
-    return h.hexdigest()
-
-
-def sha256_zdarzen(rows):
-    """Skrót niezależny od kolejności wierszy.
-
-    Ten sam mecz wyeksportowany dwa razy potrafi mieć inną kolejność wierszy,
-    więc inne sha256 pliku przy identycznym zbiorze zdarzeń.
-    """
-    h = hashlib.sha256()
-    for linia in sorted(json.dumps(list(r.values()), ensure_ascii=False) for r in rows):
-        h.update(linia.encode("utf-8") + b"\n")
     return h.hexdigest()
 
 

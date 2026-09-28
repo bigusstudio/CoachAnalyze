@@ -205,6 +205,8 @@ SLOT_GROUPS = {
     "vars_templatu": ("__VARS_TEMPLATU__",),
     # Skład meczu zatwierdzony przez człowieka (v21, sesja 6).
     "sklad": ("__SKLAD__",),
+    # Warstwa 1 „Wszystkie tagi z pliku" i fakty metody importu W7 (v21).
+    "plik": ("__PLIK__",),
 }
 
 # Odwrotność mapy powyżej: znacznik -> nazwa grupy.
@@ -476,7 +478,7 @@ def report_template_layout(template=None):
     return tpl.sections_layout(template)
 
 
-def vars_slot(template=None):
+def vars_slot(template=None, znaczenia=None):
     """`{'__VARS_TEMPLATU__': '{…}'}` — słownik zmiennych dla szablonu.
 
     ALIASY DOMYŚLNE + NADPISANIA TEMPLATU, scalone per klucz (`aliasy.py`).
@@ -489,9 +491,46 @@ def vars_slot(template=None):
     """
     from . import aliasy
     from . import report_template as tpl
-    return {"__VARS_TEMPLATU__": _literal_js(
-        aliasy.scal_z_templatem(tpl.variable_overrides(template))
-    )}
+    from . import znaczenie as znaczenie_mod
+    slownik = aliasy.scal_z_templatem(tpl.variable_overrides(template))
+    # W7: ZNACZENIE TAGU JAKO ALIAS TAGU WBUDOWANEGO. Szablon liczy po nazwie
+    # (`e.tag==='STRZAŁ'`); „Strzał" ze Słownika, z xG w komentarzu albo po
+    # normalizacji nazwy trafia do niego jako inna nazwa `STRZAŁ`. Dopisujemy,
+    # nie podmieniamy — aliasy templatu klubu zostają.
+    for klucz, tagi in znaczenie_mod.aliasy_szablonu(znaczenia).items():
+        wpis = dict(slownik.get(klucz) or {})
+        wpis["aliases"] = sorted(set(wpis.get("aliases") or ()) | set(tagi))
+        slownik[klucz] = wpis
+    return {"__VARS_TEMPLATU__": _literal_js(slownik)}
+
+
+def plik_slot(warstwa1=None, w7=None, config=None, pokaz_zawodnikow=True):
+    """`{'__PLIK__': '{…}'}` — dane warstwy 1 i fakty W7 dla szablonu v21.
+
+    Szablon WYŁĄCZNIE WYŚWIETLA: liczby policzył silnik (`plik.zbuduj`).
+    Pusty obiekt, gdy nie ma czego pokazać — znacznik ma być wypełniony zawsze.
+    """
+    w7 = w7 or {}
+    dane = dict(warstwa1 or {})
+    # NAZWISKA TĄ SAMĄ DROGĄ CO W `view_data`: tylko gdy raport ma kafelek
+    # zawodników w Układzie. Raport wisi pod publicznym adresem; sekcja wyłączona
+    # w Układzie raportu to jedno z trzech dozwolonych ukryć (GOLDEN_LAYOUT §0).
+    # Liczba zawodników zostaje — brak nazwisk ma być widoczny z powodem.
+    if not pokaz_zawodnikow and dane.get("zawodnicy"):
+        dane["zawodnicy_ukryci"] = len(dane["zawodnicy"])
+        dane["zawodnicy"] = []
+    wynik = ((config or {}).get("match") or {}).get("score") or {}
+    dane.update({
+        # Gole przypisane przez silnik (drużyna ze strzału, `metoda.przygotuj`)
+        # — szablon nie przypisuje ich drugi raz własną regułą.
+        "gole_z_silnika": bool(warstwa1),
+        "gol_w_eksporcie": bool(w7.get("gol_w_eksporcie")),
+        "wynik_strzalu": bool(w7.get("wynik_strzalu")),
+        "wynik_reczny": {
+            "us": wynik.get("us"), "them": wynik.get("them"),
+        } if isinstance(wynik.get("us"), int) and isinstance(wynik.get("them"), int) else None,
+    })
+    return {"__PLIK__": _literal_js(dane)}
 
 
 def crest_data_uri(path):
@@ -691,7 +730,8 @@ def _odmiana(n, jeden, kilka, wiele):
     return kilka if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14 else wiele
 
 
-def baner_niewliczone_slot(frame, template=None, wbudowane=(), config=None):
+def baner_niewliczone_slot(frame, template=None, wbudowane=(), config=None, znaczenia=None,
+                           w7=None):
     """`{'__BANER_NIEWLICZONE__': '…'}` — baner informacyjny, ostrzegawczy, oba albo nic.
 
     INFORMACYJNY (W3-b): import dopisał nowe zmienne sam — liczą się, ale nikt
@@ -714,9 +754,25 @@ def baner_niewliczone_slot(frame, template=None, wbudowane=(), config=None):
                             "nowych rodzajów zdarzeń dodanych automatycznie"),
                 ", ".join(html_mod.escape(t) for t in nowe[:6]) + (", …" if n > 6 else ""),
                 ADRES_SLOWNIKA))
+    # W7: NOWY PROFIL ANALITYKA — układ tagów, którego klub jeszcze nie widział.
+    # Raport i tak powstaje (warstwa 1 pokazuje cały plik); baner mówi, co zrobić
+    # raz, żeby warstwa 2 zrozumiała resztę.
+    if ((config or {}).get("profil") or {}).get("nowy"):
+        czesci.append(
+            '<div class="baner baner--info tylko-analityk" role="status" data-baner="profil">'
+            'Nowy układ tagów: <a href="{}">przypisz raz pojęcia w Słowniku</a> — '
+            'do tego czasu wszystko z pliku jest w sekcji „Wszystkie tagi z pliku".</div>'.format(
+                ADRES_SLOWNIKA))
+    naruszone = [n for n in (w7 or {}).get("niezmienniki") or [] if not n.get("ok")]
+    if naruszone:
+        czesci.append(
+            '<div class="baner baner--niewliczone tylko-analityk" role="alert" data-baner="niezmienniki">'
+            'Raport niezgodny z plikiem: {} — zgłoszone administratorowi.</div>'.format(
+                "; ".join(html_mod.escape(n["opis"]) for n in naruszone)))
+    znane = {t for t, z in (znaczenia or {}).items() if z.get("klucz") or z.get("pojecie")}
     pozycje = ["{} — bez znaczenia: {}".format(
                     html_mod.escape(r), ", ".join(SEKCJE_ZNACZENIOWE[s] for s in sek))
-                for r, sek in bez_znaczenia(frame, template, wbudowane)]
+                for r, sek in bez_znaczenia(frame, template, wbudowane) if r not in znane]
     if pozycje:
         czesci.append(
             '<div class="baner baner--niewliczone tylko-analityk" role="status" data-baner="ostrzezenie">'
@@ -1055,7 +1111,7 @@ def unresolved_placeholders(html):
     return sorted(set(LEFTOVER_RE.findall(html)) - set(ZNACZNIKI_SERWOWANIA))
 
 
-def crosscheck(data, metrics):
+def crosscheck(data, metrics, znaczenia=None):
     """Czy raport w przeglądarce pokaże to samo, co pójdzie do archiwum.
 
     Szablon liczy w JS po SUROWEJ nazwie tagu (`e.tag==='STRZAŁ'`), a model
@@ -1072,10 +1128,14 @@ def crosscheck(data, metrics):
 
     events = data.get("events") or []
     sides = metrics.get("sides") or {}
+    # W7: szablon liczy także ALIASY tagu wbudowanego ze znaczeń (`vars_slot`).
+    from . import znaczenie as znaczenie_mod
+    aliasy_znaczen = znaczenie_mod.aliasy_szablonu(znaczenia)
 
     rozjazdy = []
     for concept, tag in TEMPLATE_TAGS:
-        w_szablonie = sum(1 for e in events if e.get("tag") == tag)
+        nazwy = {tag} | set(aliasy_znaczen.get(tag) or ())
+        w_szablonie = sum(1 for e in events if e.get("tag") in nazwy)
         klucz = "shots" if concept == "shot" else concept
         w_modelu = sum((sides.get(side) or {}).get(klucz, {}).get("total", 0) for side in sides)
         if w_szablonie != w_modelu:
@@ -1391,7 +1451,8 @@ WIDGET_ZAWODNICY = 'data-widget="zawodnicy"'
 
 
 def render(frame, palette=None, metrics=None, canon_result=None, config=None,
-           template_path=None, direction=None, mirrored=False, report_template=None):
+           template_path=None, direction=None, mirrored=False, report_template=None,
+           warstwa1=None, w7=None, znaczenia=None):
     """(html, raport). Raport idzie do logu wykonawcy, nigdy do przeglądarki.
 
     `metrics` nie jest wstrzykiwane do szablonu: szablon liczy wszystko sam,
@@ -1422,9 +1483,10 @@ def render(frame, palette=None, metrics=None, canon_result=None, config=None,
     slots.update(match_slots(config))
     slots.update(baner_slot((direction or {}).get("warnings")))
     wbudowane = wbudowane_tagi(template)
-    slots.update(baner_niewliczone_slot(frame, report_template, wbudowane, config))
+    slots.update(baner_niewliczone_slot(frame, report_template, wbudowane, config, znaczenia, w7))
     slots.update(progi_slot(report_template))
-    slots.update(vars_slot(report_template))
+    slots.update(vars_slot(report_template, znaczenia))
+    slots.update(plik_slot(warstwa1, w7, config, pokaz_zawodnikow))
     slots.update(roster_slot(config, pokaz=pokaz_zawodnikow))
     braki_znacznikow = missing_slots(template, slots)
     data = view_data(
@@ -1514,7 +1576,7 @@ def render(frame, palette=None, metrics=None, canon_result=None, config=None,
         # Grupa znaczników obecna w szablonie tylko częściowo. Nie przerywa renderu
         # (raport ma powstać zawsze) — idzie jako ostrzeżenie do `meta.warnings`.
         "missing_slots": braki_znacznikow,
-        "tag_mismatch": crosscheck(data, metrics),
+        "tag_mismatch": crosscheck(data, metrics, znaczenia),
     }
 
 

@@ -39,19 +39,23 @@ def test_xg_z_polskiego_przecinka(comment, expected):
 def test_komentarz_przy_niestrzale_nie_daje_xg(write_csv, row):
     """„3 zawodników w polu karnym" przy ZDOBYCIE SBZ nie może dać xG = 3.0.
 
-    Parser wyciąga z komentarza pierwszą liczbę, jaką znajdzie — dopiero model
-    kanoniczny wie, czy zdarzenie jest strzałem.
+    Od W7 broni przed tym już parser (xG tylko w ścisłym kształcie). Model
+    kanoniczny zostaje drugą linią: xG w kształcie poprawnym przy tagu, którego
+    pojęcie NIE jest strzałem, też nie wchodzi do sumy.
     """
     path = write_csv([
         row("ZDOBYCIE SBZ", comment="3 zawodników w polu karnym", team="A", x="90", y="40"),
+        row("ZDOBYCIE SBZ", comment="x 0,30", team="A", x="90", y="40"),
         row("STRZAŁ", comment="X 0,81", team="A", x="88", y="31"),
     ])
     frame, result, meta = _meta(path)
 
-    assert frame["events"][0]["xg"] == 3.0, "parser widzi samą liczbę, bez kontekstu"
+    assert frame["events"][0]["xg"] is None, "opis z liczbą to nie xG"
+    assert frame["events"][1]["xg"] == 0.3
     assert result["events"][0]["xg"] is None, "xG poza strzałem odrzucone"
+    assert result["events"][1]["xg"] is None, "xG poza strzałem odrzucone"
     assert result["events"][0]["xg_source"] is None
-    assert result["events"][1]["xg"] == 0.81, "strzał zachowuje xG"
+    assert result["events"][2]["xg"] == 0.81, "strzał zachowuje xG"
 
     assert meta["coverage"]["xg_sum"] == 0.81, "suma xG nie może połknąć liczby z komentarza"
     ostrzezenie = next(w for w in meta["warnings"] if w["code"] == "XG_POZA_STRZALEM")
@@ -332,14 +336,42 @@ def test_komentarz_bez_liczby_nie_wywala_importu(comment):
     ("X 0,81", 0.81),
     ("xG 0,09", 0.09),
     ("x 0,14", 0.14),
-    ("5 minut", 5.0),
     # Zapis z wiodaca kropka parsowal sie dotad na 0.5 i MA sie parsowac dalej.
     # Wzorzec wymagajacy cyfry NA POCZATKU zmienilby to po cichu na 5.0.
-    (".5", 0.5),
-    ("uwaga, 5", 5.0),
+    ("xG .5", 0.5),
+    # W7: przedrostek 1-3 liter, opcjonalny ":" albo "=".
+    ("Xg 0,75", 0.75),
+    ("XG: 0.3", 0.3),
+    ("xG=0,12", 0.12),
+    ("  xG 0,2  ", 0.2),
+    # W7: opis z liczba NIE jest xG — ksztalt musi byc caly.
+    ("5 minut", None),
+    ("uwaga, 5", None),
+    (".5", None),
+    ("xGol 0,3", None),
+    ("xG 0,3 po rykoszecie", None),
+    # W7: wartosc spoza 0..1 to anomalia, nie xG.
+    ("xG 1,5", None),
+    ("xG 3", None),
 ])
 def test_liczba_w_komentarzu_czytana_bez_zmian(comment, oczekiwane):
     assert parse.parse_xg(comment) == oczekiwane
+
+
+@pytest.mark.parametrize("comment,oczekiwane", [
+    ("xG 1,5", True), ("x 2", True), ("xG 0,5", False), ("xG 1", False),
+    ("5 minut", False), ("", False), (None, False),
+])
+def test_xg_poza_zakresem(comment, oczekiwane):
+    assert parse.xg_poza_zakresem(comment) is oczekiwane
+
+
+def test_xg_poza_zakresem_trafia_do_ramki(write_csv, row):
+    frame = parse.prep_frame(write_csv([
+        row("STRZAŁ", comment="xG 1,4"), row("STRZAŁ", comment="xG 0,4"),
+    ]))
+    assert frame["xg_poza_zakresem"] == [{"wiersz": 2, "tag": "STRZAŁ"}]
+    assert [e["xg"] for e in frame["events"]] == [None, 0.4]
 
 
 def test_komentarz_nieczytelny_daje_none_zamiast_wyjatku():

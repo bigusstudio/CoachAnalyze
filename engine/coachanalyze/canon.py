@@ -175,6 +175,51 @@ def resolve_profile(mapping_profile=None):
     return {"tags": tags, "labels": labels}
 
 
+def profil_meczu(mapping_profile=None, report_template=None, znaczenia=None):
+    """(profil mapowań w użyciu, rozwiązane reguły) — JEDNO miejsce dla modelu i kierunku.
+
+    TEMPLAT WYGRYWA Z PROFILEM KREATORA, bo jest nowszy i został jawnie
+    zatwierdzony przez człowieka w konfiguratorze. Brak templatu (`None`)
+    zostawia dotychczasową ścieżkę nietkniętą — patrz report_template.py.
+
+    ZNACZENIA W7 (`znaczenie.rozstrzygnij`): Słownik po UUID/nazwie
+    znormalizowanej, xG w komentarzu, nazwa po normalizacji. Wchodzą tam,
+    gdzie profil NIE MA pojęcia — nigdy nie nadpisują pojęcia nadanego wprost
+    ani decyzji „nie analizuj" z kreatora. Bez `znaczenia` nic się nie zmienia.
+    """
+    z_templatu = tpl.mapping_profile(report_template)
+    # Reguły z `concept: None`, które SĄ decyzją człowieka: „nie analizuj"
+    # z kreatora mapowań. Zmienna templatu bez pojęcia decyzją nie jest —
+    # import dopisuje ją sam (W3-b) — więc znaczenie W7 może ją uzupełnić.
+    decyzje_bez_pojecia = set()
+    if z_templatu is not None:
+        mapping_profile = z_templatu
+    else:
+        for rule in (mapping_profile or {}).get("rules") or []:
+            if "tag" in (rule.get("match") or {}) and rule.get("concept") is None:
+                decyzje_bez_pojecia.add(rule["match"]["tag"])
+
+    profile = resolve_profile(mapping_profile)
+    tag_rules = profile["tags"]
+    if znaczenia:
+        from . import znaczenie as znaczenie_mod
+        for regula in znaczenie_mod.reguly_profilu(znaczenia):
+            tag = regula["match"]["tag"]
+            obecna = tag_rules.get(tag)
+            if tag in decyzje_bez_pojecia:
+                continue
+            if obecna is not None and obecna.get("concept") is not None:
+                if regula["team_side"] and not obecna.get("team_side"):
+                    tag_rules[tag] = dict(obecna, team_side=regula["team_side"])
+                continue
+            tag_rules[tag] = {
+                "concept": regula["concept"],
+                "qualifiers": tuple(regula["qualifiers"]),
+                "team_side": regula["team_side"],
+            }
+    return mapping_profile, profile
+
+
 def to_records(events, match_id=None):
     """canonical_events[] -> rekordy w kształcie tabeli `events_canonical`.
 
@@ -244,7 +289,8 @@ def wyglada_na_xg(wartosc):
     return liczba != int(liczba)
 
 
-def build(frame, mapping_profile=None, teams=None, xg_model=False, report_template=None):
+def build(frame, mapping_profile=None, teams=None, xg_model=False, report_template=None,
+          znaczenia=None):
     """raw_frame -> {'events': canonical_events[], 'report': {...}}.
 
     Zdarzenia z nierozpoznanym tagiem NIE ZNIKAJĄ: trafiają do wyniku z
@@ -259,17 +305,14 @@ def build(frame, mapping_profile=None, teams=None, xg_model=False, report_templa
     # TEMPLAT WYGRYWA Z PROFILEM KREATORA, bo jest nowszy i zostal jawnie
     # zatwierdzony przez czlowieka w konfiguratorze. Brak templatu (`None`)
     # zostawia dotychczasowa sciezke nietknieta — patrz report_template.py.
-    z_templatu = tpl.mapping_profile(report_template)
-    if z_templatu is not None:
-        mapping_profile = z_templatu
+    mapping_profile, profile = profil_meczu(mapping_profile, report_template, znaczenia)
+    tag_rules, label_rules = profile["tags"], profile["labels"]
 
     # Tagi zmiennych templatu BEZ pojęcia kanonicznego. Po kształcie reguły nie
     # da się ich odróżnić od `NIE_ANALIZUJ` z kreatora — a to dwie różne decyzje
     # człowieka (patrz `report_template.tags_without_concept`).
     tagi_bez_pojecia = tpl.tags_without_concept(report_template)
 
-    profile = resolve_profile(mapping_profile)
-    tag_rules, label_rules = profile["tags"], profile["labels"]
     team_lookup = build_team_lookup(teams, tpl.team_markers(report_template))
 
     events = []

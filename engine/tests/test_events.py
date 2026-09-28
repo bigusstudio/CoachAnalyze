@@ -126,16 +126,59 @@ def test_gol_wybiera_strzal_najblizszy_w_czasie_takze_wstecz():
     assert [w["is_goal"] for w in wiersze if w["tag_name"] == "STRZAŁ"] == [0, 1]
 
 
-def test_gol_bez_strzalu_w_oknie_zostaje_przy_swojej_druzynie():
-    """Strzał sprzed trzech minut to inna akcja — lepsza wartość, którą mamy."""
+def test_gol_bez_strzalu_w_oknie_nie_ma_druzyny():
+    """W7 F: drużyna gola ZAWSZE ze strzału. Bez strzału w oknie — brak drużyny.
+
+    Do 0.16 gol zostawał przy drużynie z własnego wiersza, czyli z pola, które
+    w eksportach klienta bywa błędne (Naprzód – Pogoń). Brak ma być widoczny
+    (anomalia importu), a nie zamaskowany wartością, której nie ufamy.
+    """
     frame = ramka(
         zdarzenie("STRZAŁ", 100.0, team="KLUB A"),
         zdarzenie("Gol", 900.0, team="KLUB B"),
     )
     wiersze = events_mod.build(frame, config={"teams": TEAMS})["events"]
 
-    assert next(w for w in wiersze if w["tag_name"] == "Gol")["team"] == "KLUB B"
+    gol = next(w for w in wiersze if w["tag_name"] == "Gol")
+    assert gol["team"] is None and gol["team_side"] == "none"
     assert all(w["is_goal"] == 0 for w in wiersze if w["tag_name"] == "STRZAŁ")
+
+
+def test_gol_ze_strzalu_wczesniejszego_w_chwili_klikniecia():
+    """Korpus: `begin` gola wypada 2 s PRZED `begin` strzału tej samej akcji
+    (okno gola 5 s, strzału 3 s) — kliknięte razem. Wcześniejszy strzał innej
+    drużyny sprzed 25 s nie może wygrać tylko dlatego, że ma mniejsze `begin`.
+    """
+    frame = ramka(
+        zdarzenie("STRZAŁ", 1275.0, team="KLUB A"),     # moment 1278
+        zdarzenie("Gol", 1300.0, team="KLUB A"),        # moment 1305
+        zdarzenie("STRZAŁ", 1302.0, team="KLUB B"),     # moment 1305 — ta akcja
+    )
+    przes = {"Gol": 5.0, "STRZAŁ": 3.0}
+    strzaly, druzyny = events_mod.atrybucja_goli(frame["events"], przesuniecia=przes)
+    assert strzaly == {2}
+    assert druzyny == {1: "KLUB B"}
+
+
+def test_gol_nie_bierze_strzalu_pozniejszego():
+    """Strzał kliknięty PO golu to kolejna akcja, nie ta, która dała gola."""
+    frame = ramka(
+        zdarzenie("Gol", 100.0, team="KLUB A"),
+        zdarzenie("STRZAŁ", 110.0, team="KLUB B"),
+    )
+    _, druzyny = events_mod.atrybucja_goli(frame["events"], przesuniecia={"Gol": 5.0, "STRZAŁ": 3.0})
+    assert druzyny == {0: None}
+
+
+def test_gol_po_znaczeniu_nie_po_nazwie():
+    """Stal taguje „Strzał" — atrybucja idzie po tagach o znaczeniu strzału."""
+    frame = ramka(
+        zdarzenie("Strzał", 100.0, team="KLUB A"),
+        zdarzenie("GOL", 101.0),
+    )
+    strzaly, druzyny = events_mod.atrybucja_goli(
+        frame["events"], tagi_goli=("GOL",), tagi_strzalow=("Strzał",))
+    assert strzaly == {0} and druzyny == {1: "KLUB A"}
 
 
 def test_mecz_bez_goli_nie_oznacza_niczego():

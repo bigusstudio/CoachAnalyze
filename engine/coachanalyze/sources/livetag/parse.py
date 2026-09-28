@@ -56,39 +56,53 @@ def to_float(value):
         return None
 
 
-def parse_xg(value):
-    """xG bywa w komentarzu jako 'X 0,81' / 'xG 0,09' — polski przecinek.
+# ────────────────────────────────────────────────────────────────────────────
+# xG W KOMENTARZU (pułapka 1) — KSZTAŁT OD W7.
+#
+# Przedrostek z 1–3 liter (xG, x, X, Xg, XG — także polskie litery), opcjonalnie
+# „:" albo „=", liczba z przecinkiem albo kropką. CAŁY komentarz ma mieć ten
+# kształt: „3 zawodników w polu karnym" i „5 minut" to opisy, nie xG.
+#
+# Do 0.16 parser brał PIERWSZĄ LICZBĘ Z DOWOLNEGO KOMENTARZA, a przed opisami
+# bronił dopiero model kanoniczny (xG tylko przy pojęciu `shot`). Od W7 xG
+# w komentarzu samo WYZNACZA znaczenie tagu (strzał, `znaczenie.py`), więc
+# kształt musi być pewny tu, u źródła. Sprawdzone na całym korpusie
+# i eksportach referencyjnych: każda wartość xG odczytana dotąd odczytuje się
+# tak samo (test złoty bez zmian).
+#
+# WARTOŚĆ SPOZA 0..1 NIE JEST xG. „xG 1,5" to pomyłka zapisu — trafia do
+# anomalii importu (`xg_poza_zakresem`), a nie do sumy xG.
+# ────────────────────────────────────────────────────────────────────────────
+_XG_KSZTALT = re.compile(
+    r"^\s*(?P<przedrostek>[^\W\d_]{1,3})\s*[:=]?\s*(?P<liczba>\d+(?:[.,]\d+)?|[.,]\d+)\s*$"
+)
 
-    ZGODNOŚĆ: pierwsze dopasowanie, przecinek na kropkę.
 
-    ────────────────────────────────────────────────────────────────────────
-    WZORZEC WYMAGA CO NAJMNIEJ JEDNEJ CYFRY I TO JEST NAPRAWA BŁĘDU.
-
-    Poprzednia wersja dopasowywała `([\\d,\\.]+)`, czyli także sam przecinek.
-    Komentarz zawierający przecinek i żadnej cyfry — a `comment` to pole
-    swobodne, więc „zmiana, potem strzał" jest zwyczajnym wpisem trenera —
-    dawał `float(".")` i `ValueError`, który przewracał CAŁY import. Operator
-    widział „could not convert string to float: '.'" i nie miał z tego jak
-    wywnioskować, że winien jest przecinek w komentarzu.
-
-    Cyfra jest wymagana W ŚRODKU dopasowania, nie na początku: zapis `.5`
-    parsował się dotąd na 0.5 i ma się parsować dalej. `(\\d[\\d,\\.]*)`
-    zmieniłoby to na 5.0, czyli po cichu podmieniło wartość xG.
-
-    Dopasowanie, którego `float()` i tak nie przyjmie (np. „1,2,3"), daje
-    `None` zamiast wyjątku. Takie komentarze są ZLICZANE osobno i trafiają
-    do raportu pokrycia — brak xG ma być widoczny, nie zamaskowany.
-    ────────────────────────────────────────────────────────────────────────
-    """
+def _xg_z_ksztaltu(value):
+    """Liczba z komentarza w kształcie xG albo None. Zakres NIE jest tu sprawdzany."""
     if is_na(value):
         return None
-    m = re.search(r"([\d,\.]*\d[\d,\.]*)", str(value))
+    m = _XG_KSZTALT.match(str(value))
     if not m:
         return None
-    try:
-        return float(m.group(1).replace(",", "."))
-    except ValueError:
+    return float(m.group("liczba").replace(",", "."))
+
+
+def parse_xg(value):
+    """xG z komentarza: 'X 0,81' / 'xG 0,09' / 'Xg: 0.5' -> float, inaczej None.
+
+    Wartość spoza przedziału 0..1 daje None — patrz `xg_poza_zakresem`.
+    """
+    liczba = _xg_z_ksztaltu(value)
+    if liczba is None or not 0.0 <= liczba <= 1.0:
         return None
+    return liczba
+
+
+def xg_poza_zakresem(value):
+    """Czy komentarz ma kształt xG, ale liczba jest spoza 0..1 (anomalia importu)."""
+    liczba = _xg_z_ksztaltu(value)
+    return liczba is not None and not 0.0 <= liczba <= 1.0
 
 
 def xg_nieparsowalne(value):
@@ -214,6 +228,27 @@ def _build_events(rows):
     return {"events": events, "half_split": round(half_split, 1)}
 
 
+def sha256_zdarzen(rows):
+    """Skrót zbioru zdarzeń, NIEZALEŻNY OD KOLEJNOŚCI WIERSZY.
+
+    Ten sam mecz wyeksportowany dwa razy potrafi mieć inną kolejność wierszy,
+    więc inne sha256 pliku przy identycznym zbiorze zdarzeń — w korpusie
+    klienta dwa mecze były wgrane właśnie tak. Deduplikacja po skrócie pliku
+    puściłaby je jako osobne mecze.
+
+    Przeniesione z narzędzia testu W7-T (`tools/karta_dowodowa.py`) bez zmiany
+    algorytmu. Bliźniak w PHP: `Upload::sha256Zdarzen` — zmiana tutaj wymaga
+    zmiany tam, pilnuje tego test zgodności (app/tests/integracja/test_w7_import.php).
+
+    Wiersz = `json.dumps(list(wartości))` w kolejności kolumn pliku; wiersze
+    sortowane, łączone znakiem nowej linii.
+    """
+    h = hashlib.sha256()
+    for linia in sorted(json.dumps(list(r.values()), ensure_ascii=False) for r in rows):
+        h.update(linia.encode("utf-8") + b"\n")
+    return h.hexdigest()
+
+
 def format_fingerprint(headers):
     """Skrót ZESTAWU kolumn — sygnalizuje zmianę formatu eksportu (KONTRAKT_CLI.md).
 
@@ -258,6 +293,13 @@ def prep_frame(csv_path):
     # TUTAJ, na surowych wierszach — po `_build_events` zostaje samo `None`
     # i nie da się już odróżnić „nie było xG" od „było, ale nieczytelne".
     frame["xg_unparsed"] = sum(1 for r in rows if xg_nieparsowalne(r.get("comment")))
+    # W7: kształt xG z liczbą spoza 0..1 — anomalia importu, nie xG.
+    frame["xg_poza_zakresem"] = [
+        {"wiersz": i + 2, "tag": r.get("tag_name")}
+        for i, r in enumerate(rows) if xg_poza_zakresem(r.get("comment"))
+    ]
+    # W7: odcisk treści niezależny od kolejności wierszy — deduplikacja meczów.
+    frame["sha256_zdarzen"] = sha256_zdarzen(rows)
     frame["headers"] = headers
     frame["format_fingerprint"] = format_fingerprint(headers)
     frame["player_column"] = player_column
