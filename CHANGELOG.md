@@ -3,6 +3,81 @@
 Format: [wersja silnika] — data — opis.
 Każda zmiana, która modyfikuje wyjście silnika, MUSI mieć tu wpis wraz z powodem.
 
+## Aplikacja — 2026-09-28 · Golden layout W4: poprawki po odbiorze W0–W3
+
+Silnik bez zmian (0.16.7), szablony v17/v21 nietknięte, bez migracji.
+
+### 1. Regeneracja i wersja templatu (zbadane, potem poprawione)
+- **Proces roboczy zawsze brał NAJNOWSZĄ wersję templatu** klubu-tenanta meczu
+  (`ReportTemplates::current(matches.club_id)`, `ORDER BY version DESC`) — ani
+  najstarszej, ani pierwszej. Test: mecz klubu z templatem v9 → `reports.template_version`
+  = 9, `config.json` i `template.json` zadania = v9.
+- **Rozjazd kluczy:** przeliczenie bierze templat z `matches.club_id`, a lista
+  raportów liczyła „aktualny" z `reports.club_id`. Po przepięciu meczu
+  (`PorzadkiMeczow::planPrzepnij` zostawia raporty przy starym klubie) to dwa różne
+  kluby. Lista liczy teraz z klubu MECZU, podpisuje „templat klubu X", gdy miesza
+  kluby, i oznacza „raport innego klubu niż mecz"; `run_job.php` loguje rozjazd
+  i zapisuje oba kluby w `audit_log`.
+- **`regeneruj_raporty.php` bierze NAJNOWSZY raport meczu** (jak `queueClub`).
+  Dotąd przeliczał też starsze rodzeństwo, a przeliczenie podnosi `generated_at`, więc
+  starszy raport wskakiwał na miejsce najnowszego na liście „wiersz = mecz".
+  `--z-rodzenstwem` — stare zachowanie, świadomie. Suchobieg i przebieg wypisują przy
+  każdej pozycji klub i wersję templatu, której użyje proces roboczy.
+
+### 2. Powiadomienia
+- Regeneracja masowa (`regeneruj_raporty.php`, zapis Układu/Słownika) = jedna partia
+  → **jedno** powiadomienie „Przeliczono raportów: N" (konto klubowe: „Odświeżono…")
+  po ostatnim zadaniu, **bez maili**; partia kilku właścicieli — po jednym na każdego.
+- Pojedyncze „Przelicz": nowy typ `report.rebuilt` — chmurka + mail (za zgodą na
+  „raport gotowy"), bez miejsca w dzwonku.
+- **Dzwonek liczy tylko ważne:** błąd i raport gotowy z nowego importu.
+- Chmurka informacyjna rysuje się **raz na sesję** (pamięć w sesji, `read_at`
+  nietknięte — CLAUDE.md §9); ważne wracają, dopóki ktoś ich nie zamknie. Dotąd
+  każda nieodczytana wracała przy każdym przejściu między ekranami.
+
+### 3. Pulpit
+- „Ostatni mecz" i „Ostatnie mecze": data meczu, potem data **pierwszego importu**
+  (`imports.created_at`), potem założenia meczu — nigdy data renderu. Podpis
+  „raport z…" i „nowy" bez zmian.
+
+### 4. Słownik klubu
+- Zmienne martwe (nazwa nie wystąpiła w żadnym imporcie klubu) ukryte w Słowniku;
+  widoczne w Zaawansowanych [op] z „Usuń martwe…" → podgląd planu → potwierdzenie.
+  Logika wydzielona do `NaprawaTemplatu::plan()` — tej samej używa
+  `napraw_auto_etykiety.php`. Zapis = wersja z notką naprawy, nie unieważnia raportów.
+- „Wliczane" malejąco po liczbie wystąpień w sezonie, z tą liczbą w wierszu.
+
+### 5. Wgraj
+- Jedna strefa „przeciągnij albo wybierz" (`pliki[]`, `multiple`) — pole przykrywa
+  strefę, więc upuszczenie działa bez skryptu. Serwer rozdziela CSV/JSON po
+  rozszerzeniu (`Upload::rozdziel`), nagłówek sprawdza `Upload::accept` jak dotąd.
+  Skrypt: pastylki z nazwami (`textContent`), podświetlenie, walidacja typu, liczby,
+  rozmiaru i nagłówka (FileReader) z komunikatami z `pl.php`.
+
+### 6. Przyciski
+- „Przelicz" i „Wygeneruj ponownie" (lista raportów, karta meczu, ekran przeliczenia)
+  = `.btn.s.drugi`: tło `--acc-soft` (`--akcent-drugi`, #E4EFE9 / ciemny #1A3A2C),
+  tekst akcentem. Kolumna Akcje z `min-width`, przyciski `nowrap`.
+
+### 7. Drużyna
+- Nazwiska ze zdarzeń w dwóch grupach: „przypisani do naszej drużyny" i „bez
+  przypisania do drużyny", z liczbą zdarzeń. Zdarzenia rywala nie trafiają do list
+  (także ekranu Zawodnicy).
+
+### 8. deploy.sh
+- Cały skrypt w bloku `{ … exit; }` — bash czytał dalszą część pliku podmienionego
+  przez `git pull` w trakcie wykonania. Na końcu zawsze podsumowanie (≤ 6 linii):
+  rewizja, silnik, werdykt o regeneracji (potrzebna / niepotrzebna / nie wiem).
+
+### Testy
+- nowy `app/tests/integracja/test_golden_w4_http.php` (71, port 9091, w `uruchom.sh`),
+- `test_golden_w1`: regeneracja domyślnie najnowszy raport meczu (+ `--z-rodzenstwem`),
+- `test_4a`: `acc-soft` na liście aliasów bez wariantu ciemnego; `test_chmurki`: layout
+  przez `naChmurkiSesji`.
+
+**Nie sprawdzone lokalnie:** `bash -n deploy/deploy.sh` (polecenie zablokowane w tej
+sesji); strukturę bloku i podsumowania sprawdza test statyczny.
+
 ## [0.16.7] + aplikacja — 2026-09-28 · Golden layout W3-b: auto-dopisywanie wraca, baner zmienia charakter
 
 **Cofnięta zmiana zachowania z W3.** Import znów dopisuje nowe tagi do templatu sam

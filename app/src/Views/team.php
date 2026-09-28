@@ -20,6 +20,15 @@ use CoachAnalyze\View;
 $kreska = View::t('common.dash');
 $dziesietna = static fn($w): string => number_format((float) $w, 2, ',', ' ');
 $zeZdarzen = array_values(array_filter($zawodnicy, static fn(array $z): bool => empty($z['in_roster'])));
+/*
+ * DO CZASU SKŁADU (golden layout W4): nazwiska ze zdarzeń w DWÓCH grupach.
+ * Przypisani = choć jedno zdarzenie z drużyną tenanta. Bez przypisania = same
+ * zdarzenia bez pola `team` (pułapka 5) — to mogą być zawodnicy rywala, więc
+ * nie wolno ich pokazać jako naszych. Zdarzeń rywala nie ma tu wcale
+ * (`Stats::players`).
+ */
+$przypisani = array_values(array_filter($zeZdarzen, static fn(array $z): bool => (int) ($z['events_team'] ?? 0) > 0));
+$bezDruzyny = array_values(array_filter($zeZdarzen, static fn(array $z): bool => (int) ($z['events_team'] ?? 0) === 0));
 ?>
 <h1 class="h1"><?= View::e(View::t('nav.team')) ?></h1>
 <p class="hint">
@@ -74,13 +83,27 @@ $zeZdarzen = array_values(array_filter($zawodnicy, static fn(array $z): bool => 
   <?php endif; ?>
 </section>
 
-<?php if ($zeZdarzen !== []): ?>
+<?php if ($przypisani !== []): ?>
   <section class="panel">
-    <h2 class="h2"><?= View::e(View::t('team.from_events')) ?></h2>
-    <p class="hint"><?= View::e(View::t('team.from_events.hint')) ?></p>
+    <h2 class="h2"><?= View::e(View::t('team.from_events.nasi', count($przypisani))) ?></h2>
+    <p class="hint"><?= View::e(View::t('team.from_events.nasi.hint')) ?></p>
     <ul class="tagi">
-      <?php foreach ($zeZdarzen as $z): ?>
-        <li><?= View::e((string) $z['player']) ?> <span class="muted">· <?= (int) $z['events'] ?></span></li>
+      <?php foreach ($przypisani as $z): ?>
+        <li><?= View::e((string) $z['player']) ?>
+          <span class="muted">· <?= View::e(View::t('team.zdarzen', (int) $z['events_team'])) ?><?php if ((int) $z['events_none'] > 0): ?>,
+            <?= View::e(View::t('team.zdarzen.bez', (int) $z['events_none'])) ?><?php endif; ?></span></li>
+      <?php endforeach; ?>
+    </ul>
+  </section>
+<?php endif; ?>
+
+<?php if ($bezDruzyny !== []): ?>
+  <section class="panel">
+    <h2 class="h2"><?= View::e(View::t('team.from_events.bez', count($bezDruzyny))) ?></h2>
+    <p class="hint"><?= View::e(View::t('team.from_events.bez.hint')) ?></p>
+    <ul class="tagi">
+      <?php foreach ($bezDruzyny as $z): ?>
+        <li><?= View::e((string) $z['player']) ?> <span class="muted">· <?= View::e(View::t('team.zdarzen', (int) $z['events_none'])) ?></span></li>
       <?php endforeach; ?>
     </ul>
   </section>

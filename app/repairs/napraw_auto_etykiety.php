@@ -139,77 +139,60 @@ echo $zapisz ? "TRYB ZAPISU\n" : "PODGLĄD (bez --zapisz nic nie zostanie zmieni
 
 $kodWyjscia = 0;
 foreach ($kluby as $klub) {
-    $templat = ReportTemplates::current($klub);
+    // Logika w `NaprawaTemplatu::plan()` — ta sama, której używa przycisk
+    // „Usuń martwe" w Ustawieniach klubu (golden layout W4).
+    $plan = NaprawaTemplatu::plan($klub, $takzeReczne, $wykazMartwych, $usunMartwe);
+    $templat = $plan['templat'];
     if ($templat === null) {
         echo "\nklub {$klub}: brak templatu — pomijam\n";
         continue;
     }
-    $config = ReportTemplates::decodeConfig($templat['config']);
-    $zmienne = array_values((array) ($config['variables'] ?? []));
-    echo "\nklub {$klub}: templat v{$templat['version']}, zmiennych " . count($zmienne) . "\n";
+    $zmiennychPrzed = count((array) (ReportTemplates::decodeConfig($templat['config'])['variables'] ?? []));
+    echo "\nklub {$klub}: templat v{$templat['version']}, zmiennych {$zmiennychPrzed}\n";
 
-    $przed = $zmienne;
-    $katalog = NaprawaTemplatu::katalog($klub);
-    [$zmienne, $z1] = NaprawaTemplatu::scalAliasySilnika($zmienne);
-    [$zmienne, $z2, $doDecyzji] = NaprawaTemplatu::scalDuplikaty($zmienne, $katalog);
-    foreach ($doDecyzji as $opis) {
+    foreach ($plan['do_decyzji'] as $opis) {
         echo "  ! do decyzji: {$opis}\n";
     }
-    [$zmienne, $z3] = NaprawaTemplatu::poprawEtykiety(
-        $zmienne, NaprawaTemplatu::zWersjiAuto($klub), $takzeReczne
-    );
-    $zmiany = array_merge($z1, $z2, $z3);
 
     if ($wykazMartwych) {
-        $martwe = NaprawaTemplatu::martwe($klub, $zmienne);
-        if ($martwe === null) {
+        if ($plan['martwe'] === null) {
             echo "  martwe: katalog tagów klubu jest pusty — brak podstaw do oceny\n";
         } else {
-            echo '  martwe (nazwa nie wystąpiła w żadnym imporcie): ' . count($martwe) . "\n";
-            foreach ($martwe as $i) {
-                $z = $zmienne[$i];
+            echo '  martwe (nazwa nie wystąpiła w żadnym imporcie): ' . count($plan['martwe']) . "\n";
+            foreach ($plan['martwe'] as $z) {
                 printf("    %s  %-5s  %s\n", $z['id'] ?? '?', $z['source']['type'] ?? '?', $z['source']['raw'] ?? '');
-            }
-            if ($usunMartwe && $martwe !== []) {
-                foreach ($martwe as $i) {
-                    $zmiany[] = sprintf('usunięto martwą %s „%s"', $zmienne[$i]['id'] ?? '?', $zmienne[$i]['source']['raw'] ?? '');
-                    unset($zmienne[$i]);
-                }
-                $zmienne = array_values($zmienne);
             }
         }
     }
 
-    if ($zmiany === []) {
+    if ($plan['zmiany'] === []) {
         echo "  nic do zrobienia\n";
         continue;
     }
-    foreach ($zmiany as $opis) {
+    foreach ($plan['zmiany'] as $opis) {
         echo "  - {$opis}\n";
     }
 
-    $ciaglosc = NaprawaTemplatu::sprawdzCiaglosc($przed, $zmienne, $katalog);
-    if ($ciaglosc !== []) {
+    if ($plan['ciaglosc'] !== []) {
         echo "  PRZERWANO BEZ ZAPISU — naprawa zmieniłaby liczby:\n";
-        foreach ($ciaglosc as $blad) {
+        foreach ($plan['ciaglosc'] as $blad) {
             echo "    · {$blad}\n";
         }
         $kodWyjscia = 1;
         continue;
     }
 
-    [$nowy, $bledy] = NaprawaTemplatu::nowyConfig($config, $zmienne);
-    if ($nowy === null) {
-        echo '  ODRZUCONE przez walidację templatu: ' . implode(', ', $bledy) . "\n";
+    if ($plan['nowy'] === null) {
+        echo '  ODRZUCONE przez walidację templatu: ' . implode(', ', $plan['bledy']) . "\n";
         $kodWyjscia = 1;
         continue;
     }
     if (!$zapisz) {
-        echo '  (podgląd) zmiennych po naprawie: ' . count($zmienne) . "\n";
+        echo '  (podgląd) zmiennych po naprawie: ' . $plan['zmiennych'] . "\n";
         continue;
     }
-    $wersja = ReportTemplates::saveNewVersion($klub, $nowy, null, NaprawaTemplatu::NOTKA);
-    echo "  zapisano wersję v{$wersja}, zmiennych " . count($zmienne) . "\n";
+    $wersja = NaprawaTemplatu::zapiszPlan($klub, $plan, null);
+    echo "  zapisano wersję v{$wersja}, zmiennych " . $plan['zmiennych'] . "\n";
 }
 
 exit($kodWyjscia);

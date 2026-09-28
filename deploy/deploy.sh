@@ -21,6 +21,16 @@
 # Wycofanie: git -C ~/CoachAnalyze/repo checkout <commit> && bash deploy/deploy.sh
 set -euo pipefail
 
+# CAŁY SKRYPT W JEDNYM BLOKU `{ … exit; }` (golden layout W4).
+#
+# Bash czyta skrypt KAWAŁKAMI, w trakcie wykonania. Ten plik leży w repozytorium,
+# które sam aktualizuje (`git pull` niżej) — po pobraniu zmian bash czytał dalszą
+# część NOWEGO pliku od starego przesunięcia bajtowego. Koniec skryptu (podsumowanie,
+# komunikat o regeneracji) wykonywał się albo od połowy linii, albo wcale, i nie
+# było wiadomo, czy zadziałał. Blok musi zostać wczytany w całości, zanim ruszy
+# pierwsze polecenie, a `exit` na końcu nie pozwala doczytać niczego więcej.
+{
+
 # Ścieżki dają się nadpisać, żeby kontrolę wdrożenia można było uruchomić
 # na kopii układu katalogów — inaczej jedyną drogą sprawdzenia, czy działa,
 # byłoby wdrożenie na produkcję.
@@ -502,15 +512,35 @@ if [ "$FAIL" -ne 0 ]; then
   exit 1
 fi
 
-echo "==> Gotowe: ${REV:-kontrola}"
-
 # RAPORTY WYRENDEROWANE STARYM SZABLONEM/SILNIKIEM (golden layout W1). Wdrożenie
 # ich nie przelicza — to decyzja o kolejce na kilkanaście minut — ale ma o nich
 # powiedzieć, zamiast zostawić do odkrycia na raporcie z nieaktualnym układem.
+#
+# W4: werdykt ZAWSZE, w jednej z trzech postaci — „potrzebna", „niepotrzebna",
+# „nie wiem". Komunikat wypisywany tylko przy zmianie był nieodróżnialny od
+# skryptu, który do tego miejsca w ogóle nie doszedł.
+REGENERACJA="nie wiem — brak rewizji sprzed wdrożenia (tryb --tylko-kontrola?)"
+REGEN_POLECENIE=""
 if [ -n "${POPRZEDNIA:-}" ] && [ -n "${REV:-}" ]; then
   if git -C "$BASE/repo" diff --name-only "$POPRZEDNIA" HEAD 2>/dev/null \
        | grep -qE '^engine/coachanalyze/(templates/|[^/]+\.py$)'; then
-    echo "==> Zmienił się szablon/silnik: uruchom regeneruj_raporty.php --nieaktualne"
-    echo "    php $BASE/repo/app/repairs/regeneruj_raporty.php --nieaktualne --dry-run"
+    REGENERACJA="POTRZEBNA — zmienił się szablon/silnik"
+    REGEN_POLECENIE="php $BASE/repo/app/repairs/regeneruj_raporty.php --nieaktualne --dry-run"
+  else
+    REGENERACJA="niepotrzebna — szablon i silnik bez zmian"
   fi
 fi
+
+# PODSUMOWANIE — ostatnie linie wyjścia (najwyżej 6), mieści się w `tail -8`.
+# `set -u`: w trybie --tylko-kontrola POPRZEDNIA nie istnieje — stąd kopia z `:-`.
+POPRZ="${POPRZEDNIA:-}"
+echo "==> Gotowe: ${REV:-kontrola}"
+echo "    rewizja:     ${POPRZ:0:7}${POPRZ:+ -> }${REV:-kontrola}"
+echo "    silnik:      ${WERSJA_SILNIKA:-nieznany}    kontrole: OK"
+echo "    regeneracja: $REGENERACJA"
+if [ -n "$REGEN_POLECENIE" ]; then
+  echo "    $REGEN_POLECENIE"
+fi
+
+exit 0
+}

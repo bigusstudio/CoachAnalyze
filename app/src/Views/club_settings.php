@@ -25,6 +25,7 @@ use CoachAnalyze\View;
  * @var list<array<string,mixed>> $nierozpoznane
  * @var list<array<string,mixed>> $historia
  * @var list<string>|null         $martwe
+ * @var array<string,mixed>|null  $planMartwych  podgląd „Usuń martwe" [op]
  * @var string|null               $partia
  * @var array<string,mixed>|null  $postep
  * @var string                    $csrf
@@ -197,6 +198,7 @@ $ostatni = count($sekcje) - 1;
       <table class="table">
         <thead><tr>
           <th><?= View::e(View::t('ust.kol.tag')) ?></th>
+          <th class="num"><?= View::e(View::t('ust.kol.sezon')) ?></th>
           <th><?= View::e(View::t('ust.kol.etykieta')) ?></th>
           <th><?= View::e(View::t('ust.kol.sekcje')) ?></th>
         </tr></thead>
@@ -209,6 +211,7 @@ $ostatni = count($sekcje) - 1;
                   <br><span class="hint"><?= View::e(View::t('ust.kontynuacja', $a)) ?></span>
                 <?php endforeach; ?>
               </td>
+              <td class="num"><?= (int) $w['sezon'] ?></td>
               <td><input class="field__input" type="text" maxlength="80" name="etykieta[<?= (int) $w['i'] ?>]"
                          value="<?= View::e($w['label']) ?>"></td>
               <td class="sekcje-wybor">
@@ -251,6 +254,29 @@ $ostatni = count($sekcje) - 1;
     <?php else: ?>
       <p class="hint"><?= View::e(View::t('ust.zaaw.martwe.hint')) ?></p>
       <ul><?php foreach ($martwe as $m): ?><li><code><?= View::e($m) ?></code></li><?php endforeach; ?></ul>
+
+      <?php if ($planMartwych === null): ?>
+        <p><a class="btn s drugi" href="/klub/ustawienia?zakladka=zaawansowane&amp;podglad=martwe"><?= View::e(View::t('ust.martwe.usun')) ?></a></p>
+      <?php else: ?>
+        <?php /* PODGLĄD = plan, który wykona zapis (`NaprawaTemplatu::plan`): usunięcie
+                 martwych i porządki z tego samego przebiegu co skrypt naprawy. */ ?>
+        <div class="notice notice--warn" role="status">
+          <p><strong><?= View::e(View::t('ust.martwe.podglad', count($planMartwych['zmiany']))) ?></strong></p>
+          <ul><?php foreach ($planMartwych['zmiany'] as $opis): ?><li><?= View::e($opis) ?></li><?php endforeach; ?></ul>
+          <?php if ($planMartwych['ciaglosc'] !== [] || ($planMartwych['zmiany'] !== [] && $planMartwych['nowy'] === null)): ?>
+            <p><?= View::e(View::t('ust.martwe.odmowa')) ?></p>
+            <ul><?php foreach (array_merge($planMartwych['ciaglosc'], $planMartwych['bledy']) as $b): ?><li><?= View::e($b) ?></li><?php endforeach; ?></ul>
+          <?php elseif ($planMartwych['zmiany'] !== []): ?>
+            <form method="post" action="/klub/ustawienia/zaawansowane/usun-martwe" class="actions">
+              <input type="hidden" name="csrf" value="<?= View::e($csrf) ?>">
+              <input type="hidden" name="wersja" value="<?= (int) $planMartwych['templat']['version'] ?>">
+              <button class="btn p" type="submit"><?= View::e(View::t('ust.martwe.potwierdz', count($martwe))) ?></button>
+              <a class="link" href="/klub/ustawienia?zakladka=zaawansowane"><?= View::e(View::t('ust.martwe.anuluj')) ?></a>
+            </form>
+            <p class="hint hint--block"><?= View::e(View::t('ust.martwe.potwierdz.hint')) ?></p>
+          <?php endif; ?>
+        </div>
+      <?php endif; ?>
     <?php endif; ?>
   </section>
 

@@ -828,12 +828,31 @@ function wykonajPrzeliczenie(int $jobId, int $importId, array $import, array $pa
         'id' => $matchId,
     ]);
 
+    /*
+     * RAPORT INNEGO KLUBU NIŻ MECZ (golden layout W4). Templat bierzemy od
+     * tenanta MECZU (`uruchomSilnik`), a `reports.club_id` zostaje, jaki był —
+     * po przepięciu meczu (`PorzadkiMeczow::planPrzepnij`) to dwa różne kluby.
+     * Nie przepisujemy go po cichu (raport zniknąłby z listy swojego klubu),
+     * ale ślad ma być: w logu i w dzienniku, z oboma numerami.
+     */
+    $rozjazd = $report['club_id'] !== null && $bieg['club_id'] !== null
+        && (int) $report['club_id'] !== (int) $bieg['club_id'];
+    if ($rozjazd) {
+        error_log(sprintf(
+            '[job %d] raport %d należy do klubu %d, mecz %d do klubu %d — przeliczono templatem klubu meczu (v%s)',
+            $jobId, $reportId, (int) $report['club_id'], $matchId, (int) $bieg['club_id'],
+            (string) ($bieg['template_version'] ?? '-')
+        ));
+    }
+
     zakoncz($jobId, 0, null);
     Audit::log('report.rebuilt', null, 'report', $reportId, [
         'job_id'        => $jobId,
         'match_id'      => $matchId,
         'from_template' => $report['template_version'],
         'to_template'   => $bieg['template_version'],
+        'template_club' => $bieg['club_id'],
+        'report_club'   => $report['club_id'],
         'batch'         => $payload['batch'] ?? null,
     ]);
 
@@ -845,7 +864,7 @@ function wykonajPrzeliczenie(int $jobId, int $importId, array $import, array $pa
 }
 
 /**
- * Podsumowanie partii — JEDNA chmurka, dopiero gdy nic już nie pracuje.
+ * Podsumowanie partii — JEDNA chmurka na odbiorcę, dopiero gdy nic już nie pracuje.
  *
  * Wołane po KAŻDYM zadaniu partii, ale wychodzi bez słowa, dopóki partia trwa.
  * Rozstrzyga `finished` z `Rebuilds::batchStatus()`, więc warunek jest liczony
@@ -854,6 +873,12 @@ function wykonajPrzeliczenie(int $jobId, int $importId, array $import, array $pa
  *
  * Proces roboczy bierze zadania POJEDYNCZO i pod blokadą, więc „ostatnie"
  * zadanie partii jest dokładnie jedno i podsumowanie powstaje raz.
+ *
+ * GOLDEN LAYOUT W4: partią jest też `regeneruj_raporty.php` (dotąd każdy raport
+ * dawał chmurkę i mail — dziewięć chmurek na ekranie, dwie przy meczu z dwoma
+ * raportami). Partia z `--all` obejmuje kilku właścicieli, więc podsumowanie
+ * idzie do KAŻDEGO z nich z jego liczbą. BEZ MAILA: zbiorcze przeliczenie to
+ * informacja, nie wezwanie do działania — nieudane pozycje są w chmurce błędu.
  */
 function powiadomOPartii(string $partia, int $matchId, int $clubId): void
 {
@@ -863,35 +888,56 @@ function powiadomOPartii(string $partia, int $matchId, int $clubId): void
     }
 
     $match = Matches::find($matchId);
-    if ($match === null) {
-        return;
+    $zapasowyWlasciciel = $match !== null ? (int) $match['owner_id'] : 0;
+
+    /** @var array<int, array{done:int, failed:int, kluby:array<int,bool>}> $wg */
+    $wg = [];
+    foreach (Rebuilds::batchProgress($partia)['rows'] as $poz) {
+        $kto = (int) ($poz['owner_id'] ?? 0) ?: $zapasowyWlasciciel;
+        if ($kto <= 0) {
+            continue;
+        }
+        $wg[$kto] ??= ['done' => 0, 'failed' => 0, 'kluby' => []];
+        $wg[$kto][(string) $poz['status'] === 'failed' ? 'failed' : 'done']++;
+        $klub = (int) ($poz['club_id'] ?? 0) ?: $clubId;
+        if ($klub > 0) {
+            $wg[$kto]['kluby'][$klub] = true;
+        }
     }
 
-    $udane = (int) $stan['done'];
-    $bledy = (int) $stan['failed'];
+    foreach ($wg as $kto => $licz) {
+        $udane = $licz['done'];
+        $bledy = $licz['failed'];
+        $kluby = array_keys($licz['kluby']);
 
-    // Adres partii, żeby z chmurki dało się wejść wprost w listę błędów per mecz.
-    // Ekran przeliczenia jest [op] (golden layout W2) — konto klubowe dostaje
-    // wskaźnik partii w Ustawieniach klubu (W3), a nie 404.
-    $wlasciciel = Users::find((int) $match['owner_id']);
-    $url = $clubId <= 0 ? null : (Users::isAdmin($wlasciciel)
-        ? '/klub/' . $clubId . '/przelicz?partia=' . $partia
-        : '/klub/ustawienia?partia=' . $partia);
+        // Adres partii, żeby z chmurki dało się wejść wprost w listę błędów per mecz.
+        // Ekran przeliczenia jest [op] (golden layout W2) — konto klubowe dostaje
+        // wskaźnik partii w Ustawieniach klubu (W3), a nie 404. Partia kilku
+        // klubów nie ma jednego ekranu — prowadzi na listę raportów.
+        $admin = Users::isAdmin(Users::find($kto));
+        $url = match (true) {
+            count($kluby) !== 1 => '/raporty',
+            $admin => '/klub/' . $kluby[0] . '/przelicz?partia=' . $partia,
+            default => '/klub/ustawienia?partia=' . $partia,
+        };
+        $op = $admin ? '.op' : '';
 
-    Notifications::create((int) $match['owner_id'], [
-        // Odmiana chmurki idzie za NAJGORSZYM wynikiem w partii: jedna nieudana
-        // pozycja ma być widoczna, nawet gdy dziewięć się udało.
-        'type'  => $bledy > 0 ? Notifications::TYP_FAILED : Notifications::TYP_READY,
-        'title' => $bledy > 0
-            ? View::t('recalc.toast.mixed', $udane, $bledy)
-            : View::t('recalc.toast.done', $udane),
-        'body'  => $bledy > 0
-            ? View::t('recalc.toast.mixed.body')
-            : View::t('recalc.toast.done.body'),
-        'entity'    => 'club',
-        'entity_id' => $clubId > 0 ? $clubId : null,
-        'url'       => $url,
-    ]);
+        Notifications::create($kto, [
+            // Odmiana chmurki idzie za NAJGORSZYM wynikiem w partii: jedna nieudana
+            // pozycja ma być widoczna, nawet gdy dziewięć się udało.
+            'type'  => $bledy > 0 ? Notifications::TYP_FAILED : Notifications::TYP_BATCH,
+            'title' => $bledy > 0
+                ? View::t('recalc.toast.mixed' . $op, $udane, $bledy)
+                : View::t('recalc.toast.done' . $op, $udane),
+            'body'  => $bledy > 0
+                ? View::t('recalc.toast.mixed.body')
+                : View::t('recalc.toast.done.body'),
+            'entity'    => 'club',
+            'entity_id' => count($kluby) === 1 ? $kluby[0] : null,
+            'url'       => $url,
+            'mail'      => false,
+        ]);
+    }
 }
 
 /** Powiadomienie po udanym przeliczeniu — ten sam system chmurek co „raport gotowy". */
@@ -903,7 +949,9 @@ function powiadomOPrzeliczeniu(int $matchId, int $reportId, ?int $wersja): void
     }
 
     Notifications::create((int) $match['owner_id'], [
-        'type'  => Notifications::TYP_READY,
+        // Osobny typ (golden layout W4): mail jak przy „raport gotowy", ale bez
+        // miejsca w dzwonku — przeliczenie nie jest nowym raportem.
+        'type'  => Notifications::TYP_REBUILT,
         'title' => 'Raport przeliczony: ' . opisMeczu($match),
         // Adres publiczny się NIE zmienił i to jest właśnie ta informacja,
         // której odbiorca potrzebuje — inaczej odruchowo wygeneruje nowy link.

@@ -209,7 +209,7 @@ $tylkoJasny = array_diff($jasny[1], $ciemny[1]);
  *   barwa pozycji aktywnej jest z założenia ta sama w obu motywach.
  */
 $bezWariantu = ['promien', 'r', 'bg', 'panel', 'panel2', 'line',
-                'ink', 'ink2', 'ink3', 'acc', 'acc-ink', 'shadow',
+                'ink', 'ink2', 'ink3', 'acc', 'acc-ink', 'acc-soft', 'shadow',
                 'szyna-akt', 'szyna-akt-tekst'];
 check('motyw ciemny nadpisuje komplet kolorów',
     array_diff($tylkoJasny, $bezWariantu) === [],

@@ -139,7 +139,7 @@ echo "\n== panel działa BEZ skryptu ==\n";
  * wysłanym przez serwer, a zamknięcie musi działać zwykłym formularzem.
  */
 check('layout renderuje chmurki po stronie serwera',
-    str_contains($layout, 'unreadForToasts'),
+    str_contains($layout, 'naChmurkiSesji'),
     'bez tego przy wyłączonym JS nie widać nic');
 
 check('chmurka bez skryptu ma formularz zamknięcia',

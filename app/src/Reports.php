@@ -115,10 +115,12 @@ final class Reports
             'SELECT r.id, r.match_id, r.html_path, r.engine_version, r.generated_at,
                     r.template_version, r.club_id,
                     m.played_at, m.competition, m.season_id,
+                    m.club_id AS tenant_id, t.name AS tenant_name,
                     h.name AS home_name, a.name AS away_name,
                     s.label AS season_label
                FROM reports r
                JOIN matches m  ON m.id = r.match_id
+               LEFT JOIN clubs t   ON t.id = m.club_id
                LEFT JOIN clubs h   ON h.id = m.club_home_id
                LEFT JOIN clubs a   ON a.id = m.club_away_id
                LEFT JOIN seasons s ON s.id = m.season_id'
@@ -280,6 +282,7 @@ final class Reports
         foreach ($rows as &$r) {
             $r['tpl_current']  = 0;
             $r['tpl_outdated'] = false;
+            $r['club_mismatch'] = false;
             $r['raw_ready']    = false;
         }
         unset($r);
@@ -288,10 +291,18 @@ final class Reports
             return;
         }
 
-        // --- aktualna wersja templatu, po jednym wierszu na klub
-        $clubIds = array_values(array_unique(array_filter(
-            array_map(static fn(array $r) => (int) ($r['club_id'] ?? 0), $rows)
-        )));
+        /*
+         * --- aktualna wersja templatu, po jednym wierszu na klub
+         *
+         * KLUB TEMPLATU = TENANT MECZU (`matches.club_id`), nie `reports.club_id`
+         * (golden layout W4). Przeliczenie bierze templat tenanta meczu
+         * (`run_job.php::uruchomSilnik`), więc „aktualny" liczymy z tego samego
+         * źródła. Dwa klucze rozjeżdżały się po przepięciu meczu na inny klub
+         * (`PorzadkiMeczow::planPrzepnij` zostawia raporty przy starym) i kolumna
+         * porównywała wersję z templatem klubu, którego nikt nie używał.
+         */
+        $klubTemplatu = static fn(array $r): int => (int) ($r['tenant_id'] ?? $r['club_id'] ?? 0);
+        $clubIds = array_values(array_unique(array_filter(array_map($klubTemplatu, $rows))));
 
         /** @var array<int,int> $wersje  club_id => MAX(version) */
         $wersje = [];
@@ -341,8 +352,11 @@ final class Reports
         }
 
         foreach ($rows as &$r) {
-            $clubId = (int) ($r['club_id'] ?? 0);
+            $clubId = $klubTemplatu($r);
             $aktualna = $wersje[$clubId] ?? 0;
+            // Raport zapisany pod innym klubem niż tenant meczu — do ostrzeżenia [op].
+            $r['club_mismatch'] = isset($r['tenant_id']) && $r['club_id'] !== null
+                && (int) $r['club_id'] !== (int) $r['tenant_id'];
 
             $r['tpl_current'] = $aktualna;
             // Klub bez templatu nie ma z czym porównywać — raport sprzed ery

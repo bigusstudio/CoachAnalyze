@@ -446,8 +446,9 @@ ca_test_db($baza);
 $nowe = Db::all('SELECT title, url, type FROM notifications WHERE read_at IS NULL ORDER BY id');
 check('partia dała DOKŁADNIE JEDNĄ chmurkę', count($nowe) === 1,
     'jest ' . count($nowe) . ': ' . json_encode(array_column($nowe, 'title'), JSON_UNESCAPED_UNICODE));
+// Zestaw loguje administratora — od W4 dostaje „Przeliczono…" (konto klubowe: „Odświeżono…").
 check('chmurka podsumowuje wynik partii',
-    count($nowe) === 1 && str_contains((string) $nowe[0]['title'], 'Odświeżono'),
+    count($nowe) === 1 && str_contains((string) $nowe[0]['title'], 'Przeliczono 1, nie udało się 1'),
     count($nowe) === 1 ? (string) $nowe[0]['title'] : '');
 check('chmurka oznaczona jako niepowodzenie, bo jedna pozycja padła',
     count($nowe) === 1 && (string) $nowe[0]['type'] === 'report.failed');

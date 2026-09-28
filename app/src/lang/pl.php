@@ -571,6 +571,9 @@ return [
     'cov.excluded.template.hint' => 'Pozycje obecne w eksporcie, których templat nie zna, oraz zignorowane na stałe. Ich zdarzenia nie wchodzą do metryk.',
     'reports.tplv'        => 'templat v%d',
     'reports.tplv.none'   => 'sprzed templatów',
+    'reports.tplv.klub'   => 'templat klubu %s',
+    'reports.club_mismatch' => 'raport innego klubu niż mecz',
+    'reports.club_mismatch.hint' => 'Raport jest zapisany pod innym klubem niż tenant meczu (mecz przepięty?). Przeliczenie użyje templatu klubu meczu.',
 
     // --- regeneracja raportów pod aktualny templat (Sesja 7) ---
     //
@@ -609,6 +612,10 @@ return [
     'recalc.toast.done'    => 'Odświeżono raportów: %d',
     'recalc.toast.done.body' => 'Adresy publiczne raportów nie zmieniły się.',
     'recalc.toast.mixed'   => 'Odświeżono %1$d, nie udało się %2$d',
+    // Wersje dla administratora (golden layout W4) — konto klubowe nie widzi
+    // słowa „przelicz" (W2), administrator widzi mechanikę po imieniu.
+    'recalc.toast.done.op'  => 'Przeliczono raportów: %d',
+    'recalc.toast.mixed.op' => 'Przeliczono %1$d, nie udało się %2$d',
     'recalc.toast.mixed.body' => 'Otwórz listę partii, żeby zobaczyć, który mecz nie przeszedł i dlaczego. Raporty, które się nie przeliczyły, zachowały poprzednią treść.',
 
     'recalc.progress'      => 'Postęp partii',
@@ -1364,6 +1371,13 @@ return [
     'team.no_roster'        => 'Składy meczów nie są jeszcze wpisane. Poniżej zawodnicy znani ze zdarzeń; numery, pozycje i minuty pojawią się po wpisaniu składu na karcie meczu.',
     'team.from_events'      => 'Zawodnicy ze zdarzeń, spoza kadry',
     'team.from_events.hint' => 'Nazwiska z tagów bez wpisu w składzie — skład o nich nie wie albo to literówka w eksporcie. Liczba to zdarzenia w sezonie.',
+    // Do czasu składu: podział nazwisk ze zdarzeń (golden layout W4).
+    'team.from_events.nasi'      => 'Ze zdarzeń, przypisani do naszej drużyny (%d)',
+    'team.from_events.nasi.hint' => 'Nazwiska z tagów, które mają naszą drużynę w polu „team”, bez wpisu w składzie. Liczba to zdarzenia w sezonie.',
+    'team.from_events.bez'       => 'Ze zdarzeń, bez przypisania do drużyny (%d)',
+    'team.from_events.bez.hint'  => 'Tagi tych zawodników nie mają wypełnionego pola „team” — nie wiadomo, czy to nasi zawodnicy, czy rywala. Wpisz skład na karcie meczu, żeby to rozstrzygnąć.',
+    'team.zdarzen'               => 'zdarzeń: %d',
+    'team.zdarzen.bez'           => 'bez drużyny: %d',
     'jobs.col.match'        => 'Mecz',
     'pick.title'            => 'Wybierz klub',
     'settings.layout'       => 'Układ raportu',
@@ -1386,6 +1400,12 @@ return [
     'import.where'          => 'LiveTag.Pro → Eksport → CSV. Plik projektu JSON jest opcjonalny — daje barwy tagów.',
     'import.err.type_csv'   => 'To nie jest plik CSV. Wybierz eksport z LiveTag.Pro (rozszerzenie .csv).',
     'import.err.type_json'  => 'To nie jest plik JSON. Plik projektu LiveTag.Pro ma rozszerzenie .json.',
+    // Jedna strefa na oba pliki (golden layout W4).
+    'import.strefa'         => 'Przeciągnij tu pliki eksportu albo kliknij, żeby wybrać',
+    'import.strefa.opis'    => 'CSV z tabelą zdarzeń i — opcjonalnie — plik projektu JSON. Oba naraz albo sam CSV.',
+    'import.err.two_csv'    => 'Wybrano dwa pliki CSV. Wgraj jeden eksport naraz.',
+    'import.err.two_json'   => 'Wybrano dwa pliki JSON. Plik projektu może być tylko jeden.',
+    'import.err.too_many'   => 'Za dużo plików. Wgraj jeden CSV i najwyżej jeden JSON.',
     'import.err.size'       => 'Plik jest za duży — limit to %d MB.',
     'import.err.date'       => 'Podaj datę meczu — bez niej mecz nie trafi do sezonu ani kalendarza.',
     'import.back'           => 'Wstecz',
@@ -1420,7 +1440,7 @@ return [
     'ust.nierozpoznane.brak'=> 'Raport liczy wszystko, co jest w eksportach klubu. Nowe tagi dopisują się same przy imporcie — ich nazwy sprawdzisz niżej, w „Wliczanych”.',
     'ust.nierozpoznane.hint'=> 'To, czego raport nie liczy: tagi świadomie pominięte i zmienne bez znaczenia w sekcjach, które go wymagają (tam raport pokazuje „–”). Wybierz „Wlicz jako…”.',
     'ust.wliczane'          => 'Wliczane (%d)',
-    'ust.wliczane.hint'     => 'Tag z eksportu zostaje taki, jak w LiveTag — zmieniasz tylko nazwę w raporcie i sekcje.',
+    'ust.wliczane.hint'     => 'Tag z eksportu zostaje taki, jak w LiveTag — zmieniasz tylko nazwę w raporcie i sekcje. Kolejność: najczęstsze w sezonie na górze.',
     'ust.kol.tag'           => 'Tag w eksporcie',
     'ust.kol.ile'           => 'Wystąpienia',
     'ust.kol.wlicz'         => 'Wlicz jako…',
@@ -1441,7 +1461,18 @@ return [
     'ust.zaaw.konfigurator' => 'Konfigurator zmiennych',
     'ust.zaaw.uklad'        => 'Szerokości i tytuły kafli',
     'ust.zaaw.martwe'       => 'Zmienne martwe',
-    'ust.zaaw.martwe.hint'  => 'Żadna z tych nazw nie wystąpiła w eksportach klubu. Usunięcie: app/repairs/napraw_auto_etykiety.php --club N --usun-martwe --zapisz.',
+    'ust.zaaw.martwe.hint'  => 'Żadna z tych nazw nie wystąpiła w eksportach klubu, więc Słownik klubu ich nie pokazuje. „Usuń martwe" robi to samo co app/repairs/napraw_auto_etykiety.php --usun-martwe --zapisz — najpierw podgląd.',
+    // „Usuń martwe" (golden layout W4) — podgląd, potem potwierdzenie.
+    'ust.martwe.usun'       => 'Usuń martwe…',
+    'ust.martwe.podglad'    => 'Podgląd — zmian w templacie: %d',
+    'ust.martwe.potwierdz'  => 'Usuń martwe zmienne (%d) i zapisz nową wersję',
+    'ust.martwe.potwierdz.hint' => 'Nowa wersja templatu z notką naprawy. Raporty nie wymagają przeliczenia — martwe zmienne nie mają ani jednego zdarzenia.',
+    'ust.martwe.anuluj'     => 'Anuluj',
+    'ust.martwe.odmowa'     => 'Tej naprawy nie da się zapisać — zmieniłaby liczby w raportach albo templat nie przechodzi walidacji.',
+    'ust.martwe.zmiana'     => 'Templat zmienił się od podglądu. Sprawdź podgląd jeszcze raz.',
+    'ust.martwe.nic'        => 'Nie było czego usuwać.',
+    'ust.martwe.zapisano'   => 'Zapisano templat v%1$d — usunięto martwych zmiennych: %2$d.',
+    'ust.kol.sezon'         => 'W sezonie',
     'ust.zaaw.martwe.zero'  => 'Brak — każda zmienna wystąpiła w którymś eksporcie.',
     'ust.zaaw.martwe.brak_katalogu' => 'Katalog tagów klubu jest pusty — nie da się tego ocenić.',
     'ust.zaaw.historia'     => 'Historia wersji',

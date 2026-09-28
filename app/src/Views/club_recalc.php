@@ -175,7 +175,7 @@ $doKolejki = array_filter($outdated, static fn(array $r) => !empty($r['raw_ready
                   <input type="hidden" name="csrf" value="<?= View::e(Session::csrfToken()) ?>">
                   <input type="hidden" name="powrot"
                          value="/klub/<?= (int) $club['id'] ?>/przelicz">
-                  <button class="link" type="submit"><?= View::e(View::t('recalc.act')) ?></button>
+                  <button class="btn s drugi" type="submit"><?= View::e(View::t('recalc.act')) ?></button>
                 </form>
               <?php else: ?>
                 <?php /* Brak danych ma być widoczny, nie zamaskowany (CLAUDE.md §8):

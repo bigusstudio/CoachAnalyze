@@ -49,6 +49,12 @@ $link = static function (array $zmiany) use ($filters, $basePath): string {
    * z przyciskiem „Pokaż" kazał wybrać, a potem jeszcze potwierdzić wybór.
    */
   $op = View::op();
+  // Lista miesza kluby (administrator na globalnej `/raporty`) — przy wersji
+  // templatu piszemy, CZYJ to templat (golden layout W4). „templat v1" bez
+  // nazwy klubu wyglądał na templat klubu z pierwszej kolumny.
+  $wieleKlubow = count(array_unique(array_map(
+      static fn(array $r): int => (int) ($r['tenant_id'] ?? 0), $rows
+  ))) > 1;
   $chip = static fn(string $etykieta, string $adres, bool $wlaczony): string =>
       '<a class="fchip' . ($wlaczony ? ' fchip--on' : '') . '" href="' . View::e($adres) . '"'
       . ($wlaczony ? ' aria-current="true"' : '') . '>' . View::e($etykieta) . '</a>';
@@ -100,7 +106,7 @@ $link = static function (array $zmiany) use ($filters, $basePath): string {
           <?php endif; ?>
           <th scope="col"><?= View::e(View::t('reports.col.link')) ?></th>
           <th scope="col" class="num"><?= View::e(View::t('reports.col.views')) ?></th>
-          <th scope="col"><?= View::e(View::t('reports.col.actions')) ?></th>
+          <th scope="col" class="kol-akcje"><?= View::e(View::t('reports.col.actions')) ?></th>
         </tr>
       </thead>
       <tbody>
@@ -142,6 +148,14 @@ $link = static function (array $zmiany) use ($filters, $basePath): string {
                         : View::e(View::t('reports.tplv', (int) $r['template_version'])) ?>
                   </span>
                 <?php endif; ?>
+                <?php if ($wieleKlubow && !empty($r['tenant_name'])): ?>
+                  <br><span class="hint"><?= View::e(View::t('reports.tplv.klub', (string) $r['tenant_name'])) ?></span>
+                <?php endif; ?>
+                <?php if (!empty($r['club_mismatch'])): ?>
+                  <br><span class="tag tag--older" title="<?= View::e(View::t('reports.club_mismatch.hint')) ?>">
+                    <?= View::e(View::t('reports.club_mismatch')) ?>
+                  </span>
+                <?php endif; ?>
               </td>
             <?php endif; ?>
 
@@ -149,7 +163,7 @@ $link = static function (array $zmiany) use ($filters, $basePath): string {
 
             <td class="num"><?= (int) $r['views'] ?></td>
 
-            <td class="akcje">
+            <td class="akcje kol-akcje">
               <a class="btn s" href="/raport/<?= (int) $r['id'] ?>"><?= View::e(View::t('card.act.open')) ?></a>
 
               <?php if ($op): ?>
@@ -158,7 +172,7 @@ $link = static function (array $zmiany) use ($filters, $basePath): string {
                     <form class="inline" method="post" action="/raport/<?= (int) $r['id'] ?>/przelicz">
                       <input type="hidden" name="csrf" value="<?= View::e(Session::csrfToken()) ?>">
                       <input type="hidden" name="powrot" value="<?= View::e($link([])) ?>">
-                      <button class="link" type="submit" title="<?= View::e(View::t('recalc.act.hint')) ?>">
+                      <button class="btn s drugi" type="submit" title="<?= View::e(View::t('recalc.act.hint')) ?>">
                         <?= View::e(View::t('recalc.act')) ?>
                       </button>
                     </form>
@@ -173,7 +187,7 @@ $link = static function (array $zmiany) use ($filters, $basePath): string {
                 <?php endif; ?>
                 <form class="inline" method="post" action="/raport/<?= (int) $r['id'] ?>/ponow">
                   <input type="hidden" name="csrf" value="<?= View::e(Session::csrfToken()) ?>">
-                  <button class="link" type="submit"><?= View::e(View::t('reports.act.regen')) ?></button>
+                  <button class="btn s drugi" type="submit"><?= View::e(View::t('reports.act.regen')) ?></button>
                 </form>
               <?php endif; ?>
             </td>

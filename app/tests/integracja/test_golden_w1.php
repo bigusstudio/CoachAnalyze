@@ -133,7 +133,7 @@ Db::run("INSERT INTO reports (match_id, club_id, html_path, generated_at, engine
 $najnowszyRaport = (int) Db::pdo()->lastInsertId();
 
 $kolejnosc = array_map(static fn($r) => (int) $r['id'], Stats::seasonMatches($sezon, 10));
-check('mecz bez daty sortuje się po dacie raportu, nie ląduje na końcu',
+check('mecz bez daty sortuje się po dacie importu/założenia, nie ląduje na końcu',
     $kolejnosc === [$bezDaty, $nowszy, $stary], json_encode($kolejnosc));
 $wiersz = array_values(array_filter(Stats::seasonMatches($sezon, 10), static fn($r) => (int) $r['id'] === $nowszy))[0];
 check('wiersz niesie NAJNOWSZY raport meczu', (int) $wiersz['report_id'] === $najnowszyRaport
@@ -143,14 +143,21 @@ check('„Ostatni mecz" = ta sama kolejność', (int) Stats::lastFinishedMatch()
 // ===========================================================================
 echo "\n== regeneruj_raporty.php --match / --nieaktualne ==\n";
 
+// Golden layout W4: domyślnie NAJNOWSZY raport meczu; starsze rodzeństwo
+// wyłącznie z `--z-rodzenstwem` (CLAUDE.md §7 — ślad wcześniejszych liczb).
 [$kod, $out] = skrypt('--match', (string) $nowszy, '--dry-run');
-check('--match N bierze wyłącznie raporty meczu', $kod === 0 && str_contains($out, '2 raportów'), $out);
+check('--match N bierze najnowszy raport meczu', $kod === 0 && str_contains($out, '1 raportów'), $out);
+[$kod, $out] = skrypt('--match', (string) $nowszy, '--dry-run', '--z-rodzenstwem');
+check('--match N --z-rodzenstwem bierze wszystkie raporty meczu', $kod === 0 && str_contains($out, '2 raportów'), $out);
 [$kod, $out] = skrypt('--nieaktualne', '--dry-run');
 $wersja = Engine::version();
 check('--nieaktualne porównuje z wdrożoną wersją', str_contains($out, 'Wdrożony silnik: ' . $wersja), $out);
-check('--nieaktualne pomija raport na bieżącej wersji',
+check('--nieaktualne pomija raport na bieżącej wersji i jego starsze rodzeństwo',
+    str_contains($out, '2 raportów') && !str_contains($out, 'mecz ' . str_pad((string) $nowszy, 5)), $out);
+[$kod, $out] = skrypt('--nieaktualne', '--dry-run', '--z-rodzenstwem');
+check('--nieaktualne --z-rodzenstwem: także starszy raport meczu z aktualnym najnowszym',
     str_contains($out, '3 raportów') && !str_contains($out, 'raport ' . str_pad((string) $najnowszyRaport, 5)), $out);
-[$kod, $out] = skrypt('--nieaktualne', '--match', (string) $nowszy);
+[$kod, $out] = skrypt('--nieaktualne', '--match', (string) $nowszy, '--z-rodzenstwem');
 check('--nieaktualne --match wybiera jeden raport (bez surowych plików — pominięty z powodem)',
     $kod === 0 && str_contains($out, ': 1 raportów (nieaktualne)') && str_contains($out, 'pominięty'), $out);
 [$kod] = skrypt('--match', '0');

@@ -1005,6 +1005,14 @@ switch (true) {
         saveClubDictionary($user);
         break;
 
+    // [op] „Usuń martwe" (golden layout W4) — to, co `napraw_auto_etykiety.php
+    // --usun-martwe --zapisz`, po podglądzie. Trasa [op] przez `straznikZakresu`.
+    case $path === '/klub/ustawienia/zaawansowane/usun-martwe' && $method === 'POST':
+        requireCan($user, 'mappings');
+        requireCsrf();
+        removeDeadVariables($user);
+        break;
+
     case $path === '/zawodnicy' && $method === 'GET':
         showPlayers();
         break;
@@ -1569,13 +1577,30 @@ function serveReport(int $id): void
  */
 function handleImport(int $userId, ?int $clubId = null, string $formPath = '/import'): void
 {
-    $csv = Upload::accept($_FILES['csv'] ?? null, 'csv', true);
+    /*
+     * JEDNA STREFA NA OBA PLIKI (golden layout W4): `pliki[]` rozdzielamy na
+     * CSV i JSON po rozszerzeniu. Dwa osobne pola (`csv`, `json`) zostają
+     * obsługiwane — ekran ponownego wgrania i konfigurator dalej ich używają.
+     */
+    $plikCsv  = $_FILES['csv'] ?? null;
+    $plikJson = $_FILES['json'] ?? null;
+    if (isset($_FILES['pliki']) && is_array($_FILES['pliki']['name'] ?? null)) {
+        $strefa = Upload::rozdziel($_FILES['pliki']);
+        if (!$strefa['ok']) {
+            Session::flash('error', View::t((string) $strefa['error']));
+            redirect($formPath);
+        }
+        $plikCsv  = $strefa['csv'];
+        $plikJson = $strefa['json'];
+    }
+
+    $csv = Upload::accept($plikCsv, 'csv', true);
     if (!$csv['ok']) {
         Session::flash('error', View::t($csv['error']));
         redirect($formPath);
     }
 
-    $json = Upload::accept($_FILES['json'] ?? null, 'json', false);
+    $json = Upload::accept($plikJson, 'json', false);
     if (!$json['ok']) {
         // CSV już leży w storage — sprzątamy, żeby nieudany import nie zostawiał śmieci.
         @unlink((string) $csv['path']);
@@ -2315,7 +2340,7 @@ function notificationsFeed(int $userId): void
     header('X-Content-Type-Options: nosniff');
 
     $items = [];
-    foreach (Notifications::unreadForToasts($userId) as $n) {
+    foreach (Notifications::naChmurkiSesji($userId) as $n) {
         $items[] = [
             'id'    => (int) $n['id'],
             'kind'  => Notifications::kind((string) $n['type']),
@@ -4765,6 +4790,13 @@ function showClubSettings(array $user): void
     $zmienne = (array) ($config['variables'] ?? []);
     $martwe = $op && $templat !== null ? \CoachAnalyze\NaprawaTemplatu::martwe($id, array_values($zmienne)) : null;
 
+    // Podgląd „Usuń martwe" [op] — ten sam plan, który wykona zapis (W4).
+    $planMartwych = $op && $templat !== null && $zakladka === 'zaawansowane'
+        && ($_GET['podglad'] ?? '') === 'martwe'
+        ? \CoachAnalyze\NaprawaTemplatu::plan($id, false, true, true)
+        : null;
+    $sezonId = kontekstSezonu($club)['sezonId'];
+
     View::page('club_settings', [
         'title'     => View::t('nav.club_settings'),
         'active'    => 'settings',
@@ -4776,8 +4808,9 @@ function showClubSettings(array $user): void
         'sekcje'    => $sekcje,
         'ukryte'    => \CoachAnalyze\UstawieniaKlubu::ukryte($sekcje, $nierozpoznane !== []),
         'roboczy'   => \CoachAnalyze\ReportLayout::draft($id) !== null,
-        'wliczane'  => \CoachAnalyze\UstawieniaKlubu::wliczane($config),
+        'wliczane'  => \CoachAnalyze\UstawieniaKlubu::wliczaneSlownika($id, $config, $sezonId),
         'nierozpoznane' => $nierozpoznane,
+        'planMartwych' => $planMartwych,
         'historia'  => $op ? \CoachAnalyze\ReportTemplates::history($id) : [],
         'martwe'    => $martwe === null ? null : array_map(
             static fn(int $i): string => (string) ($zmienne[$i]['source']['raw'] ?? ''), $martwe
@@ -4905,6 +4938,46 @@ function saveClubDictionary(array $user): void
             }
         }
     );
+}
+
+/**
+ * [op] Usunięcie zmiennych martwych z templatu klubu (golden layout W4).
+ *
+ * Wykonuje `NaprawaTemplatu::plan()` — ten sam, który pokazał podgląd —
+ * i zapisuje go jako nową wersję z notką naprawy. Wersja nie unieważnia
+ * raportów: martwa zmienna nie ma ani jednego zdarzenia, więc żadna liczba
+ * się nie zmienia (`sprawdzCiaglosc` pilnuje tego przed zapisem).
+ *
+ * `wersja` z formularza = wersja templatu, na której oglądano podgląd.
+ * Inna wersja w bazie znaczy, że plan mógł się zmienić — nie zapisujemy
+ * czegoś, czego nikt nie widział.
+ */
+function removeDeadVariables(array $user): void
+{
+    $club = \CoachAnalyze\Zakres::biezacy($user);
+    if ($club === null) {
+        tenantNotFound();
+        return;
+    }
+    $id = (int) $club['id'];
+    $powrot = '/klub/ustawienia?zakladka=zaawansowane';
+
+    $plan = \CoachAnalyze\NaprawaTemplatu::plan($id, false, true, true);
+    $wersja = $plan['templat'] !== null ? (int) $plan['templat']['version'] : 0;
+    if ($wersja === 0 || (int) ($_POST['wersja'] ?? 0) !== $wersja) {
+        Session::flash('error', View::t('ust.martwe.zmiana'));
+        redirect($powrot . '&podglad=martwe');
+    }
+    if ($plan['ciaglosc'] !== [] || ($plan['zmiany'] !== [] && $plan['nowy'] === null)) {
+        Session::flash('error', View::t('ust.martwe.odmowa'));
+        redirect($powrot . '&podglad=martwe');
+    }
+
+    $nowa = \CoachAnalyze\NaprawaTemplatu::zapiszPlan($id, $plan, (int) $user['id']);
+    Session::flash('notice', $nowa === null
+        ? View::t('ust.martwe.nic')
+        : View::t('ust.martwe.zapisano', $nowa, count($plan['martwe'] ?? [])));
+    redirect($powrot);
 }
 
 /** ZAWODNICY — skład scalony ze zdarzeniami po pełnej nazwie. */

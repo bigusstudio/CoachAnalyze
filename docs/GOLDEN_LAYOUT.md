@@ -1,6 +1,6 @@
 # Golden layout — układ panelu CoachAnalyze
 
-Stan po etapach W0–W3 (2026-09-27). Dokument opisuje **jak panel jest poukładany**
+Stan po etapach W0–W4 (2026-09-28). Dokument opisuje **jak panel jest poukładany**
 i dlaczego — zanim dołożysz ekran, sprawdź, gdzie jest jego rodzic i czy nie łamie
 reguły powrotu.
 
@@ -74,6 +74,14 @@ Wgraj (/import) ──► Przygotuj (/import/{id}/przygotuj) ──► Postęp (
   raport). Baner ostrzegawczy — tylko tagi świadomie pominięte i zmienne bez znaczenia
   w osi SBZ / osi III strefy / pojedynkach.
 - Administrator po wgraniu trafia na stronę zadania (mechanika w tle).
+- W4: jedna strefa upuszczenia na oba pliki (`pliki[]`); serwer rozdziela CSV/JSON.
+
+## 5a. Powiadomienia (W4)
+
+- Dzwonek liczy tylko WAŻNE: błąd i raport gotowy z nowego importu.
+- Chmurka informacyjna (w toku, przeliczono) — raz na sesję; ważna — do zamknięcia.
+- Regeneracja masowa = jedno powiadomienie zbiorcze bez maila; pojedyncze
+  „Przelicz" = chmurka + mail.
 
 ## 6. Lista ekranów
 
@@ -102,7 +110,9 @@ Wgraj (/import) ──► Przygotuj (/import/{id}/przygotuj) ──► Postęp (
 
 - **Układ raportu** — kolejność (strzałki), Ukryj/Pokaż; numery 01–NN bez luk;
   Przegląd zawsze pierwszy i widoczny; „Inne zdarzenia" tylko przy nierozpoznanych tagach.
-- **Słownik klubu** — Wliczane (tag → nazwa w raporcie → sekcje, kontynuacje)
+- **Słownik klubu** — Wliczane (tag → nazwa w raporcie → sekcje, kontynuacje;
+  malejąco po liczbie w sezonie, bez zmiennych martwych — te w Zaawansowanych [op]
+  z „Usuń martwe…")
   i Nierozpoznane = pominięte + bez znaczenia (nie nowe), z „Wlicz jako…".
   Tag wbudowany szablonu (`VARS`, np. SKUTECZNY) liczy się sam i nie jest „nierozpoznany".
 - **[op] Zaawansowane** — historia wersji z „Przywróć", zmienne martwe, konfigurator

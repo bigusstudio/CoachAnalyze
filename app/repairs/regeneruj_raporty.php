@@ -8,6 +8,21 @@ declare(strict_types=1);
  *   php app/repairs/regeneruj_raporty.php --all    [--dry-run]
  *   php app/repairs/regeneruj_raporty.php --match 26 [--match 27] [--dry-run]
  *   php app/repairs/regeneruj_raporty.php --nieaktualne [--club 2] [--dry-run]
+ *   … [--z-rodzenstwem]   także starsze raporty meczu (domyślnie tylko najnowszy)
+ *
+ * GOLDEN LAYOUT W4 — trzy zmiany po odbiorze na produkcji:
+ *
+ *   1. JEDEN RAPORT NA MECZ, najnowszy — jak `Rebuilds::queueClub()`. Starszy
+ *      raport meczu jest śladem wcześniejszych liczb (CLAUDE.md §7) i nie ma
+ *      być po cichu podmieniany. Dodatkowo przeliczenie podnosi `generated_at`,
+ *      więc przeliczony STARSZY raport wskakiwał na miejsce najnowszego na liście
+ *      „wiersz = mecz". `--z-rodzenstwem` przywraca stare zachowanie świadomie.
+ *   2. JEDNA PARTIA na przebieg: jedno zbiorcze powiadomienie „Przeliczono N"
+ *      po ostatnim zadaniu, bez maili (dotąd chmurka i mail na każdy raport).
+ *   3. TEMPLAT WIDAĆ PRZED KOLEJKOWANIEM: przy każdej pozycji wersja templatu,
+ *      której użyje proces roboczy (najnowsza wersja klubu-tenanta meczu,
+ *      `matches.club_id`), i ostrzeżenie, gdy raport należy do innego klubu
+ *      niż mecz (`reports.club_id ≠ matches.club_id`).
  *
  * `--nieaktualne` (golden layout W1): wyłącznie raporty wyrenderowane INNĄ
  * wersją silnika niż wdrożona — wersja rośnie przy każdej zmianie szablonu v21
@@ -56,6 +71,7 @@ use CoachAnalyze\Clubs;
 use CoachAnalyze\Db;
 use CoachAnalyze\Imports;
 use CoachAnalyze\Rebuilds;
+use CoachAnalyze\ReportTemplates;
 
 if (PHP_SAPI !== 'cli') {
     http_response_code(404);
@@ -69,6 +85,7 @@ $wszystkie = false;
 $suchobieg = false;
 $mecze = [];
 $nieaktualne = false;
+$zRodzenstwem = false;
 
 for ($i = 1; $i < count($argumenty); $i++) {
     $a = (string) $argumenty[$i];
@@ -78,6 +95,8 @@ for ($i = 1; $i < count($argumenty); $i++) {
         $suchobieg = true;
     } elseif ($a === '--nieaktualne') {
         $nieaktualne = true;
+    } elseif ($a === '--z-rodzenstwem') {
+        $zRodzenstwem = true;
     } elseif ($a === '--match') {
         $mecze[] = isset($argumenty[$i + 1]) ? (int) $argumenty[++$i] : 0;
     } elseif (preg_match('/^--match=(\d+)$/', $a, $m) === 1) {
@@ -108,6 +127,7 @@ if ($clubId === null && !$wszystkie && $mecze === [] && !$nieaktualne) {
       --nieaktualne  raporty sprzed wdrożonej wersji silnika/szablonu
 
     Dodaj --dry-run, żeby zobaczyć listę bez kolejkowania.
+    Domyślnie najnowszy raport meczu; --z-rodzenstwem bierze także starsze.
 
     TXT);
     exit(2);
@@ -157,12 +177,21 @@ if ($clubId !== null) {
     }
 }
 
+if (!$zRodzenstwem) {
+    // Najnowszy raport meczu — ta sama definicja „najnowszego" co lista raportów
+    // (`Reports::search`, `jeden_na_mecz`) i pulpit.
+    $warunki[] = 'r.id = (SELECT r2.id FROM reports r2 WHERE r2.match_id = r.match_id
+                           ORDER BY r2.generated_at DESC, r2.id DESC LIMIT 1)';
+}
+
 $raporty = Db::all(
     "SELECT r.id, r.match_id, r.club_id, r.template_version,
-            m.played_at, m.round, c.name AS club_name
+            m.played_at, m.round, m.club_id AS tenant_id,
+            c.name AS club_name, t.name AS tenant_name
        FROM reports r
        LEFT JOIN matches m ON m.id = r.match_id
        LEFT JOIN clubs   c ON c.id = r.club_id
+       LEFT JOIN clubs   t ON t.id = m.club_id
       " . ($warunki === [] ? '' : 'WHERE ' . implode(' AND ', $warunki)) . "
       ORDER BY r.club_id, (m.played_at IS NULL), m.played_at, r.id",
     $parametry
@@ -191,15 +220,41 @@ echo str_repeat('─', 72) . "\n";
 
 $zakolejkowane = 0;
 $pominiete = [];
+$rozjazdy = 0;
+// Jedna partia na przebieg — jedno podsumowanie zamiast chmurki na raport.
+$partia = Rebuilds::newBatchId();
+
+/** @var array<int,int> $wersjeTemplatu  club_id => wersja, której użyje proces roboczy */
+$wersjeTemplatu = [];
 
 foreach ($raporty as $r) {
+    /*
+     * WERSJA TEMPLATU, KTÓREJ UŻYJE PROCES ROBOCZY — to samo wywołanie co
+     * `uruchomSilnik()` w run_job.php (`ReportTemplates::current` klubu-tenanta
+     * meczu). Wypisana PRZED kolejkowaniem, żeby „dlaczego raport ma templat v1"
+     * miało odpowiedź na ekranie, a nie po dwudziestu minutach pracy crona.
+     */
+    $tenant = $r['tenant_id'] !== null ? (int) $r['tenant_id'] : 0;
+    if ($tenant > 0 && !isset($wersjeTemplatu[$tenant])) {
+        $wersjeTemplatu[$tenant] = ReportTemplates::currentVersion($tenant);
+    }
+    $wTpl = $wersjeTemplatu[$tenant] ?? 0;
     $opis = sprintf(
-        '  raport %-5d mecz %-5d %-11s %s',
+        '  raport %-5d mecz %-5d %-11s %s  → %s',
         (int) $r['id'],
         (int) $r['match_id'],
         (string) ($r['played_at'] ?? 'bez daty'),
-        (string) ($r['club_name'] ?? '?')
+        (string) ($r['tenant_name'] ?? '?'),
+        $wTpl > 0 ? 'templat v' . $wTpl : 'bez templatu'
     );
+    // Raport zapisany pod innym klubem niż tenant meczu (np. po przepięciu
+    // meczu, PorzadkiMeczow::planPrzepnij): przeliczenie weźmie templat
+    // TENANTA, a lista raportów porównywała dotąd z klubem raportu.
+    if ($r['club_id'] !== null && (int) $r['club_id'] !== $tenant) {
+        $rozjazdy++;
+        $opis .= sprintf('  ! raport klubu %d (%s), mecz klubu %d',
+            (int) $r['club_id'], (string) ($r['club_name'] ?? '?'), $tenant);
+    }
 
     if ($suchobieg) {
         /*
@@ -216,7 +271,7 @@ foreach ($raporty as $r) {
         continue;
     }
 
-    $wynik = Rebuilds::queue((int) $r['id'], $userId);
+    $wynik = Rebuilds::queue((int) $r['id'], $userId, $partia);
     if (!empty($wynik['ok'])) {
         $zakolejkowane++;
         echo $opis . "   → zakolejkowany\n";
@@ -229,6 +284,11 @@ foreach ($raporty as $r) {
 
 echo str_repeat('─', 72) . "\n";
 
+if ($rozjazdy > 0) {
+    echo "UWAGA: {$rozjazdy} raport(ów) należy do innego klubu niż mecz — przeliczenie użyje\n";
+    echo "templatu klubu MECZU (matches.club_id). Sprawdź, czy mecz nie został przepięty.\n";
+}
+
 if ($suchobieg) {
     printf("Do zakolejkowania: %d, bez surowych plików: %d\n",
         count($raporty) - count($pominiete), count($pominiete));
@@ -239,6 +299,7 @@ if ($suchobieg) {
 printf("Zakolejkowano: %d, pominięto: %d\n", $zakolejkowane, count($pominiete));
 
 if ($zakolejkowane > 0) {
+    echo "Partia {$partia}: po ostatnim zadaniu jedno powiadomienie zbiorcze, bez maili.\n";
     echo "Zadania podnosi cron (app/bin/run_job.php), pojedynczo, co minutę.\n";
     echo "Postęp: panel → Raporty, albo:\n";
     echo "  SELECT status, COUNT(*) FROM jobs WHERE type = 'rebuild_report' GROUP BY status;\n";

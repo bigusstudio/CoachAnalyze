@@ -604,9 +604,17 @@
  * Walidacja pliku na ekranie WGRAJ (golden layout W3) — trzeci punkt wyjątku
  * z CLAUDE.md §9, uzgodniony razem z jednym ekranem importu.
  *
- * TYLKO PRZYSPIESZA: `accept` na polu i `Upload::accept` na serwerze sprawdzają
- * to samo. Skrypt oszczędza jedynie wysyłki kilku megabajtów pod zły adres.
- * Komunikaty czyta z `data-*` formularza — w tym pliku nie ma ani jednego zdania.
+ * TYLKO PRZYSPIESZA: `accept` na polu i `Upload::rozdziel`/`Upload::accept` na
+ * serwerze sprawdzają to samo. Skrypt oszczędza jedynie wysyłki kilku
+ * megabajtów pod zły adres. Komunikaty czyta z `data-*` formularza — w tym
+ * pliku nie ma ani jednego zdania.
+ *
+ * W4: JEDNA STREFA na oba pliki (`pliki[]`). Rozpoznanie CSV/JSON po
+ * rozszerzeniu, potwierdzenie po NAGŁÓWKU (pierwsze kilka kB pliku): CSV musi
+ * mieć kolumny tag_name, begin, end, JSON zaczynać się od `{` albo `[`.
+ * Nazwy wybranych plików jako pastylki — przez `textContent` (nazwa pliku
+ * to tekst od użytkownika). Przeciąganie działa bez skryptu (pole przykrywa
+ * strefę); skrypt dokłada podświetlenie i przyjmuje upuszczenie obok pola.
  */
 (function () {
     'use strict';
@@ -615,55 +623,131 @@
         return;   // Bardzo stara przeglądarka — zostaje `accept` i serwer.
     }
     var forms = document.querySelectorAll('form[data-wgraj]');
+    var KOLUMNY_CSV = ['tag_name', 'begin', 'end'];
+    var NAGLOWEK_BAJTY = 4096;
 
     function rozszerzenie(nazwa) {
         var i = nazwa.lastIndexOf('.');
         return i < 0 ? '' : nazwa.slice(i + 1).toLowerCase();
     }
 
-    function bladPola(form, pole) {
-        if (!pole.files || pole.files.length === 0) {
-            return '';
-        }
-        var plik = pole.files[0];
-        var oczekiwane = pole.getAttribute('data-rozszerzenie') || '';
-        if (oczekiwane && rozszerzenie(plik.name) !== oczekiwane) {
-            return form.getAttribute('data-blad-typu-' + oczekiwane) || '';
-        }
+    function tekst(form, klucz) {
+        return form.getAttribute('data-blad-' + klucz) || '';
+    }
+
+    /* Błąd, który da się orzec bez czytania pliku: liczba, typ, rozmiar. */
+    function bladListy(form, pliki) {
+        var ile = { csv: 0, json: 0 };
         var limit = parseInt(form.getAttribute('data-limit') || '0', 10);
-        if (limit > 0 && plik.size > limit) {
-            return form.getAttribute('data-blad-rozmiar') || '';
+        for (var i = 0; i < pliki.length; i++) {
+            var ext = rozszerzenie(pliki[i].name);
+            if (ext !== 'csv' && ext !== 'json') { return tekst(form, 'typu'); }
+            ile[ext]++;
+            if (limit > 0 && pliki[i].size > limit) { return tekst(form, 'rozmiar'); }
         }
+        if (ile.csv > 1) { return tekst(form, 'dwa-csv'); }
+        if (ile.json > 1) { return tekst(form, 'dwa-json'); }
+        if (pliki.length > 0 && ile.csv === 0) { return tekst(form, 'brak-csv'); }
         return '';
     }
 
-    function sprawdz(form) {
-        var komunikat = form.querySelector('[data-komunikat]');
-        var pierwszy = '';
-        var pola = form.querySelectorAll('input[type="file"][data-rozszerzenie]');
-        Array.prototype.forEach.call(pola, function (pole) {
-            var blad = bladPola(form, pole);
-            var ramka = pole.parentNode;
-            if (ramka && ramka.className !== undefined) {
-                ramka.className = ramka.className.replace(/\s*upuszczenie--zle/g, '') + (blad ? ' upuszczenie--zle' : '');
-            }
-            if (blad && !pierwszy) {
-                pierwszy = blad;
-            }
-        });
-        if (komunikat) {
-            komunikat.textContent = pierwszy;
-            komunikat.hidden = pierwszy === '';
+    /* Nagłówek pliku: `gotowe(true|false)`. Bez FileReadera — nie orzekamy. */
+    function sprawdzNaglowek(plik, gotowe) {
+        if (typeof window.FileReader !== 'function' || typeof plik.slice !== 'function') {
+            gotowe(true);
+            return;
         }
-        return pierwszy === '';
+        var czytnik = new window.FileReader();
+        czytnik.onload = function () {
+            var tresc = String(czytnik.result || '').replace(/^﻿/, '');
+            if (rozszerzenie(plik.name) === 'json') {
+                gotowe(/^\s*[\[{]/.test(tresc));
+                return;
+            }
+            var kolumny = tresc.split(/\r?\n/)[0].split(',').map(function (k) {
+                return k.replace(/^\s*"?|"?\s*$/g, '');
+            });
+            gotowe(KOLUMNY_CSV.every(function (k) { return kolumny.indexOf(k) !== -1; }));
+        };
+        czytnik.onerror = function () { gotowe(true); };
+        czytnik.readAsText(plik.slice(0, NAGLOWEK_BAJTY));
     }
 
-    Array.prototype.forEach.call(forms, function (form) {
-        form.addEventListener('change', function () { sprawdz(form); });
-        form.addEventListener('submit', function (e) {
-            if (!sprawdz(form)) {
+    function pokaz(form, blad) {
+        var komunikat = form.querySelector('[data-komunikat]');
+        var strefa = form.querySelector('[data-strefa]');
+        if (komunikat) {
+            komunikat.textContent = blad;
+            komunikat.hidden = blad === '';
+        }
+        if (strefa) { strefa.classList.toggle('upuszczenie--zle', blad !== ''); }
+    }
+
+    function pastylki(form, pliki) {
+        var lista = form.querySelector('[data-pastylki]');
+        if (!lista) { return; }
+        while (lista.firstChild) { lista.removeChild(lista.firstChild); }
+        for (var i = 0; i < pliki.length; i++) {
+            var li = document.createElement('li');
+            var ext = rozszerzenie(pliki[i].name);
+            li.className = 'pastylka' + (ext === 'csv' || ext === 'json' ? ' pastylka--' + ext : '');
+            li.textContent = pliki[i].name;
+            lista.appendChild(li);
+        }
+        lista.hidden = pliki.length === 0;
+    }
+
+    function uruchom(form) {
+        var pole = form.querySelector('input[type="file"][data-pliki]');
+        var strefa = form.querySelector('[data-strefa]');
+        if (!pole) { return; }
+        var bladNaglowka = '';
+        var sprawdzenie = 0;
+
+        function odswiez() {
+            var pliki = pole.files || [];
+            pastylki(form, pliki);
+            bladNaglowka = '';
+            var blad = bladListy(form, pliki);
+            pokaz(form, blad);
+            if (blad) { return; }
+            // Numer sprawdzenia: wynik starszego wyboru plików nie nadpisuje nowszego.
+            var numer = ++sprawdzenie;
+            Array.prototype.forEach.call(pliki, function (plik) {
+                sprawdzNaglowek(plik, function (ok) {
+                    if (ok || numer !== sprawdzenie || bladNaglowka) { return; }
+                    bladNaglowka = tekst(form, 'naglowek-' + rozszerzenie(plik.name));
+                    pokaz(form, bladNaglowka);
+                });
+            });
+        }
+
+        pole.addEventListener('change', odswiez);
+
+        if (strefa) {
+            ['dragenter', 'dragover'].forEach(function (typ) {
+                strefa.addEventListener(typ, function () { strefa.classList.add('upuszczenie--nad'); });
+            });
+            ['dragleave', 'drop'].forEach(function (typ) {
+                strefa.addEventListener(typ, function () { strefa.classList.remove('upuszczenie--nad'); });
+            });
+            // Upuszczenie obok pola (na krawędź strefy): przekazujemy pliki polu.
+            strefa.addEventListener('drop', function (e) {
+                if (e.target === pole || !e.dataTransfer || !e.dataTransfer.files) { return; }
                 e.preventDefault();
+                try { pole.files = e.dataTransfer.files; } catch (blad) { return; }
+                odswiez();
+            });
+        }
+
+        form.addEventListener('submit', function (e) {
+            var blad = bladListy(form, pole.files || []) || bladNaglowka;
+            if (blad) {
+                e.preventDefault();
+                pokaz(form, blad);
             }
         });
-    });
+    }
+
+    Array.prototype.forEach.call(forms, uruchom);
 })();

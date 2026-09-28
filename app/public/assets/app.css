@@ -68,6 +68,9 @@
   --akcent:         #1E4D3A;
   --akcent-tekst:   #FFFFFF;
   --akcent-mikkie:  #DCE9E1;
+  /* Tło przycisku drugorzędnego (golden layout W4): „Przelicz", „Wygeneruj
+     ponownie". Akcent na miękkim tle — widać, że to akcja, ale nie ta główna. */
+  --akcent-drugi:   #E4EFE9;
   /* Barwy klubu i rywala. Podmieniane w layout.php z `clubs.color_primary`
      — tutaj stoi wartość, gdy kontekstu klubu nie ma. */
   --klub:           #2B5FD9;
@@ -102,6 +105,7 @@
   --bg: var(--tlo); --panel: var(--tlo-panel); --panel2: var(--tlo-drugi);
   --line: var(--obramowanie); --ink: var(--tekst); --ink2: var(--tekst-slaby);
   --ink3: var(--tekst-slabszy); --acc: var(--akcent); --acc-ink: var(--akcent-tekst);
+  --acc-soft: var(--akcent-drugi);
   --r: var(--promien); --shadow: var(--cien);
 
   /* Herb klubu jest projektowany pod BIAŁE tło i takie zostaje w obu
@@ -125,6 +129,7 @@
     --akcent:         #4EC98A;
     --akcent-tekst:   #0F1614;
     --akcent-mikkie:  #173327;
+    --akcent-drugi:   #1A3A2C;
     --klub:           #5B8DEF;
     --klub-mikkie:    #1B2A45;
     --rywal:          #E8C558;
@@ -171,6 +176,7 @@
   --akcent:         #4EC98A;
   --akcent-tekst:   #0F1614;
   --akcent-mikkie:  #173327;
+  --akcent-drugi:   #1A3A2C;
   --klub:           #5B8DEF;
   --klub-mikkie:    #1B2A45;
   --rywal:          #E8C558;
@@ -317,6 +323,14 @@ body {
   font-weight: 500;
 }
 .btn.s:hover { background: var(--tlo-drugi); filter: none; }
+/* Drugorzędny (golden layout W4): „Przelicz", „Wygeneruj ponownie". Akcent na
+   miękkim tle — bez domyślnego wyglądu przycisku przeglądarki (szary/niebieski). */
+.btn.s.drugi { background: var(--acc-soft); border-color: transparent; color: var(--akcent); }
+.btn.s.drugi:hover { background: var(--akcent-mikkie); }
+/* Kolumna akcji tabeli: przyciski w jednej linii, nie jeden pod drugim. */
+.kol-akcje { min-width: 280px; }
+.akcje.kol-akcje { flex-wrap: wrap; align-items: center; }
+.akcje .btn.s { white-space: nowrap; }
 
 /* ══════════════════════════════════════════════════ szkielet panelu (v2) */
 
@@ -1564,6 +1578,19 @@ div.ctx { cursor: default; }
 .upuszczenie__tytul { display: block; margin-bottom: 8px; font-weight: 700; }
 .upuszczenie input[type="file"] { display: block; margin-bottom: 8px; max-width: 100%; }
 .upuszczenie--zle { border-color: var(--blad); background: var(--blad-mikkie); }
+
+/* W4: JEDNA strefa na oba pliki. Pole pliku przykrywa całą strefę (przezroczyste),
+   więc przeciągnięcie i kliknięcie działają bez skryptu. */
+.upuszczenie--strefa { position: relative; padding: 34px 18px; text-align: center; }
+.upuszczenie--strefa input[type="file"] { position: absolute; inset: 0; width: 100%; height: 100%;
+  margin: 0; opacity: 0; cursor: pointer; }
+.upuszczenie__opis { display: block; margin-bottom: 10px; color: var(--tekst-slaby); }
+.upuszczenie--nad { border-color: var(--akcent); background: var(--akcent-mikkie); }
+.pastylki { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; list-style: none;
+  margin: 0 0 10px; padding: 0; }
+.pastylka { padding: 3px 10px; border-radius: 999px; background: var(--tlo-panel);
+  border: 1px solid var(--obramowanie); font-size: 12px; font-weight: 600; }
+.pastylka--csv, .pastylka--json { background: var(--acc-soft); color: var(--akcent); border-color: transparent; }
 
 .notice--warn { background: var(--ostrzez-mikkie); color: var(--tekst); }
 

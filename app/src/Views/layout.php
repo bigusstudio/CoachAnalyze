@@ -53,8 +53,9 @@ $nieodczytane = $zalogowany
     ? \CoachAnalyze\Notifications::unreadCount((int) Session::userId())
     : 0;
 
+// Informacyjne raz na sesję, ważne do zamknięcia (golden layout W4).
 $chmurki = $zalogowany
-    ? \CoachAnalyze\Notifications::unreadForToasts((int) Session::userId())
+    ? \CoachAnalyze\Notifications::naChmurkiSesji((int) Session::userId())
     : [];
 
 // Liczniki przy pozycjach szyny — WYŁĄCZNIE z danych, które już mamy.

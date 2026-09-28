@@ -61,20 +61,24 @@ final class Stats
     }
 
     /*
-     * NAJNOWSZY RAPORT MECZU I KOLEJNOŚĆ PULPITU (golden layout W1).
+     * NAJNOWSZY RAPORT MECZU I KOLEJNOŚĆ PULPITU (golden layout W1, W4).
      *
-     * Pulpit sortuje po DACIE MECZU, a przy jej braku po dacie najnowszego
-     * raportu — mecz wgrany dziś bez daty lądował dotąd na końcu listy i nie
-     * było widać, który raport jest najnowszy. Podzapytanie jest powtórzone
-     * w ORDER BY zamiast aliasu: MySQL nie gwarantuje aliasu wewnątrz wyrażenia.
-     * Kolejność „najnowszego" raportu taka sama jak w `Reports::search`.
+     * Pulpit sortuje po DACIE MECZU, a przy jej braku po dacie IMPORTU —
+     * pierwszego wgrania eksportu (`imports.created_at`), a bez importu po
+     * dacie założenia meczu. NIGDY po dacie renderu raportu (W4): masowa
+     * regeneracja podbijała `generated_at` wszystkim meczom naraz i „Ostatni
+     * mecz" skakał na przypadkowy mecz bez daty. Podpis „raport z DD.MM HH:MM"
+     * i pastylka „nowy" zostają — opisują raport, nie ustawiają kolejności.
+     * Podzapytanie jest powtórzone w ORDER BY zamiast aliasu: MySQL nie
+     * gwarantuje aliasu wewnątrz wyrażenia. Kolejność „najnowszego" raportu
+     * taka sama jak w `Reports::search`.
      */
     private const SQL_RAPORT_ID = 'SELECT r.id FROM reports r WHERE r.match_id = m.id
                                     ORDER BY r.generated_at DESC, r.id DESC LIMIT 1';
     private const SQL_RAPORT_AT = 'SELECT MAX(r.generated_at) FROM reports r WHERE r.match_id = m.id';
     private const SQL_KOLEJNOSC_PULPITU =
-        '(COALESCE(m.played_at, (SELECT MAX(r.generated_at) FROM reports r WHERE r.match_id = m.id)) IS NULL),
-         COALESCE(m.played_at, (SELECT MAX(r.generated_at) FROM reports r WHERE r.match_id = m.id)) DESC, m.id DESC';
+        '(COALESCE(m.played_at, (SELECT MIN(i.created_at) FROM imports i WHERE i.match_id = m.id), m.created_at) IS NULL),
+         COALESCE(m.played_at, (SELECT MIN(i.created_at) FROM imports i WHERE i.match_id = m.id), m.created_at) DESC, m.id DESC';
 
     /**
      * Ostatnie mecze do tabeli na pulpicie.
@@ -456,16 +460,28 @@ final class Stats
             $parametrySkład
         );
 
+        /*
+         * STRONA TENANTA (golden layout W4). `team_side` w `events` jest liczone
+         * względem `teams.us` = `club_home_id`, a nasz klub to `matches.club_id` —
+         * zwykle to samo, w scoutingu nie. Zdarzenia RYWALA nie wchodzą wcale
+         * (dotąd zawodnicy rywala lądowali w liście naszej drużyny); zdarzenia
+         * BEZ DRUŻYNY (pułapka 5) liczymy osobno, żeby widok nie sugerował,
+         * że wszyscy są nasi.
+         */
+        $nasza = "(CASE WHEN m.club_away_id = m.club_id AND (m.club_home_id IS NULL OR m.club_home_id <> m.club_id)
+                        THEN 'them' ELSE 'us' END)";
         $zdarzenia = Db::all(
             "SELECT e.player,
                     COUNT(DISTINCT e.match_id) AS event_matches,
                     SUM(CASE WHEN e.tag_name = :tag THEN 1 ELSE 0 END) AS shots,
                     SUM(CASE WHEN e.xg IS NOT NULL THEN e.xg ELSE 0 END) AS xg,
                     SUM(e.is_goal) AS goals,
-                    COUNT(e.id) AS events
+                    COUNT(e.id) AS events,
+                    SUM(CASE WHEN e.team_side = 'none' THEN 1 ELSE 0 END) AS events_none
                FROM events e
                JOIN matches m ON m.id = e.match_id
-              WHERE m.club_id = :club AND e.player IS NOT NULL AND e.player <> '' {$warunek}
+              WHERE m.club_id = :club AND e.player IS NOT NULL AND e.player <> ''
+                AND (e.team_side = 'none' OR e.team_side = {$nasza}) {$warunek}
               GROUP BY e.player",
             $parametryZdarzen
         );
@@ -480,6 +496,7 @@ final class Stats
                 'minutes' => (int) $z['with_minutes'] > 0 ? (int) $z['minutes'] : null,
                 'starts'  => (int) $z['starts'],
                 'shots'   => 0, 'xg' => 0.0, 'goals' => 0, 'events' => 0,
+                'events_team' => 0, 'events_none' => 0,
                 'in_roster' => true,
             ];
         }
@@ -489,6 +506,7 @@ final class Stats
             $wpis = $out[$nazwa] ?? [
                 'player' => $nazwa, 'matches' => 0, 'minutes' => null, 'starts' => 0,
                 'shots' => 0, 'xg' => 0.0, 'goals' => 0, 'events' => 0,
+                'events_team' => 0, 'events_none' => 0,
                 'in_roster' => false,
             ];
             $wpis['matches'] = max((int) $wpis['matches'], (int) $z['event_matches']);
@@ -496,6 +514,8 @@ final class Stats
             $wpis['xg']     = round((float) $z['xg'], 2);
             $wpis['goals']  = (int) $z['goals'];
             $wpis['events'] = (int) $z['events'];
+            $wpis['events_none'] = (int) $z['events_none'];
+            $wpis['events_team'] = (int) $z['events'] - (int) $z['events_none'];
             $out[$nazwa] = $wpis;
         }
 

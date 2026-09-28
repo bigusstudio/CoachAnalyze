@@ -81,7 +81,7 @@ final class Rebuilds
             return ['ok' => false, 'error' => self::BLAD_BRAK_PLIKOW];
         }
 
-        $mecz = Db::one('SELECT owner_id FROM matches WHERE id = :id', ['id' => $matchId]);
+        $mecz = Db::one('SELECT owner_id, club_id FROM matches WHERE id = :id', ['id' => $matchId]);
         $wlasciciel = $mecz !== null && $mecz['owner_id'] !== null ? (int) $mecz['owner_id'] : null;
 
         if (self::pending($reportId) !== null) {
@@ -117,6 +117,9 @@ final class Rebuilds
                      * przy generowaniu (`powiadomOGotowym()`).
                      */
                     'owner_id'  => $wlasciciel,
+                    // Klub-tenant meczu (golden layout W4): podsumowanie partii
+                    // prowadzi do klubu, a partia z `--all` obejmuje kilka.
+                    'club_id'   => $mecz !== null ? (int) $mecz['club_id'] : null,
                 ], JSON_UNESCAPED_UNICODE),
                 'status'  => 'queued',
                 'now'     => Stats::now(),
@@ -240,6 +243,8 @@ final class Rebuilds
                 'match_id'  => (int) ($payload['match_id'] ?? 0),
                 'label'     => $opisy[(int) ($payload['match_id'] ?? 0)] ?? null,
                 'status'    => $status,
+                'owner_id'  => isset($payload['owner_id']) ? (int) $payload['owner_id'] : null,
+                'club_id'   => isset($payload['club_id']) ? (int) $payload['club_id'] : null,
                 // Pełny zapis błędu zostaje w podglądzie zadania; na liście
                 // partii mieści się jedna linia, żeby N pozycji dało się objąć wzrokiem.
                 'error'     => self::pierwszaLinia((string) ($job['error_text'] ?? '')),

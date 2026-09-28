@@ -23,6 +23,10 @@ final class Notifications
     public const TYP_PENDING = 'import.pending';
     public const TYP_READY   = 'report.ready';
     public const TYP_FAILED  = 'report.failed';
+    /** Pojedyncze „Przelicz" (W4): mail jak dotąd, ale bez miejsca w dzwonku. */
+    public const TYP_REBUILT = 'report.rebuilt';
+    /** Zbiorcze „Przeliczono N raportów" (W4): bez maila, bez dzwonka. */
+    public const TYP_BATCH   = 'rebuild.batch';
 
     /** Kolumna preferencji dla danego typu. Typ spoza mapy nie idzie mailem nigdy. */
     private const PREFERENCJE = [
@@ -30,6 +34,24 @@ final class Notifications
         self::TYP_READY   => 'notify_mail_ready',
         self::TYP_FAILED  => 'notify_mail_failed',
     ];
+
+    /**
+     * Typy WAŻNE — tylko one liczą się w dzwonku (golden layout W4).
+     *
+     * Dzwonek z liczbą 9 po masowej regeneracji uczył ignorować dzwonek.
+     * Ważne jest to, po czym trzeba coś zrobić albo na co się czekało: błąd
+     * i raport gotowy z NOWEGO importu. Reszta (w toku, przeliczono) to
+     * informacja — pokazuje się jako chmurka raz i zostaje na liście.
+     */
+    public const TYPY_WAZNE = [self::TYP_READY, self::TYP_FAILED];
+
+    /** Mail pojedynczego przeliczenia idzie za zgodą na „raport gotowy". */
+    private const PREFERENCJE_ZASTEPCZE = [
+        self::TYP_REBUILT => self::TYP_READY,
+    ];
+
+    /** Klucz sesji: informacyjne chmurki już pokazane w tej sesji. */
+    private const SESJA_POKAZANE = 'chmurki_pokazane';
 
     /**
      * Nowe powiadomienie.
@@ -148,6 +170,7 @@ final class Notifications
      */
     private static function adresJesliChce(int $userId, string $typ, bool $chceMail): ?string
     {
+        $typ = self::PREFERENCJE_ZASTEPCZE[$typ] ?? $typ;
         if (!$chceMail || !isset(self::PREFERENCJE[$typ])) {
             return null;
         }
@@ -189,9 +212,11 @@ final class Notifications
     public static function unreadCount(int $userId): int
     {
         try {
+            // Dzwonek liczy wyłącznie typy WAŻNE (golden layout W4).
             $wiersz = Db::one(
-                'SELECT COUNT(*) AS ile FROM notifications WHERE user_id = :uid AND read_at IS NULL',
-                ['uid' => $userId]
+                'SELECT COUNT(*) AS ile FROM notifications
+                  WHERE user_id = :uid AND read_at IS NULL AND type IN (:t_ready, :t_failed)',
+                ['uid' => $userId, 't_ready' => self::TYP_READY, 't_failed' => self::TYP_FAILED]
             );
             return (int) ($wiersz['ile'] ?? 0);
         } catch (\Throwable $e) {
@@ -284,13 +309,58 @@ final class Notifications
     }
 
     /**
+     * Chmurki do pokazania TERAZ (golden layout W4) + zaktualizowany zbiór
+     * informacyjnych już pokazanych w tej sesji.
+     *
+     * POWÓD: chmurka informacyjna znikała po 8 s, ale była nieodczytana, więc
+     * serwer rysował ją od nowa przy KAŻDYM przejściu między ekranami — po
+     * masowej regeneracji dziewięć chmurek „wracało" na każdej stronie.
+     * Informacyjną pokazujemy więc raz na sesję; WAŻNE (błąd, raport gotowy)
+     * wracają, dopóki ktoś ich nie zamknie. `read_at` zostaje nietknięte
+     * (CLAUDE.md §9): zniknięcie chmurki nie jest odczytaniem, a powiadomienie
+     * czeka na liście. Pamięć „pokazane" siedzi w sesji, nie w bazie — to stan
+     * ekranu, nie fakt o powiadomieniu.
+     *
+     * @param list<int> $pokazane
+     * @return array{0:list<array<string,mixed>>, 1:list<int>}
+     */
+    public static function naChmurki(int $userId, array $pokazane): array
+    {
+        $juz = array_flip(array_map('intval', $pokazane));
+        $out = [];
+        foreach (self::unreadForToasts($userId) as $n) {
+            $id = (int) $n['id'];
+            if (!in_array((string) $n['type'], self::TYPY_WAZNE, true)) {
+                if (isset($juz[$id])) {
+                    continue;
+                }
+                $juz[$id] = true;
+            }
+            $out[] = $n;
+        }
+        // Najnowsze sto wystarczy — starsze i tak wypadają z LIMIT-u chmurek.
+        $ids = array_keys($juz);
+        rsort($ids);
+        return [$out, array_slice($ids, 0, 100)];
+    }
+
+    /** `naChmurki()` z pamięcią pokazanych w sesji — dla layoutu i punktu końcowego. */
+    public static function naChmurkiSesji(int $userId): array
+    {
+        $pokazane = Session::get(self::SESJA_POKAZANE);
+        [$chmurki, $pokazane] = self::naChmurki($userId, is_array($pokazane) ? $pokazane : []);
+        Session::set(self::SESJA_POKAZANE, $pokazane);
+        return $chmurki;
+    }
+
+    /**
      * Odmiana chmurki. Trzy, nie tyle ile typów powiadomień — chmurka ma
      * przekazać „udało się / trwa / nie wyszło" jednym spojrzeniem.
      */
     public static function kind(string $type): string
     {
         return match ($type) {
-            self::TYP_READY   => 'ready',
+            self::TYP_READY, self::TYP_REBUILT, self::TYP_BATCH => 'ready',
             self::TYP_FAILED  => 'failed',
             default           => 'pending',
         };

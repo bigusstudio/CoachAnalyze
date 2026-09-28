@@ -162,6 +162,9 @@ poza tym. Obejmuje trzy rzeczy, obsługiwane przez TEN SAM jeden plik:
 3. **Walidacja pliku na ekranie Wgraj** (dodana z jednym ekranem importu, golden layout W3).
    Zły typ lub za duży plik zgłoszony przed wysyłką kilku megabajtów. `accept` i serwer
    (`Upload::accept`) sprawdzają to samo — skrypt tylko przyspiesza; komunikaty z `data-*`.
+   W4: jedna strefa upuszczenia — skrypt dokłada pastylki z nazwami plików
+   (`textContent`), podświetlenie przy przeciąganiu i odczyt nagłówka pliku;
+   upuszczenie i rozdział CSV/JSON działają bez niego (`Upload::rozdziel`).
 
 Reszta panelu skryptu nie używa i nie ma używać. **Rozszerzenie tej listy wymaga
 osobnego uzgodnienia** — tak jak wymagało go dopisanie punktu drugiego.
@@ -207,6 +210,8 @@ nic niepokojącego, a ostrzeżenie o tym, co działa normalnie, uczy ignorować 
 ### Punkt końcowy
 
 `GET /powiadomienia/nowe` → JSON: `unread`, `items[]` (id, kind, title, url, at), `working`.
+`unread` (i dzwonek) liczy od W4 wyłącznie powiadomienia WAŻNE (błąd, raport gotowy);
+chmurka informacyjna pokazuje się raz na sesję (pamięć w sesji, nie w `read_at`).
 
 Obsługiwany **przed** `Auth::requireLogin()`, bo to przekierowuje na `/login`, a skrypt
 dostałby stronę logowania jako „odpowiedź JSON". Filtr konta jest w zapytaniu SQL, nie w PHP.

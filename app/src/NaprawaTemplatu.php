@@ -34,6 +34,82 @@ final class NaprawaTemplatu
     public const NOTKA = 'naprawa: napraw_auto_etykiety';
 
     /**
+     * CAŁY PRZEBIEG NAPRAWY JEDNEGO KLUBU — plan, bez zapisu (golden layout W4).
+     *
+     * Jedna droga dla skryptu `napraw_auto_etykiety.php` i przycisku „Usuń
+     * martwe" w Ustawieniach klubu → Zaawansowane [op]. Dwie ścieżki (jedna
+     * w skrypcie, druga w panelu) rozjechałyby się przy pierwszej poprawce,
+     * a podgląd w panelu przestałby mówić prawdę o tym, co zrobi zapis.
+     *
+     * Kolejność jak w skrypcie: aliasy silnika → duplikaty → etykiety →
+     * (opcjonalnie) martwe → kontrola ciągłości → walidacja configu.
+     *
+     * @return array{
+     *   templat:?array<string,mixed>, zmiany:list<string>, do_decyzji:list<string>,
+     *   martwe:?list<array<string,mixed>>, ciaglosc:list<string>, bledy:list<string>,
+     *   nowy:?array<string,mixed>, zmiennych:int
+     * }
+     */
+    public static function plan(int $klub, bool $takzeReczne, bool $wykazMartwych, bool $usunMartwe): array
+    {
+        $out = ['templat' => null, 'zmiany' => [], 'do_decyzji' => [], 'martwe' => null,
+                'ciaglosc' => [], 'bledy' => [], 'nowy' => null, 'zmiennych' => 0];
+        $templat = ReportTemplates::current($klub);
+        if ($templat === null) {
+            return $out;
+        }
+        $out['templat'] = $templat;
+        $config = ReportTemplates::decodeConfig($templat['config']);
+        $zmienne = array_values((array) ($config['variables'] ?? []));
+        $przed = $zmienne;
+        $katalog = self::katalog($klub);
+
+        [$zmienne, $z1] = self::scalAliasySilnika($zmienne);
+        [$zmienne, $z2, $doDecyzji] = self::scalDuplikaty($zmienne, $katalog);
+        [$zmienne, $z3] = self::poprawEtykiety($zmienne, self::zWersjiAuto($klub), $takzeReczne);
+        $zmiany = array_merge($z1, $z2, $z3);
+        $out['do_decyzji'] = $doDecyzji;
+
+        if ($wykazMartwych) {
+            $martwe = self::martwe($klub, $zmienne);
+            $out['martwe'] = $martwe === null ? null : array_map(static fn(int $i): array => $zmienne[$i], $martwe);
+            if ($usunMartwe && $martwe !== null && $martwe !== []) {
+                foreach ($martwe as $i) {
+                    $zmiany[] = sprintf('usunięto martwą %s „%s"', $zmienne[$i]['id'] ?? '?', $zmienne[$i]['source']['raw'] ?? '');
+                    unset($zmienne[$i]);
+                }
+                $zmienne = array_values($zmienne);
+            }
+        }
+
+        $out['zmiany'] = $zmiany;
+        $out['zmiennych'] = count($zmienne);
+        if ($zmiany === []) {
+            return $out;
+        }
+
+        $out['ciaglosc'] = self::sprawdzCiaglosc($przed, $zmienne, $katalog);
+        if ($out['ciaglosc'] !== []) {
+            return $out;
+        }
+        [$out['nowy'], $out['bledy']] = self::nowyConfig($config, $zmienne);
+        return $out;
+    }
+
+    /**
+     * Zapis planu jako nowej wersji z notką naprawy — nie unieważnia raportów,
+     * bo żadna operacja planu nie zmienia liczb (pilnuje `sprawdzCiaglosc`).
+     * `null`, gdy planu nie da się zapisać (nic do zrobienia, ciągłość, walidacja).
+     */
+    public static function zapiszPlan(int $klub, array $plan, ?int $userId): ?int
+    {
+        if ($plan['nowy'] === null || $plan['ciaglosc'] !== [] || $plan['zmiany'] === []) {
+            return null;
+        }
+        return ReportTemplates::saveNewVersion($klub, $plan['nowy'], $userId, self::NOTKA);
+    }
+
+    /**
      * Wielkość tytułowa, jaką proponowało `Configurator::etykietaZNazwy` do 0.16.2.
      * Służy WYŁĄCZNIE rozpoznaniu etykiety, której nikt nie ustawił świadomie:
      * nazwa różna od tej propozycji to decyzja człowieka i jej nie ruszamy.

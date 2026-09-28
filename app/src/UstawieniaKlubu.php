@@ -131,6 +131,69 @@ final class UstawieniaKlubu
     }
 
     /**
+     * „Wliczane" Słownika klubu (golden layout W4): BEZ ZMIENNYCH MARTWYCH,
+     * z liczbą wystąpień w sezonie, malejąco po tej liczbie.
+     *
+     * Martwa = żadna nazwa zmiennej nie wystąpiła w żadnym imporcie klubu
+     * (`NaprawaTemplatu::martwe`, ta sama definicja co skrypt). Na Pogoni było
+     * ich 31 („Posiadanie Stal", „Wiązownica", P2/PK/K1P…) — zestaw startowy
+     * z cudzego klubu, który przykrywał 20 prawdziwych tagów. Widać je tylko
+     * w Zaawansowanych [op], z przyciskiem „Usuń martwe". Pusty katalog tagów
+     * to BRAK WIEDZY, nie „wszystkie martwe" — wtedy nie ukrywamy niczego.
+     *
+     * Formularz Słownika niesie wyłącznie pokazane indeksy, a
+     * `zastosujSlownik()` nie rusza zmiennych, których indeksu nie dostał —
+     * ukrycie martwych niczego im nie kasuje.
+     *
+     * Liczba wystąpień: zdarzenia meczów klubu w sezonie (`events`) pod surową
+     * nazwą zmiennej albo jej aliasem; zmienna-etykieta liczy zdarzenia z tą
+     * etykietą. Bez sezonu — wszystkie mecze klubu.
+     *
+     * @param array<string,mixed> $config
+     * @return list<array<string,mixed>> jak `wliczane()` + `sezon` (int)
+     */
+    public static function wliczaneSlownika(int $clubId, array $config, ?int $seasonId): array
+    {
+        $zmienne = array_values((array) ($config['variables'] ?? []));
+        $martwe = array_flip(NaprawaTemplatu::martwe($clubId, $zmienne) ?? []);
+
+        $warunek = $seasonId !== null ? ' AND m.season_id = :sid' : '';
+        $tagi = [];
+        $etykiety = [];
+        foreach (Db::all(
+            'SELECT e.tag_name, e.labels_json FROM events e
+               JOIN matches m ON m.id = e.match_id
+              WHERE m.club_id = :club' . $warunek,
+            ['club' => $clubId] + ($seasonId !== null ? ['sid' => $seasonId] : [])
+        ) as $e) {
+            $tag = (string) $e['tag_name'];
+            $tagi[$tag] = ($tagi[$tag] ?? 0) + 1;
+            foreach ((array) json_decode((string) ($e['labels_json'] ?? ''), true) as $l) {
+                if (is_string($l)) {
+                    $etykiety[$l] = ($etykiety[$l] ?? 0) + 1;
+                }
+            }
+        }
+
+        $out = [];
+        foreach (self::wliczane($config) as $w) {
+            if (isset($martwe[$w['i']])) {
+                continue;
+            }
+            $zrodlo = $w['typ'] === Suggester::TAG ? $tagi : $etykiety;
+            $w['sezon'] = 0;
+            foreach (array_unique(array_merge([$w['raw']], $w['aliases'])) as $n) {
+                $w['sezon'] += $zrodlo[$n] ?? 0;
+            }
+            $out[] = $w;
+        }
+
+        usort($out, static fn(array $a, array $b): int
+            => [$b['sezon'], $a['raw']] <=> [$a['sezon'], $b['raw']]);
+        return $out;
+    }
+
+    /**
      * Sekcje budowane z pojęć wbudowanych szablonu — kopia
      * `render.SEKCJE_ZNACZENIOWE`. Zmienna bez kanonu, niebędąca tagiem
      * wbudowanym, daje tam „–" (przypadek z W1).

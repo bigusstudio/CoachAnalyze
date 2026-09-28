@@ -266,11 +266,11 @@ $czlony = array_values(array_filter([
                 <form class="inline" method="post" action="/raport/<?= (int) $r['id'] ?>/przelicz">
                   <input type="hidden" name="csrf" value="<?= View::e($csrf) ?>">
                   <input type="hidden" name="powrot" value="<?= View::e($karta . '?zakladka=wersje') ?>">
-                  <button class="link" type="submit"><?= View::e(View::t('card.wersje.recalc')) ?></button>
+                  <button class="btn s drugi" type="submit"><?= View::e(View::t('card.wersje.recalc')) ?></button>
                 </form>
                 <form class="inline" method="post" action="/raport/<?= (int) $r['id'] ?>/ponow">
                   <input type="hidden" name="csrf" value="<?= View::e($csrf) ?>">
-                  <button class="link" type="submit"><?= View::e(View::t('card.wersje.regen')) ?></button>
+                  <button class="btn s drugi" type="submit"><?= View::e(View::t('card.wersje.regen')) ?></button>
                 </form>
               <?php endif; ?>
             </td>

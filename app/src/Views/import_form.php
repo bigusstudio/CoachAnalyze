@@ -41,25 +41,36 @@ $mb = (int) (Upload::maxBytes() / 1024 / 1024);
 <?php endif; ?>
 
 <section class="panel">
+  <?php /*
+    JEDNA STREFA UPUSZCZENIA NA OBA PLIKI (golden layout W4). Pole `pliki[]`
+    z `multiple` przykrywa całą strefę, więc przeciągnięcie plików działa
+    natywnie, także BEZ SKRYPTU — przeglądarka upuszcza pliki na pole. Serwer
+    rozdziela je na CSV i JSON po rozszerzeniu i sprawdza nagłówek
+    (`Upload::rozdziel`, `Upload::accept`). Skrypt tylko przyspiesza: pastylki
+    z nazwami i komunikat przed wysłaniem kilku megabajtów.
+  */ ?>
   <form method="post" action="<?= View::e($action) ?>" enctype="multipart/form-data" data-wgraj
         data-blad-typu-csv="<?= View::e(View::t('import.err.type_csv')) ?>"
         data-blad-typu-json="<?= View::e(View::t('import.err.type_json')) ?>"
+        data-blad-typu="<?= View::e(View::t('import.err.extension')) ?>"
+        data-blad-brak-csv="<?= View::e(View::t('import.err.required')) ?>"
+        data-blad-dwa-csv="<?= View::e(View::t('import.err.two_csv')) ?>"
+        data-blad-dwa-json="<?= View::e(View::t('import.err.two_json')) ?>"
+        data-blad-naglowek-csv="<?= View::e(View::t('import.err.not_livetag')) ?>"
+        data-blad-naglowek-json="<?= View::e(View::t('import.err.not_project')) ?>"
         data-blad-rozmiar="<?= View::e(View::t('import.err.size', $mb)) ?>"
         data-limit="<?= (int) Upload::maxBytes() ?>">
     <input type="hidden" name="csrf" value="<?= View::e(Session::csrfToken()) ?>">
     <?php // Podpowiedź dla przeglądarki; twardy limit i tak sprawdza serwer. ?>
     <input type="hidden" name="MAX_FILE_SIZE" value="<?= (int) Upload::maxBytes() ?>">
 
-    <label class="upuszczenie">
-      <span class="upuszczenie__tytul"><?= View::e(View::t('import.csv')) ?></span>
-      <input type="file" name="csv" accept=".csv,text/csv" required data-rozszerzenie="csv">
-      <span class="hint"><?= View::e(View::t('import.csv.hint')) ?></span>
-    </label>
-
-    <label class="upuszczenie upuszczenie--drugie">
-      <span class="upuszczenie__tytul"><?= View::e(View::t('import.json')) ?></span>
-      <input type="file" name="json" accept=".json,application/json" data-rozszerzenie="json">
-      <span class="hint"><?= View::e(View::t('import.json.hint')) ?></span>
+    <label class="upuszczenie upuszczenie--strefa" data-strefa>
+      <span class="upuszczenie__tytul"><?= View::e(View::t('import.strefa')) ?></span>
+      <span class="upuszczenie__opis"><?= View::e(View::t('import.strefa.opis')) ?></span>
+      <input type="file" name="pliki[]" multiple required data-pliki
+             accept=".csv,.json,text/csv,application/json">
+      <ul class="pastylki" data-pastylki hidden></ul>
+      <span class="hint"><?= View::e(View::t('import.csv.hint')) ?> <?= View::e(View::t('import.json.hint')) ?></span>
     </label>
 
     <p class="alert" role="alert" data-komunikat hidden></p>
