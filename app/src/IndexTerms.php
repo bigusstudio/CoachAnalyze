@@ -157,7 +157,8 @@ final class IndexTerms
             'example'        => '9 skutecznych z 15 akcji pressingu = 60%.',
             'interpretation' => 'Skuteczność poniżej założeń przy wysokiej liczbie prób oznacza pressing '
                 . 'rozbijany rozegraniem — do korekty wyzwalacze doskoku, nie intensywność.',
-            'source'         => 'Tagi pressingu z etykietami SKUTECZNY/NIESKUTECZNY.',
+            'source'         => 'Tagi SKUTECZNY i NISKUTECZNY (akcje wysokiego pressingu) — ta sama '
+                . 'definicja w raporcie, na pulpicie i w tabeli sezonu.',
             'estimated_note' => null,
         ],
         'transformacja' => [

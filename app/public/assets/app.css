@@ -555,6 +555,10 @@ td.num, th.num { text-align: right; min-width: 88px; white-space: nowrap; }
 .q--d { background: var(--tlo-drugi); color: var(--tekst); }
 .q--next { border: 1.5px dashed var(--obramowanie); background: transparent; color: var(--tekst-slabszy); }
 .q small { position: absolute; bottom: 4px; font: 500 9px 'IBM Plex Mono', monospace; color: inherit; opacity: .75; }
+/* W6: kolejka (albo numer) u góry, wynik pośrodku, data na dole. */
+.q { height: 58px; padding: 12px 0 12px; }
+.q__gora { position: absolute; top: 4px; font: 500 9px 'IBM Plex Mono', monospace; opacity: .75; }
+.q__wynik { font: 700 16px 'Barlow Condensed', sans-serif; }
 /* Numer PORZĄDKOWY meczu — wyszarzony, bez prefiksu (Sesja 6 pivotu „viewer").
    Kolejka dostaje prefiks „k.", więc dwie różne rzeczy w jednym pasku różnią się
    wyglądem, a nie tylko znaczeniem: „1, 2, 3, 4, 5, 3" czytało się jak pomyłka. */

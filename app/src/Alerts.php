@@ -15,8 +15,17 @@ final class Alerts
     /** Po tylu minutach zadanie w stanie `running` uznajemy za zawieszone. */
     public const STUCK_MINUTES = 5;
 
-    /** Poniżej tylu procent wolnego miejsca zgłaszamy problem. */
-    public const DISK_WARN_PERCENT = 10;
+    /*
+     * PRÓG W GIGABAJTACH, NIE W PROCENTACH (golden layout W6).
+     *
+     * Dysk hostingu jest WSPÓŁDZIELONY: 7,1% wolnego to na lh.pl 162 GB, więc
+     * alert procentowy krzyczał „mało miejsca" przy zapasie na lata raportów.
+     * Liczy się, ile bajtów zostało nam — raport to kilkaset kB, eksport kilka MB.
+     */
+    /** Poniżej tylu GB wolnego miejsca — ostrzeżenie. */
+    public const DISK_WARN_GB = 5.0;
+    /** Poniżej tylu GB — błąd: upload i render mogą za chwilę paść. */
+    public const DISK_ERROR_GB = 1.0;
 
     public const LEVEL_WARN = 'warn';
     public const LEVEL_ERROR = 'error';
@@ -107,24 +116,33 @@ final class Alerts
         // Na niektórych hostingach funkcje dyskowe są wyłączone — wtedy po prostu
         // nie mamy tego alertu, zamiast wywracać cały panel.
         $free = @disk_free_space($path);
-        $total = @disk_total_space($path);
 
-        if ($free === false || $total === false || $total <= 0) {
+        if ($free === false) {
             return [];
         }
 
-        $percent = ($free / $total) * 100;
-        if ($percent >= self::DISK_WARN_PERCENT) {
+        $poziom = self::poziomMiejsca((float) $free);
+        if ($poziom === null) {
             return [];
         }
 
         return [[
-            'level' => $percent < 3 ? self::LEVEL_ERROR : self::LEVEL_WARN,
+            'level' => $poziom,
             'code'  => 'DISK_LOW',
-            'msg'   => View::t('alert.disk', round($percent, 1), self::formatBytes((float) $free)),
+            'msg'   => View::t('alert.disk', self::formatBytes((float) $free)),
             'hint'  => View::t('alert.disk.hint'),
             'count' => 1,
         ]];
+    }
+
+    /** Poziom alertu dla wolnego miejsca w bajtach, `null` = w porządku. */
+    public static function poziomMiejsca(float $wolneBajty): ?string
+    {
+        $gb = $wolneBajty / 1024 / 1024 / 1024;
+        if ($gb >= self::DISK_WARN_GB) {
+            return null;
+        }
+        return $gb < self::DISK_ERROR_GB ? self::LEVEL_ERROR : self::LEVEL_WARN;
     }
 
     /**

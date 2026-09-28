@@ -960,7 +960,7 @@ return [
     'alert.job_stuck.hint' => 'Proces roboczy prawdopodobnie padł. Cron zwolni je do stanu „błąd", wtedy da się je ponowić.',
     'alert.job_failed'     => 'Zadania zakończone błędem w ostatnim tygodniu: %d',
     'alert.job_failed.hint' => 'Otwórz podgląd zadania — treść błędu wskaże, czy ponawiać, czy poprawić eksport.',
-    'alert.disk'           => 'Mało miejsca na dysku: %s%% wolnego (%s)',
+    'alert.disk'           => 'Mało miejsca na dysku: zostało %s wolnego',
     'alert.disk.hint'      => 'Usuń stare raporty i uploady albo zwiększ przestrzeń. Przy braku miejsca upload kończy się błędem zapisu.',
     'alert.released'       => 'Zadanie zwolnione przez nadzorcę: wisiało w stanie „w toku" bez odpowiedzi procesu roboczego.',
     'alert.none'           => 'Brak alertów.',
@@ -1390,7 +1390,7 @@ return [
     'settings.mappings'     => 'Mapowanie tagów',
     'settings.history'      => 'Historia wersji szablonu',
     'settings.club_data'    => 'Dane klubu',
-    'sezon.col.pressing'    => 'Pressing',
+    'sezon.col.pressing'    => 'Pressing skuteczny',
     'sezon.col.report'      => 'Raport',
     'sezon.suma.row'        => 'SUMA (mecze ze strzałami: %d)',
     // ── golden layout W3: ścieżka importu ────────────────────────────────────

@@ -223,14 +223,14 @@ if [ "$BEZ_HTTP" -eq 1 ]; then
                test_konfigurator_http test_import_n1_http test_auto_import_http \
                test_przelicz_http test_wskaznik_http test_rewizja_http \
                test_meta_sezon_http test_hasla_indeksu_http test_golden_w0_http test_golden_w2_http \
-               test_golden_w3_http test_golden_w4_http test_golden_w5_http; do
+               test_golden_w3_http test_golden_w4_http test_golden_w5_http test_golden_w6_http; do
     pomin "$nazwa" "--bez-http"
   done
 else
   # KOLEJNO, NIGDY RÓWNOLEGLE: każdy zestaw podnosi wbudowany serwer PHP na
-  # stałym porcie (8946, 8947, 8951+8952, 8961, 8971, 8981, 8991, 8996, 9001, 9006, 9011, 9021, 9034, 9041, 9051, 9061, 9071, 9081, 9091, 9101). Dwa naraz biłyby się o port,
+  # stałym porcie (8946, 8947, 8951+8952, 8961, 8971, 8981, 8991, 8996, 9001, 9006, 9011, 9021, 9034, 9041, 9051, 9061, 9071, 9081, 9091, 9101, 9111). Dwa naraz biłyby się o port,
   # a objawem byłby losowo czerwony zestaw bez związku z kodem.
-  for nazwa in test_sesja_http test_haslo_http test_klub_hub_http test_golden_w0_http test_golden_w2_http; do
+  for nazwa in test_sesja_http test_haslo_http test_klub_hub_http test_golden_w0_http test_golden_w2_http test_golden_w6_http; do
     [ -f "$TUTAJ/$nazwa.php" ] || continue
     zestaw "$nazwa" php "$TUTAJ/$nazwa.php"
   done

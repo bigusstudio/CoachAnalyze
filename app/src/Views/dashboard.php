@@ -347,11 +347,21 @@ $klasaWyniku = static function (?int $nas, ?int $ich): string {
         ?>
         <?php foreach ($chronologicznie as $nr => $r): ?>
           <?php
-            $ma  = (int) $r['events'] > 0 && (int) ($r['shots_all'] ?? 0) > 0;
-            $nas = $ma ? (int) $r['goals_us'] : null;
-            $ich = $ma ? (int) $r['goals_them'] : null;
+            /*
+             * WYNIK NA KAFELKU (golden layout W6): ręczny, a bez niego z tagów.
+             * Kolor i liczby z TEGO SAMEGO wyniku — kafelek zielony z „–" w środku
+             * mówił „wygrana", nie mówiąc, jaka. Z tagów liczymy wynik, gdy mecz
+             * ma strzały albo gole (reguła W1: zdarzenia bez strzałów to „–",
+             * nie 0:0). „–" tylko wtedy, gdy nie ma ani jednego, ani drugiego.
+             */
+            $reczny = $r['score_us'] !== null && $r['score_them'] !== null;
+            $zTagow = (int) $r['events'] > 0
+                && ((int) ($r['shots_all'] ?? 0) > 0 || (int) $r['goals_us'] + (int) $r['goals_them'] > 0);
+            $ma  = $reczny || $zTagow;
+            $nas = $reczny ? (int) $r['score_us'] : ($zTagow ? (int) $r['goals_us'] : null);
+            $ich = $reczny ? (int) $r['score_them'] : ($zTagow ? (int) $r['goals_them'] : null);
             $kl  = 'q';
-            if ($r['status'] !== 'done') {
+            if ($r['status'] !== 'done' && !$reczny) {
                 $kl .= ' q--next';
             } elseif ($ma) {
                 $kl .= $nas > $ich ? ' q--w' : ($nas < $ich ? ' q--l' : ' q--d');
@@ -376,11 +386,12 @@ $klasaWyniku = static function (?int $nas, ?int $ich): string {
                    w jednym miejscu. Historia jest jednym z odsyłaczy na niej. */ ?>
           <a class="<?= $kl ?>" href="/mecze/<?= (int) $r['id'] ?>"
              title="<?= View::e($tytul) ?>">
-            <?php if ($kolejka !== null): ?>
-              <?= View::e(View::t('dash.round.prefix', $kolejka)) ?>
-            <?php else: ?>
-              <span class="q__nr"><?= View::e((string) ($nr + 1)) ?></span>
-            <?php endif; ?>
+            <span class="q__gora<?= $kolejka === null ? ' q__nr' : '' ?>">
+              <?= View::e($kolejka !== null ? View::t('dash.round.prefix', $kolejka) : (string) ($nr + 1)) ?>
+            </span>
+            <span class="q__wynik" data-zrodlo="<?= $reczny ? 'reczny' : ($zTagow ? 'tagi' : 'brak') ?>">
+              <?= View::e($ma ? $nas . ':' . $ich : View::t('common.dash')) ?>
+            </span>
             <small><?= View::e($podpis) ?></small>
           </a>
         <?php endforeach; ?>

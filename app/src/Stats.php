@@ -269,6 +269,9 @@ final class Stats
 
         return Db::all(
             "SELECT m.id, m.played_at, m.round, m.status,
+                    -- Wynik ręczny (migracja 013) — pasek sezonu pokazuje go przed
+                    -- wynikiem z tagów (golden layout W6).
+                    m.score_us, m.score_them,
                     h.name AS home_name, a.name AS away_name,
                     (" . self::SQL_RAPORT_ID . ") AS report_id,
                     (" . self::SQL_RAPORT_AT . ") AS report_at,
@@ -287,7 +290,7 @@ final class Stats
                LEFT JOIN clubs a  ON a.id = m.club_away_id
                LEFT JOIN events e ON e.match_id = m.id
               {$warunek}
-              GROUP BY m.id, m.played_at, m.round, m.status, h.name, a.name
+              GROUP BY m.id, m.played_at, m.round, m.status, m.score_us, m.score_them, h.name, a.name
               ORDER BY " . self::SQL_KOLEJNOSC_PULPITU . "
               LIMIT :limit",
             $parametry

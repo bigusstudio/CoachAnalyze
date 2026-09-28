@@ -80,12 +80,30 @@ return [
         'of'     => ['tags' => ['ZDOBYCIE SBZ', 'SBZ PODAJĄCY'], 'team_side' => ['us']],
     ],
 
+    /*
+     * PRESSING SKUTECZNY — TA SAMA DEFINICJA CO RAPORT (golden layout W6).
+     *
+     * Raport v21 liczy „pressingów skutecznych" = SKUTECZNY / (SKUTECZNY +
+     * NISKUTECZNY) (`liczPrzeglad`, blok liczby-v21). Pulpit, Sezon i
+     * /api/metryki liczyły pod tą samą etykietą „SBZ po pressingu / wszystkie
+     * SBZ" — JDRZ: raport 88% (15/17), pulpit 9% (1/11). Dwie liczby, jedna nazwa.
+     *
+     * BEZ FILTRA DRUŻYNY, jak w raporcie: akcje pressingu analityk taguje dla
+     * własnej drużyny, zwykle bez pola „team" (pułapka 5), a raport w pełnym
+     * zakresie liczy je wszystkie.
+     */
     'pressing' => [
         'label'  => 'Pressing skuteczny',
         'agg'    => 'ratio',
-        // Zdarzenia pressingu bywają tagowane bez drużyny — stąd `none`
-        // po obu stronach ułamka. Gdyby był tylko w liczniku, wskaźnik
-        // przekraczałby 100% na pierwszym meczu z niepełnym tagowaniem.
+        'filter' => ['tags' => ['SKUTECZNY']],
+        'of'     => ['tags' => ['SKUTECZNY', 'NISKUTECZNY']],
+    ],
+
+    // Dawna definicja „pressingu" — pod WŁASNĄ nazwą. Udział wejść w SBZ
+    // z etykietą PRESSING wśród wszystkich wejść w SBZ.
+    'sbz_po_pressingu' => [
+        'label'  => 'Wejścia w SBZ po pressingu',
+        'agg'    => 'ratio',
         'filter' => ['tags' => ['ZDOBYCIE SBZ', 'SBZ PODAJĄCY'],
                      'has_label' => ['PRESSING'], 'team_side' => ['us', 'none']],
         'of'     => ['tags' => ['ZDOBYCIE SBZ', 'SBZ PODAJĄCY'], 'team_side' => ['us', 'none']],

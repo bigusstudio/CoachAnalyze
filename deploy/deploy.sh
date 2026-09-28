@@ -333,6 +333,9 @@ fi
 # cron wpisywał wersję interpretera, a panel trzymał ją dodatkowo w sesji.
 # Plik czyta `app/src/Engine.php`; to nie kontrola, więc nie ustawia FAIL.
 if [ -n "${STORAGE_REAL:-}" ]; then
+  # Wersja POPRZEDNIO wdrożona — odczyt PRZED nadpisaniem artefaktu (W6):
+  # na niej opiera się werdykt regeneracji na końcu.
+  SILNIK_POPRZEDNI=$(cat "$STORAGE_REAL/.engine_version" 2>/dev/null || true)
   WERSJA_SILNIKA=$(sed -n 's/^__version__ = "\([0-9.]*\)".*/\1/p' "$BASE/repo/engine/coachanalyze/__init__.py" | head -1)
   if [ -n "$WERSJA_SILNIKA" ]; then
     printf '%s' "$WERSJA_SILNIKA" > "$STORAGE_REAL/.engine_version"
@@ -519,24 +522,47 @@ fi
 # W4: werdykt ZAWSZE, w jednej z trzech postaci — „potrzebna", „niepotrzebna",
 # „nie wiem". Komunikat wypisywany tylko przy zmianie był nieodróżnialny od
 # skryptu, który do tego miejsca w ogóle nie doszedł.
-REGENERACJA="nie wiem — brak rewizji sprzed wdrożenia (tryb --tylko-kontrola?)"
+#
+# W6: PORÓWNANIE Z OSTATNIM UDANYM WDROŻENIEM, nie z HEAD sprzed `git pull`.
+# Po W5 werdykt brzmiał „39f994e -> 39f994e, niepotrzebna", choć silnik szedł
+# z 0.16.7 na 0.16.8: repozytorium było już pobrane (ręczny `git pull` albo
+# drugie uruchomienie po nieudanym), więc HEAD przed i po był ten sam. Dwa
+# niezależne źródła prawdy, każde wystarcza do „POTRZEBNA":
+#   1. wersja silnika z artefaktu stopki (`.engine_version`) sprzed nadpisania,
+#   2. diff od rewizji zapisanej przy ostatnim udanym wdrożeniu (`.deployed_rev`).
+PLIK_REWIZJI="$BASE/shared/.deployed_rev"
+WDROZONA=$(cat "$PLIK_REWIZJI" 2>/dev/null || true)
+[ -n "$WDROZONA" ] || WDROZONA="${POPRZEDNIA:-}"
+SILNIK_POPRZ="${SILNIK_POPRZEDNI:-}"
+REGENERACJA="nie wiem — brak zapisu poprzedniego wdrożenia (pierwsze wdrożenie po W6?)"
 REGEN_POLECENIE=""
-if [ -n "${POPRZEDNIA:-}" ] && [ -n "${REV:-}" ]; then
-  if git -C "$BASE/repo" diff --name-only "$POPRZEDNIA" HEAD 2>/dev/null \
+if [ -n "$SILNIK_POPRZ" ] && [ -n "${WERSJA_SILNIKA:-}" ] && [ "$SILNIK_POPRZ" != "$WERSJA_SILNIKA" ]; then
+  REGENERACJA="POTRZEBNA — silnik $SILNIK_POPRZ -> $WERSJA_SILNIKA"
+elif [ -n "$WDROZONA" ] && git -C "$BASE/repo" cat-file -e "$WDROZONA^{commit}" 2>/dev/null; then
+  if git -C "$BASE/repo" diff --name-only "$WDROZONA" HEAD 2>/dev/null \
        | grep -qE '^engine/coachanalyze/(templates/|[^/]+\.py$)'; then
-    REGENERACJA="POTRZEBNA — zmienił się szablon/silnik"
-    REGEN_POLECENIE="php $BASE/repo/app/repairs/regeneruj_raporty.php --nieaktualne --dry-run"
+    REGENERACJA="POTRZEBNA — zmienił się szablon/silnik od ${WDROZONA:0:7}"
   else
-    REGENERACJA="niepotrzebna — szablon i silnik bez zmian"
+    REGENERACJA="niepotrzebna — szablon i silnik bez zmian od ${WDROZONA:0:7}"
   fi
+elif [ -n "$SILNIK_POPRZ" ] && [ "$SILNIK_POPRZ" = "${WERSJA_SILNIKA:-}" ]; then
+  REGENERACJA="niepotrzebna — silnik bez zmian ($WERSJA_SILNIKA)"
+fi
+case "$REGENERACJA" in
+  POTRZEBNA*) REGEN_POLECENIE="php $BASE/repo/app/repairs/regeneruj_raporty.php --nieaktualne --dry-run" ;;
+esac
+
+# ZAPIS REWIZJI — wyłącznie na końcu UDANEGO wdrożenia (FAIL=0 wyżej), żeby
+# następny werdykt porównywał z tym, co faktycznie działa na produkcji.
+AKTUALNA=$(git -C "$BASE/repo" rev-parse HEAD 2>/dev/null || true)
+if [ "$TYLKO_KONTROLA" -eq 0 ] && [ -n "$AKTUALNA" ]; then
+  printf '%s\n' "$AKTUALNA" > "$PLIK_REWIZJI"
 fi
 
 # PODSUMOWANIE — ostatnie linie wyjścia (najwyżej 6), mieści się w `tail -8`.
-# `set -u`: w trybie --tylko-kontrola POPRZEDNIA nie istnieje — stąd kopia z `:-`.
-POPRZ="${POPRZEDNIA:-}"
 echo "==> Gotowe: ${REV:-kontrola}"
-echo "    rewizja:     ${POPRZ:0:7}${POPRZ:+ -> }${REV:-kontrola}"
-echo "    silnik:      ${WERSJA_SILNIKA:-nieznany}    kontrole: OK"
+echo "    rewizja:     ${WDROZONA:0:7}${WDROZONA:+ -> }${REV:-kontrola}"
+echo "    silnik:      ${SILNIK_POPRZ:+$SILNIK_POPRZ -> }${WERSJA_SILNIKA:-nieznany}    kontrole: OK"
 echo "    regeneracja: $REGENERACJA"
 if [ -n "$REGEN_POLECENIE" ]; then
   echo "    $REGEN_POLECENIE"

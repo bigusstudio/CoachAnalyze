@@ -3,6 +3,32 @@
 Format: [wersja silnika] — data — opis.
 Każda zmiana, która modyfikuje wyjście silnika, MUSI mieć tu wpis wraz z powodem.
 
+## Aplikacja — 2026-09-28 · Golden layout W6: poprawki przed przeglądem u klienta
+
+Silnik bez zmian (0.16.8), bez migracji, v17 i test złoty nietknięte.
+
+- **Pressing skuteczny — jedna definicja.** `metryki_domyslne.php::pressing` =
+  SKUTECZNY / (SKUTECZNY + NISKUTECZNY), bez filtra drużyny — jak raport v21
+  (`liczPrzeglad`). Pulpit (KPI, karta), Sezon (kolumna „Pressing skuteczny", SUMA)
+  i `/api/metryki` liczyły pod tą nazwą „SBZ po pressingu / wszystkie SBZ"
+  (JDRZ: 9%, 1/11 zamiast 88%, 15/17). Dawna miara zostaje jako
+  `sbz_po_pressingu` — „Wejścia w SBZ po pressingu". Indeks: źródło = tagi.
+- **Pasek sezonu:** kafelek pokazuje wynik — ręczny (`score_us/score_them`),
+  a bez niego z tagów (gdy mecz ma strzały albo gole); kolor z tego samego wyniku.
+  Kreska tylko bez obu. Kolejka u góry, wynik w środku, data na dole.
+- **deploy.sh:** werdykt regeneracji porównuje z wersją silnika z artefaktu
+  (`.engine_version`, odczyt przed nadpisaniem) i z rewizją ostatniego UDANEGO
+  wdrożenia (`~/CoachAnalyze/shared/.deployed_rev`, zapis po kontrolach), nie
+  z HEAD sprzed `git pull` (po W5: „39f994e -> 39f994e, niepotrzebna" przy
+  0.16.7 → 0.16.8).
+- **Alert dysku w GB:** ostrzeżenie < 5 GB, błąd < 1 GB (`Alerts::poziomMiejsca`).
+  Procent na współdzielonym dysku hostingu dawał fałszywy alarm (7,1% = 162 GB).
+
+### Testy
+- nowy `app/tests/integracja/test_golden_w6_http.php` (21, port 9111): pressing
+  JDRZ 15/17 na Pulpicie, w Sezonie (wiersz i SUMA), w `/api/metryki` i w bloku
+  liczb raportu (Node); kafelki paska; statyka `deploy.sh`; progi dysku.
+
 ## [0.16.8] + aplikacja — 2026-09-28 · Golden layout W5: zasada nadrzędna — wszystko z pliku widoczne
 
 **Decyzja Tomasa (28.09), docs/GOLDEN_LAYOUT.md §0:** wszystko z plików LiveTag
