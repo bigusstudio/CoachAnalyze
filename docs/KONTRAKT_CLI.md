@@ -556,9 +556,18 @@ Znaczenie trafia:
 - do modelu kanonicznego jako reguła tam, gdzie profil nie ma pojęcia
   (`canon.profil_meczu`) — nigdy nad pojęciem nadanym wprost ani nad „nie
   analizuj" z kreatora;
-- do szablonu v21 jako ALIAS tagu wbudowanego w `__VARS_TEMPLATU__`
-  (`Strzał` → alias `STRZAŁ`, `GOL` → alias `Gol`). `DATA` zostaje pod
-  surową nazwą.
+- do szablonu v21 jako mapa `PLIK.klucze` {tag z pliku: tag wbudowany}
+  (`Strzał` → `STRZAŁ`, `1x1 DEF` → `1x1 DEF.`). Szablon LICZY zdarzenie jako
+  tag wbudowany, a wyświetla pod nazwą z pliku (`e.src`) — tabela makro,
+  siatka i dymki 1:1. **To nie jest alias** (W7-b): alias w `VARS` scala
+  zmienne i zostaje decyzją słownika albo templatu; znaczenie zmiennych nie
+  skleja. `DATA` zostaje pod surową nazwą;
+- do tabeli `events` jako kolumny `pojecie` i `klucz` (Pulpit, Sezon, metryki).
+
+**Normalizacja służy wyłącznie znaczeniu** (reguła 3) i zapasowemu kluczowi
+przypisań ze Słownika. Zmienna to surowa nazwa tagu z pliku: tożsamość,
+templat, Słownik, wyświetlanie — 1:1 (`NazwaZmiennej::klucz` nie zdejmuje
+kropek; `NazwaZmiennej::kluczZnaczenia` = `znaczenie.normalizuj`).
 
 Pojęcia Słownika poza `canon.CONCEPTS` (`goal`, `possession`, `pass`,
 `zone_entry`, `defensive_action`) nie są metrykami archiwum; Przegląd v21

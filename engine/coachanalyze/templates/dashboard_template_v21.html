@@ -487,7 +487,16 @@ const VARS = {
 Object.entries(__VARS_TEMPLATU__).forEach(([k,v])=>{VARS[k]=Object.assign({},VARS[k],v);});
 const ALIAS={}; Object.entries(VARS).forEach(([k,v])=>(v.aliases||[]).forEach(a=>ALIAS[a]=k));
 const disp=k=>(VARS[k]&&VARS[k].display)||k;
-DATA.events.forEach(e=>{ if(ALIAS[e.tag]) e.tag=ALIAS[e.tag]; });
+/* v30 (W7-b): ZNACZENIE ≠ ZMIENNA. Alias (słownik, templat) to ta sama zmienna
+   pod inną nazwą — scala. Znaczenie z W7 (`PLIK.klucze`: „Strzał" → STRZAŁ,
+   „1x1 DEF" → 1x1 DEF.) tylko LICZY zdarzenie jako tag wbudowany; nazwa z pliku
+   zostaje w `e.src` i to ją widać w tabeli makro, siatce i dymkach — 1:1. */
+const ZNACZ=PLIK.klucze||{};
+DATA.events.forEach(e=>{
+  if(ALIAS[e.tag]){ e.tag=ALIAS[e.tag]; return; }
+  const k=ZNACZ[e.tag]; if(k&&k!==e.tag){ e.src=e.tag; e.tag=k; }
+});
+const nazwaZPliku=e=>e.src||e.tag;
 Object.keys(PAL.tags).forEach(k=>{ if(ALIAS[k]&&!PAL.tags[ALIAS[k]]) PAL.tags[ALIAS[k]]=PAL.tags[k]; });
 /*<liczby-v21>*/
 /* v27 (golden layout W1): CZYSTE FUNKCJE LICZĄCE — bez DOM-u i bez stałych
@@ -544,7 +553,7 @@ function kubelkiPressingu(evs){
    Dotąd tag spoza VARS nie miał wiersza — zasada nadrzędna (wszystko z pliku
    widoczne) była łamana w kafelku, który ma pokazywać liczby zdarzeń. */
 function kluczeMakro(ev, vars){
-  const w=new Set(ev.map(e=>e.tag).filter(Boolean));
+  const w=new Set(ev.map(e=>e.src||e.tag).filter(Boolean));
   const zeSlownika=Object.keys(vars).filter(k=>w.has(k));
   const reszta=[...w].filter(t=>!vars[t]).sort((a,b)=>a.localeCompare(b,'pl'));
   return zeSlownika.concat(reszta);
@@ -1342,7 +1351,7 @@ function renderMasterTimeline(){
   let y=0;
   function glyphMark(kind,c,e){return glyph(kind,X(e.b),y,5.5,c,tipOf(e));}
   function tick(c,e){const x=X(e.b);return `<line ${tipOf(e)} x1="${x}" y1="${y-6}" x2="${x}" y2="${y+6}" stroke="${c}" stroke-width="3" stroke-linecap="round"/>`;}
-  function tipOf(e){return `class="pt" data-tip="<b>${e.tag}</b><div class='t'>${e.team?tName(e.team)+' · ':''}${mmss(e.b)}${e.xg!=null?' · xG '+fmt(e.xg,2):''}${e.labels.length?'<br>'+e.labels.join(', '):''}</div>"`;}
+  function tipOf(e){return `class="pt" data-tip="<b>${nazwaZPliku(e)}</b><div class='t'>${e.team?tName(e.team)+' · ':''}${mmss(e.b)}${e.xg!=null?' · xG '+fmt(e.xg,2):''}${e.labels.length?'<br>'+e.labels.join(', '):''}</div>"`;}
   const LANES=[
     ['STRZAŁY', ()=>shots.filter(e=>inT(e)&&MC.teams.has(e.team)).map(e=>glyph(kindOf(outcomeOf(e)),X(e.b),y,6,col(e.team),tipOf(e))).join('')],
     ['XG', ()=>shots.filter(e=>inT(e)&&MC.teams.has(e.team)&&e.xg!=null).map(e=>`<circle ${tipOf(e)} cx="${X(e.b)}" cy="${y}" r="${2.5+Math.sqrt(e.xg)*11}" fill="${col(e.team)}" fill-opacity=".75" stroke="var(--stroke)" stroke-width="1"/>`).join('')],
@@ -1483,7 +1492,9 @@ function renderMakro(el, ctx){
   const box=el.querySelector('#makro-box'); if(!box) return;
   const klucze=kluczeMakro(ctx.E, VARS);
   if(!klucze.length){ box.innerHTML=kom('<b>Eksport nie zawiera zdarzeń.</b>'); return; }
-  const g=k=>ctx.Ev.filter(e=>e.tag===k);
+  const g=k=>ctx.Ev.filter(e=>nazwaZPliku(e)===k);
+  /* W7-b: wiersz tagu z pliku liczonego jako tag wbudowany — z adnotacją znaczenia. */
+  const zn=k=>{const e=ctx.E.find(x=>x.src===k); return e?` <span class="mut">(liczony jako ${disp(e.tag)})</span>`:'';};
   const n=(arr,t,h)=>arr.filter(e=>(t===null?!e.team:e.team===t)&&(h?e.half===h:true)).length;
   const wiersze=klucze.map(k=>{
     const a=g(k);
@@ -1497,7 +1508,7 @@ function renderMakro(el, ctx){
       <tr><th>I poł.</th><th>II poł.</th><th>razem</th><th>I poł.</th><th>II poł.</th><th>razem</th></tr>
     </thead>
     <tbody>${wiersze.map(([k,,h,a,bez])=>
-      `<tr><td>${disp(k)}${VARS[k]?'':' <span class="mut">(bez zmiennej)</span>'}</td>${num(h[0])}${num(h[1])}${num(h[2],'sum')}${num(a[0])}${num(a[1])}${num(a[2],'sum')}${num(bez,'mut')}</tr>`
+      `<tr><td>${VARS[k]?disp(k):esc(k)+(zn(k)||' <span class="mut">(bez zmiennej)</span>')}</td>${num(h[0])}${num(h[1])}${num(h[2],'sum')}${num(a[0])}${num(a[1])}${num(a[2],'sum')}${num(bez,'mut')}</tr>`
     ).join('')}</tbody></table>`;
 }
 
@@ -1625,9 +1636,9 @@ function renderZawodnicy(el, ctx){
    jest, razem z tagami, których nikt jeszcze nie zmapował. */
 function renderSiatka(el, ctx){
   const box=el.querySelector('#siatka-box'); if(!box) return;
-  const tagi=[...new Set(ctx.Ev.map(e=>e.tag).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pl'));
+  const tagi=[...new Set(ctx.Ev.map(nazwaZPliku).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pl'));
   if(!tagi.length){ box.innerHTML=kom(`<b>Brak zdarzeń w tym fragmencie (${ctx.fragment}).</b>`); return; }
-  const n=(tag,t,h)=>ctx.Ev.filter(e=>e.tag===tag&&(t===null?!e.team:e.team===t)&&(h?e.half===h:true)).length;
+  const n=(tag,t,h)=>ctx.Ev.filter(e=>nazwaZPliku(e)===tag&&(t===null?!e.team:e.team===t)&&(h?e.half===h:true)).length;
   const num=(v,cls='')=>`<td class="num ${cls}">${v||'–'}</td>`;
   box.innerHTML=`<table class="tbl">
     <thead>
@@ -1635,9 +1646,9 @@ function renderSiatka(el, ctx){
       <tr><th>I</th><th>II</th><th>I</th><th>II</th><th class="mut">I</th><th class="mut">II</th></tr>
     </thead>
     <tbody>${tagi.map(tag=>{
-      const suma=ctx.Ev.filter(e=>e.tag===tag).length;
+      const suma=ctx.Ev.filter(e=>nazwaZPliku(e)===tag).length;
       const wSlowniku=!!VARS[tag];
-      return `<tr><td>${tag}${wSlowniku?'':' <span class="mut">(bez zmiennej)</span>'}</td>`+
+      return `<tr><td>${esc(tag)}${wSlowniku?'':' <span class="mut">(bez zmiennej)</span>'}</td>`+
         num(n(tag,HUT,1))+num(n(tag,HUT,2))+num(n(tag,POG,1))+num(n(tag,POG,2))+
         num(n(tag,null,1),'mut')+num(n(tag,null,2),'mut')+num(suma,'sum')+`</tr>`;
     }).join('')}</tbody></table>`;

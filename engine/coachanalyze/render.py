@@ -491,20 +491,16 @@ def vars_slot(template=None, znaczenia=None):
     """
     from . import aliasy
     from . import report_template as tpl
-    from . import znaczenie as znaczenie_mod
-    slownik = aliasy.scal_z_templatem(tpl.variable_overrides(template))
-    # W7: ZNACZENIE TAGU JAKO ALIAS TAGU WBUDOWANEGO. Szablon liczy po nazwie
-    # (`e.tag==='STRZAŁ'`); „Strzał" ze Słownika, z xG w komentarzu albo po
-    # normalizacji nazwy trafia do niego jako inna nazwa `STRZAŁ`. Dopisujemy,
-    # nie podmieniamy — aliasy templatu klubu zostają.
-    for klucz, tagi in znaczenie_mod.aliasy_szablonu(znaczenia).items():
-        wpis = dict(slownik.get(klucz) or {})
-        wpis["aliases"] = sorted(set(wpis.get("aliases") or ()) | set(tagi))
-        slownik[klucz] = wpis
-    return {"__VARS_TEMPLATU__": _literal_js(slownik)}
+    # W7-b: ZNACZENIA NIE IDĄ TUTAJ. Alias w `VARS` scala zmienne (ta sama
+    # zmienna pod inną nazwą — decyzja w słowniku albo templacie). Znaczenie
+    # z W7 tylko liczy tag jako wbudowany i jedzie osobno: `PLIK.klucze`.
+    # `znaczenia` zostaje w sygnaturze dla zgodności wywołań.
+    return {"__VARS_TEMPLATU__": _literal_js(
+        aliasy.scal_z_templatem(tpl.variable_overrides(template))
+    )}
 
 
-def plik_slot(warstwa1=None, w7=None, config=None, pokaz_zawodnikow=True):
+def plik_slot(warstwa1=None, w7=None, config=None, pokaz_zawodnikow=True, znaczenia=None):
     """`{'__PLIK__': '{…}'}` — dane warstwy 1 i fakty W7 dla szablonu v21.
 
     Szablon WYŁĄCZNIE WYŚWIETLA: liczby policzył silnik (`plik.zbuduj`).
@@ -525,6 +521,12 @@ def plik_slot(warstwa1=None, w7=None, config=None, pokaz_zawodnikow=True):
         # — szablon nie przypisuje ich drugi raz własną regułą.
         "gole_z_silnika": bool(warstwa1),
         "gol_w_eksporcie": bool(w7.get("gol_w_eksporcie")),
+        # W7-b: {tag z pliku: tag wbudowany} — szablon LICZY zdarzenie jako
+        # tag wbudowany, a wyświetla pod nazwą z pliku (`e.src`).
+        "klucze": {
+            t: z["klucz"] for t, z in sorted((znaczenia or {}).items())
+            if z.get("klucz") and z["klucz"] != t
+        },
         "wynik_strzalu": bool(w7.get("wynik_strzalu")),
         "wynik_reczny": {
             "us": wynik.get("us"), "them": wynik.get("them"),
@@ -1486,7 +1488,7 @@ def render(frame, palette=None, metrics=None, canon_result=None, config=None,
     slots.update(baner_niewliczone_slot(frame, report_template, wbudowane, config, znaczenia, w7))
     slots.update(progi_slot(report_template))
     slots.update(vars_slot(report_template, znaczenia))
-    slots.update(plik_slot(warstwa1, w7, config, pokaz_zawodnikow))
+    slots.update(plik_slot(warstwa1, w7, config, pokaz_zawodnikow, znaczenia))
     slots.update(roster_slot(config, pokaz=pokaz_zawodnikow))
     braki_znacznikow = missing_slots(template, slots)
     data = view_data(

@@ -125,7 +125,7 @@ final class ProfilAnalityka
      * UUID tagów klubu o danych nazwach — do `variables[].uuids` przy zapisie Słownika.
      *
      * Z odcisków wszystkich importów klubu; nazwa porównywana po normalizacji
-     * (`NazwaZmiennej::klucz`, bliźniak `znaczenie.normalizuj`). Dzięki temu
+     * (`NazwaZmiennej::kluczZnaczenia`, bliźniak `znaczenie.normalizuj`). Dzięki temu
      * przypisanie przeżywa zmianę nazwy tagu przez analityka (ten sam UUID).
      *
      * @param list<string> $nazwy
@@ -133,7 +133,7 @@ final class ProfilAnalityka
      */
     public static function uuidDlaNazw(int $clubId, array $nazwy): array
     {
-        $klucze = array_flip(array_map([NazwaZmiennej::class, 'klucz'], $nazwy));
+        $klucze = array_flip(array_map([NazwaZmiennej::class, 'kluczZnaczenia'], $nazwy));
         $out = [];
         $wiersze = Db::all(
             'SELECT i.profil_json FROM imports i JOIN matches m ON m.id = i.match_id
@@ -142,7 +142,7 @@ final class ProfilAnalityka
         );
         foreach ($wiersze as $w) {
             foreach ((self::odcisk($w)['nazwa_uuid'] ?? []) as $nazwa => $uuid) {
-                if (isset($klucze[NazwaZmiennej::klucz((string) $nazwa)]) && $uuid !== '') {
+                if (isset($klucze[NazwaZmiennej::kluczZnaczenia((string) $nazwa)]) && $uuid !== '') {
                     $out[$uuid] = true;
                 }
             }

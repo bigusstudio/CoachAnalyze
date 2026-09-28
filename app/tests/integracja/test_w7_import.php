@@ -148,9 +148,11 @@ check('pokrycie 4 z 5 = 0,8 (próg włącznie)', ProfilAnalityka::pokrycie($p5, 
 check('mniejszy zbiór < 5 elementów — pokrycie 0 (za mało, żeby orzec)',
     ProfilAnalityka::pokrycie(['a', 'b', 'c', 'd'], $p5) === 0.0);
 check('dwa puste = 0 (nic nie wiadomo)', ProfilAnalityka::pokrycie([], []) === 0.0);
-check('normalizacja nazw jak w silniku (kropki, wielkość liter, spacje)',
-    NazwaZmiennej::klucz(' 1x1  DEF. ') === NazwaZmiennej::klucz('1x1 def')
-    && NazwaZmiennej::klucz('SBZ PODAJĄCY/OTRZYMUJĄCY') !== NazwaZmiennej::klucz('SBZ PODAJĄCY'));
+check('klucz znaczenia jak w silniku (kropki, wielkość liter, spacje)',
+    NazwaZmiennej::kluczZnaczenia(' 1x1  DEF. ') === NazwaZmiennej::kluczZnaczenia('1x1 def')
+    && NazwaZmiennej::kluczZnaczenia('SBZ PODAJĄCY/OTRZYMUJĄCY') !== NazwaZmiennej::kluczZnaczenia('SBZ PODAJĄCY'));
+check('klucz TOŻSAMOŚCI zmiennej nie zdejmuje kropek (W7-b)',
+    NazwaZmiennej::klucz('1x1 DEF.') !== NazwaZmiennej::klucz('1x1 DEF'));
 
 $uuid = static fn(int $i): string => sprintf('00000000-0000-0000-0000-%012d', $i);
 $nazwy10 = array_map(static fn(int $i): string => 'tag ' . $i, range(1, 10));

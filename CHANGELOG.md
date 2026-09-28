@@ -22,8 +22,9 @@ NULL i indeks w `imports`.
   gol, posiadanie, podanie, wprowadzenie, akcja defensywna) i „Strona" (nasza /
   rywal / z kolumny team). Zapis dokłada `variables[].uuids` tagu z plików
   klubu; `side` i `uuids` przechodzą przez każdy zapis templatu (bez nich
-  templat bajt w bajt jak przed W7). Normalizacja nazw zdejmuje też kropki
-  (`NazwaZmiennej::klucz` = `znaczenie.normalizuj`): „1x1 DEF" = „1x1 DEF.".
+  templat bajt w bajt jak przed W7). Tożsamość zmiennej bez zmian
+  (`NazwaZmiennej::klucz`, „1x1 DEF" ≠ „1x1 DEF."); kropki zdejmuje wyłącznie
+  `NazwaZmiennej::kluczZnaczenia` (UUID tagu przy zapisie Słownika).
 - **Karta meczu** (G, H): anomalie importu, „raport niezgodny z plikiem",
   tagi bez znaczenia — wyłącznie admin i analityk.
 - **Niezmienniki panelu** (H, `KontrolaImportu`): zdarzenia w bazie = wiersze
@@ -41,7 +42,8 @@ NULL i indeks w `imports`.
   silnik na plikach z pułapkami CSV, deduplikacja, profil, Słownik, pełny
   przelot kolejki (anomalie, niezmienniki, gol ze strzału, alert).
 - testy wgrywające drugi mecz dostały plik z innymi zdarzeniami (ten sam plik
-  jest teraz duplikatem); test diffu i mapowań — „1x1 DEF" = „1x1 DEF.".
+  jest teraz duplikatem); test mapowań — nieznany tag zamiast „1x1 DEF"
+  (silnik rozpoznaje go dziś po znaczeniu).
 
 ## [0.17.0] — 2026-09-28 · W7: metoda importu v3 — plik w całości, znaczenia bez zgadywania
 
@@ -57,8 +59,11 @@ czyta się tak samo). Kontrakt: docs/KONTRAKT_CLI.md, „Metoda importu v3".
 - **Znaczenia tagów** (C): Słownik (UUID, zapasowo nazwa znormalizowana) → xG
   w komentarzu → nazwa po normalizacji + aliasy. „Strzał" = „STRZAŁ" (raport 32:
   Stal miała STRZAŁY – i xG 0,00, choć plik ma 33 strzały z xG). Znaczenie
-  wchodzi do modelu (gdzie profil nie ma pojęcia) i do szablonu jako alias tagu
-  wbudowanego. Tabela `events` zostaje pod surowymi nazwami.
+  wchodzi do modelu (gdzie profil nie ma pojęcia), do szablonu jako
+  `PLIK.klucze` (liczy jako tag wbudowany, wyświetla nazwę z pliku — NIE alias,
+  zmienne się nie sklejają) i do tabeli `events` (`pojecie`, `klucz`);
+  `tag_name` zostaje surowy. Normalizacja wyłącznie do znaczenia i zapasowego
+  klucza Słownika: „1x1 DEF" i „1x1 DEF." — jedno znaczenie, dwie zmienne.
 - **Gol** (F): drużyna ZAWSZE ze strzału — najbliższego wcześniejszego
   w chwili kliknięcia (`begin` + `time_before`), także przy wypełnionej kolumnie
   `team` (Jędrzejów: 2 z 3 goli z błędną drużyną w wierszu). Gol bez strzału

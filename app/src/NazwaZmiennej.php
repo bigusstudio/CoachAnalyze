@@ -31,14 +31,25 @@ namespace CoachAnalyze;
  */
 final class NazwaZmiennej
 {
-    /** Klucz porównania: małe litery, łączniki i kropki jako spacje, jedna spacja, bez brzegów. */
+    /** Klucz porównania: małe litery, łączniki jako spacje, jedna spacja, bez brzegów. */
     public static function klucz(string $nazwa): string
     {
-        // Kropki jak łączniki (W7): „1x1 DEF." = „1x1 def". Bliźniak w silniku:
-        // `znaczenie.normalizuj` — zmiana tutaj wymaga zmiany tam.
-        $bezLacznikow = preg_replace('/[\x{2010}-\x{2015}\-.]+/u', ' ', $nazwa) ?? $nazwa;
+        $bezLacznikow = preg_replace('/[\x{2010}-\x{2015}\-]+/u', ' ', $nazwa) ?? $nazwa;
         $jednaSpacja = preg_replace('/\s+/u', ' ', $bezLacznikow) ?? $bezLacznikow;
         return mb_strtolower(trim($jednaSpacja), 'UTF-8');
+    }
+
+    /**
+     * Klucz ZNACZENIA (W7): jak `klucz`, a do tego kropki jako spacje.
+     *
+     * NIE SŁUŻY TOŻSAMOŚCI ZMIENNEJ. „1x1 DEF" i „1x1 DEF." to dwie zmienne
+     * (templat, Słownik, wyświetlanie 1:1); ten klucz rozstrzyga wyłącznie ich
+     * ZNACZENIE i zapasowe dopasowanie przypisań ze Słownika (UUID tagu po
+     * nazwie). Bliźniak w silniku: `znaczenie.normalizuj`.
+     */
+    public static function kluczZnaczenia(string $nazwa): string
+    {
+        return self::klucz(preg_replace('/\.+/u', ' ', $nazwa) ?? $nazwa);
     }
 
     /** Czy dwie nazwy to ta sama zmienna. */

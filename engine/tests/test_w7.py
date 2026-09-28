@@ -172,8 +172,35 @@ def test_znaczenia_w_modelu_kanonicznym_i_vars(write_csv):
     z = znaczenie.rozstrzygnij(f)
     wynik = canon.build(f, znaczenia=z)
     assert wynik["events"][0]["concept"] == "shot" and wynik["events"][0]["xg"] == 0.4
+    # W7-b: znaczenie NIE jest aliasem zmiennej — jedzie osobno w PLIK.klucze.
     slot = json.loads(render.vars_slot(None, z)["__VARS_TEMPLATU__"])
-    assert "Strzał" in slot["STRZAŁ"]["aliases"]
+    assert "Strzał" not in str(slot)
+    assert json.loads(render.plik_slot({}, {}, znaczenia=z)["__PLIK__"])["klucze"] == {"Strzał": "STRZAŁ"}
+
+
+def test_kropka_to_samo_znaczenie_osobne_zmienne(write_csv, tmp_path, capsys):
+    """W7-b: „1x1 DEF" i „1x1 DEF." — jedno ZNACZENIE, dwie ZMIENNE.
+
+    Normalizacja (casefold, spacje, kropki) rozstrzyga wyłącznie znaczenie.
+    Tożsamość, warstwa 1, tabela makro i Słownik zostają przy nazwie z pliku 1:1.
+    """
+    wiersze = [wiersz("1x1 DEF", 10, labels="WYGRANY"), wiersz("1x1 DEF.", 20, labels="PRZEGRANY"),
+               wiersz("1x1 DEF.", 30, labels="WYGRANY")]
+    f = _ramka(write_csv, wiersze)
+    z = znaczenie.rozstrzygnij(f)
+    assert (z["1x1 DEF"]["pojecie"], z["1x1 DEF"]["kwalifikatory"]) == \
+           (z["1x1 DEF."]["pojecie"], z["1x1 DEF."]["kwalifikatory"]) == ("duel", ["defensive"])
+    assert z["1x1 DEF"]["klucz"] == z["1x1 DEF."]["klucz"] == "1x1 DEF."
+    w1 = plik.zbuduj(f, znaczenia=z)
+    assert {t["nazwa"]: t["n"] for t in w1["tagi"]} == {"1x1 DEF.": 2, "1x1 DEF": 1}
+    slot = json.loads(render.vars_slot(None, z)["__VARS_TEMPLATU__"])
+    assert "1x1 DEF" not in json.dumps(slot, ensure_ascii=False).replace("1x1 DEF.", "")
+
+    _build(write_csv, tmp_path, wiersze, capsys)
+    w = _wykonaj(tmp_path / "r.html")
+    assert "1x1 DEF (liczony jako 1x1 w defensywie)" in w["makro"], w["makro"]
+    assert "1x1 w defensywie" in w["makro"].replace("(liczony jako 1x1 w defensywie)", ""), "osobny wiersz 1x1 DEF."
+    assert "1x1 wygrane 2" in w["kpi"], "oba warianty liczą się do pojedynków"
 
 
 def test_decyzja_nie_analizuj_z_kreatora_jest_szanowana(write_csv):

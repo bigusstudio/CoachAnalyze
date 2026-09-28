@@ -32,7 +32,9 @@ global.localStorage = { getItem() { return null; }, setItem() {} };
 global.matchMedia = () => ({ matches: false });
 global.addEventListener = () => {};
 const skrypty = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]);
-(0, eval)(skrypty.slice(0, 2).join('\n;\n') + ';renderOverview();');
+(0, eval)(skrypty.slice(0, 2).join('\n;\n')
+  + ';renderOverview();renderMakro(document.getElementById("sec-makro"), widgetCtx());');
 const tekst = h => (h || '').replace(/<svg[\s\S]*?<\/svg>/g, ' ').replace(/<[^>]+>/g, ' ')
   .replace(/\s+/g, ' ').trim();
-console.log(JSON.stringify({ hdr2: tekst(out.hdr2), kpi: tekst(out['ov-kpi']), plik: tekst(out['plik-box']) }));
+console.log(JSON.stringify({ hdr2: tekst(out.hdr2), kpi: tekst(out['ov-kpi']), plik: tekst(out['plik-box']),
+  makro: tekst(out['makro-box']) }));
