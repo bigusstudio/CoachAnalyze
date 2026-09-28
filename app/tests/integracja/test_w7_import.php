@@ -284,6 +284,9 @@ check('niezmienniki panelu dopisane (baza, ekran Zawodnicy)',
 check('profil zapisany jako nowy', (int) $poRaporcie['profil_nowy'] === 1);
 
 $gol = Db::one("SELECT team, team_side FROM events WHERE match_id = :m AND tag_name = 'Gol'", ['m' => $meczE]);
+$znacz = Db::one("SELECT pojecie, klucz FROM events WHERE match_id = :m AND tag_name = 'Strzał' LIMIT 1", ['m' => $meczE]);
+check('tabela zdarzeń niesie znaczenie obok surowej nazwy (W7-b)',
+    $znacz !== null && $znacz['pojecie'] === 'shot' && $znacz['klucz'] === 'STRZAŁ', json_encode($znacz, JSON_UNESCAPED_UNICODE));
 check('gol w tabeli zdarzeń z drużyną STRZAŁU (KLUB A), nie wiersza', $gol !== null && $gol['team'] === 'KLUB A'
     && $gol['team_side'] === 'us', json_encode($gol, JSON_UNESCAPED_UNICODE));
 $html = (string) @file_get_contents((string) Db::one('SELECT html_path FROM reports WHERE match_id = :m', ['m' => $meczE])['html_path']);
@@ -301,6 +304,15 @@ check('zgubione zdarzenie w bazie łamie niezmiennik', count($zle) === 1 && $zle
     json_encode($zle, JSON_UNESCAPED_UNICODE));
 check('imports.niezmienniki_ok = 0', (int) Imports::find($impE)['niezmienniki_ok'] === 0);
 check('alert admina z numerem meczu', in_array('RAPORT_NIEZGODNY_Z_PLIKIEM', array_column(Alerts::all(), 'code'), true));
+
+echo "\n== deploy.sh: kontrola kolumn migracji 019 ==\n";
+$deploy = (string) file_get_contents($root . '/deploy/deploy.sh');
+$migracja = (string) file_get_contents($root . '/app/migrations/019_metoda_importu.sql');
+preg_match_all('/ADD COLUMN (\w+)/', $migracja, $kol);
+$brakWDeploy = array_values(array_filter($kol[1], static fn(string $k): bool => !str_contains($deploy, "'" . $k . "'")));
+check('deploy.sh sprawdza każdą kolumnę z 019 przed synchronizacją', count($kol[1]) === 7 && $brakWDeploy === [],
+    implode(', ', $brakWDeploy));
+check('deploy.sh podaje polecenie nałożenia 019', str_contains($deploy, 'migrations/019_metoda_importu.sql'));
 
 echo "\n=== OK: {$ok}, BŁĘDÓW: {$fail} ===\n";
 exit($fail === 0 ? 0 : 1);

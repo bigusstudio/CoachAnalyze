@@ -134,7 +134,7 @@ else
   exit 1
 fi
 
-echo "==> Kontrola migracji 014-017 (pivot viewer)"
+echo "==> Kontrola migracji 014-017 (pivot viewer) i 019 (W7)"
 #
 # +------------------------------------------------------------------------+
 # | WDROZENIE KODU PRZED MIGRACJAMI DAJE PANEL, KTORY WYGLADA NA DZIALAJACY.|
@@ -173,6 +173,17 @@ SELECT GROUP_CONCAT(brak SEPARATOR ', ') FROM (
   SELECT 'tabela match_players (017)' WHERE NOT EXISTS (
     SELECT 1 FROM information_schema.tables
      WHERE table_schema = DATABASE() AND table_name = 'match_players')
+  UNION ALL
+  -- 019 (W7, metoda importu v3): import zapisuje te kolumny przy KAŻDYM wgraniu
+  -- i każdym raporcie — bez nich cron wywraca się na pierwszym imporcie.
+  SELECT CONCAT('kolumna ', k.t, '.', k.c, ' (019)') FROM (
+    SELECT 'imports' AS t, 'sha256_zdarzen' AS c UNION ALL SELECT 'imports', 'profil_json'
+    UNION ALL SELECT 'imports', 'profil_nowy' UNION ALL SELECT 'imports', 'profil_import_id'
+    UNION ALL SELECT 'imports', 'niezmienniki_ok' UNION ALL SELECT 'events', 'pojecie'
+    UNION ALL SELECT 'events', 'klucz'
+  ) k WHERE NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_schema = DATABASE() AND table_name = k.t AND column_name = k.c)
 ) x;
 SQL
 )
@@ -195,6 +206,8 @@ if [ -n "$BRAKI" ] && [ "$BRAKI" != "NULL" ]; then
   echo "          mysql $DB_NAME < $BASE/repo/app/migrations/015_katalog_tagow.sql"
   echo "          mysql $DB_NAME < $BASE/repo/app/migrations/016_alias_tagu.sql"
   echo "          mysql $DB_NAME < $BASE/repo/app/migrations/017_sklad_meczu.sql"
+  echo "          mysql $DB_NAME < $BASE/repo/app/migrations/019_metoda_importu.sql"
+  echo "        (nakładaj tylko te, których brakuje — lista wyżej)"
   echo ""
   echo "        Migracje sa ADDYTYWNE - nalozenie ich na baze z dzialajaca"
   echo "        wersja pro niczego nie psuje (docs/STAN_PIVOTU.md par. 4)."
@@ -203,7 +216,7 @@ if [ -n "$BRAKI" ] && [ "$BRAKI" != "NULL" ]; then
   echo "        Zrzut sprzed tej proby: $ZRZUT"
   exit 1
 fi
-echo "    events, tag_catalog, match_players, round, alias_of   OK"
+echo "    events, tag_catalog, match_players, round, alias_of, 019   OK"
 
 echo "==> Synchronizacja katalogu webowego"
 mkdir -p "$WEB"
