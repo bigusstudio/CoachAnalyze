@@ -1,6 +1,7 @@
 -- 019 — Metoda importu v3 (W7): deduplikacja meczów, profil analityka, niezmienniki.
 --
--- MIGRACJA CZYSTO ADDYTYWNA: pięć kolumn NULL i jeden indeks na `imports`.
+-- MIGRACJA CZYSTO ADDYTYWNA: pięć kolumn NULL i jeden indeks na `imports`,
+-- dwie kolumny NULL na `events`.
 -- Zero DROP, zero DELETE, zero zmiany typów kolumn istniejących
 -- (app/migrations/README.md). Kod sprzed W7 tych kolumn nie zna i nie musi.
 --
@@ -16,6 +17,12 @@
 --   profil_import_id  import, do którego profil się dopasował (NULL przy nowym)
 --   niezmienniki_ok   0 = raport niezgodny z plikiem (alert dla admina), 1 = zgodny,
 --                     NULL = import sprzed W7 albo jeszcze nie policzony
+--
+--   events.pojecie    rozstrzygnięte znaczenie tagu (W7: shot, goal, possession…)
+--   events.klucz      tag wbudowany, który zdarzenie znaczy („Strzał" -> STRZAŁ).
+--                     `tag_name` zostaje surowy (zmienna 1:1); Pulpit, Sezon
+--                     i metryki liczą po znaczeniu (W7-b). NULL w starych
+--                     wierszach = liczymy po `tag_name`, jak przed W7.
 --
 -- Stare importy zostają z NULL: skrót i profil uzupełni pierwsza inspekcja
 -- albo regeneracja raportu (app/repairs/regeneruj_raporty.php).
@@ -33,9 +40,14 @@ ALTER TABLE imports
   ADD COLUMN niezmienniki_ok TINYINT(1) NULL AFTER profil_import_id,
   ADD INDEX idx_imports_sha256_zdarzen (sha256_zdarzen);
 
+ALTER TABLE events
+  ADD COLUMN pojecie VARCHAR(32) NULL AFTER tag_name,
+  ADD COLUMN klucz VARCHAR(160) NULL AFTER pojecie;
+
 -- KONTROLA PO — kolumny są, wszystkie puste (nic jeszcze ich nie wypełniło).
 SELECT COUNT(*) AS importow,
        SUM(sha256_zdarzen IS NOT NULL) AS ze_skrotem,
        SUM(profil_json IS NOT NULL) AS z_profilem,
        SUM(niezmienniki_ok = 0) AS niezgodnych
   FROM imports;
+SELECT COUNT(*) AS zdarzen, SUM(pojecie IS NOT NULL) AS ze_znaczeniem FROM events;

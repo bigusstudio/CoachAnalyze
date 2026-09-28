@@ -178,6 +178,7 @@ def zdarzenia_tabeli(frame, config, stan=None):
         tagi_goli=stan.get("tagi_goli") or (events_mod.TAG_GOL,),
         tagi_strzalow=stan.get("tagi_strzalow") or (events_mod.TAG_STRZAL,),
         przesuniecia=stan.get("przesuniecia") or None,
+        znaczenia=stan.get("znaczenia"),
     )
 
 

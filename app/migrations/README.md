@@ -80,7 +80,8 @@ od `PRESSING WYSOKI`, czyli powtarza pułapkę 7 (`CELNY` wewnątrz `NIECELNY`).
 ## `019` — metoda importu v3 (W7)
 
 Addytywna: pięć kolumn NULL i indeks na `imports` (`sha256_zdarzen`,
-`profil_json`, `profil_nowy`, `profil_import_id`, `niezmienniki_ok`).
+`profil_json`, `profil_nowy`, `profil_import_id`, `niezmienniki_ok`) i dwie
+kolumny NULL na `events` (`pojecie`, `klucz` — znaczenie tagu, W7-b).
 
 | Kolumna | Kto pisze | Po co |
 |---|---|---|
@@ -88,6 +89,7 @@ Addytywna: pięć kolumn NULL i indeks na `imports` (`sha256_zdarzen`,
 | `profil_json` | inspekcja (`meta.profil`) | odcisk profilu analityka: UUID tagów i nazwy znormalizowane |
 | `profil_nowy` · `profil_import_id` | zadanie budowy raportu (`ProfilAnalityka::ocen`) | baner „Nowy układ tagów" w raporcie |
 | `niezmienniki_ok` | zadanie budowy raportu | alert „raport niezgodny z plikiem" dla admina |
+| `events.pojecie` · `events.klucz` | zadanie budowy raportu (`--out-events`) | Pulpit, Sezon i metryki liczą po znaczeniu, nie po nazwie „STRZAŁ"; NULL = wiersz sprzed W7, liczony po `tag_name` |
 
 **Kolejność wdrożenia: migracja PRZED kodem W7.** Kod W7 zapisuje te kolumny
 przy każdym imporcie — bez migracji import kończy się błędem bazy.

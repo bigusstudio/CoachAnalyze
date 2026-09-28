@@ -29,6 +29,20 @@ final class View
         return htmlspecialchars((string) $value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
     }
 
+    /**
+     * Kreska z podpowiedzią „nie występuje w eksporcie" (W7-b) — gotowy HTML.
+     *
+     * Pojęcie, którego eksport meczu nie niesie (Stal: brak tagu gola), to
+     * NIE zero: „0:0" wygląda jak wynik. Tekst z `pl.php`, w dymku i dla
+     * czytnika ekranu.
+     */
+    public static function brakWEksporcie(): string
+    {
+        $t = self::e(self::t('w7.brak_w_eksporcie'));
+        return '<span class="brak-eksport" title="' . $t . '" aria-label="' . $t . '">'
+            . self::e(self::t('common.dash')) . '</span>';
+    }
+
     /** @param array<string,mixed> $data */
     public static function render(string $template, array $data = []): string
     {

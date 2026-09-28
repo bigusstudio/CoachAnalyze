@@ -199,15 +199,15 @@ final class Stats
     public static function matchFacts(int $matchId): ?array
     {
         $wiersze = Db::all(
-            "SELECT team_side,
-                    SUM(is_goal)                                    AS goals,
-                    SUM(CASE WHEN xg IS NULL THEN 0 ELSE xg END)    AS xg,
-                    SUM(CASE WHEN tag_name = :tag THEN 1 ELSE 0 END) AS shots,
-                    COUNT(*)                                        AS events
-               FROM events
-              WHERE match_id = :m
-              GROUP BY team_side",
-            ['m' => $matchId, 'tag' => self::TAG_STRZAL]
+            "SELECT e.team_side,
+                    SUM(e.is_goal)                                      AS goals,
+                    SUM(CASE WHEN e.xg IS NULL THEN 0 ELSE e.xg END)    AS xg,
+                    SUM(CASE WHEN " . self::SQL_STRZAL . " THEN 1 ELSE 0 END) AS shots,
+                    COUNT(*)                                            AS events
+               FROM events e
+              WHERE e.match_id = :m
+              GROUP BY e.team_side",
+            ['m' => $matchId]
         );
 
         if ($wiersze === []) {
@@ -255,9 +255,6 @@ final class Stats
         // tego samego symbolu nazwanego dwa razy w jednym zapytaniu, a emulacja
         // jest w tym projekcie wyłączona (pilnuje tego `test_sql_parametry.php`).
         $parametry = [
-            'tag_us'   => self::TAG_STRZAL,
-            'tag_them' => self::TAG_STRZAL,
-            'tag_all'  => self::TAG_STRZAL,
             'limit'    => max(1, min(200, $limit)),
         ];
         if ($seasonId !== null) {
@@ -279,11 +276,15 @@ final class Stats
                     SUM(CASE WHEN e.team_side = 'them' THEN e.is_goal ELSE 0 END) AS goals_them,
                     SUM(CASE WHEN e.team_side = 'us'   AND e.xg IS NOT NULL THEN e.xg ELSE 0 END) AS xg_us,
                     SUM(CASE WHEN e.team_side = 'them' AND e.xg IS NOT NULL THEN e.xg ELSE 0 END) AS xg_them,
-                    SUM(CASE WHEN e.team_side = 'us'   AND e.tag_name = :tag_us THEN 1 ELSE 0 END) AS shots_us,
-                    SUM(CASE WHEN e.team_side = 'them' AND e.tag_name = :tag_them THEN 1 ELSE 0 END) AS shots_them,
+                    SUM(CASE WHEN e.team_side = 'us'   AND " . self::SQL_STRZAL . " THEN 1 ELSE 0 END) AS shots_us,
+                    SUM(CASE WHEN e.team_side = 'them' AND " . self::SQL_STRZAL . " THEN 1 ELSE 0 END) AS shots_them,
                     -- Strzały meczu bez względu na stronę (golden layout W1): mecz ze
                     -- zdarzeniami, ale BEZ strzałów, pokazuje kreskę zamiast 0:0.
-                    SUM(CASE WHEN e.tag_name = :tag_all THEN 1 ELSE 0 END) AS shots_all,
+                    SUM(CASE WHEN " . self::SQL_STRZAL . " THEN 1 ELSE 0 END) AS shots_all,
+                    -- W7-b: czy eksport W OGÓLE niesie gole i xG. Stal ma strzały
+                    -- i xG, a nie ma tagu gola — wynik z tagów to wtedy kreska, nie 0:0.
+                    SUM(CASE WHEN " . self::SQL_GOL . " THEN 1 ELSE 0 END) AS goals_all,
+                    SUM(CASE WHEN e.xg IS NOT NULL THEN 1 ELSE 0 END) AS xg_n,
                     COUNT(e.id) AS events
                FROM matches m
                LEFT JOIN clubs h  ON h.id = m.club_home_id
@@ -323,8 +324,7 @@ final class Stats
     public static function seasonRounds(int $clubId, ?int $seasonId): array
     {
         $warunek = $seasonId !== null ? 'AND m.season_id = :sid' : '';
-        $parametry = ['club' => $clubId, 'tag_us' => self::TAG_STRZAL,
-                      'tag_them' => self::TAG_STRZAL, 'tag_all' => self::TAG_STRZAL];
+        $parametry = ['club' => $clubId];
         if ($seasonId !== null) {
             $parametry['sid'] = $seasonId;
         }
@@ -337,11 +337,15 @@ final class Stats
                     SUM(CASE WHEN e.team_side = 'them' THEN e.is_goal ELSE 0 END) AS goals_them,
                     SUM(CASE WHEN e.team_side = 'us'   AND e.xg IS NOT NULL THEN e.xg ELSE 0 END) AS xg_us,
                     SUM(CASE WHEN e.team_side = 'them' AND e.xg IS NOT NULL THEN e.xg ELSE 0 END) AS xg_them,
-                    SUM(CASE WHEN e.team_side = 'us'   AND e.tag_name = :tag_us THEN 1 ELSE 0 END) AS shots_us,
-                    SUM(CASE WHEN e.team_side = 'them' AND e.tag_name = :tag_them THEN 1 ELSE 0 END) AS shots_them,
+                    SUM(CASE WHEN e.team_side = 'us'   AND " . self::SQL_STRZAL . " THEN 1 ELSE 0 END) AS shots_us,
+                    SUM(CASE WHEN e.team_side = 'them' AND " . self::SQL_STRZAL . " THEN 1 ELSE 0 END) AS shots_them,
                     -- Strzały meczu bez względu na stronę (golden layout W1): mecz ze
                     -- zdarzeniami, ale BEZ strzałów, pokazuje kreskę zamiast 0:0.
-                    SUM(CASE WHEN e.tag_name = :tag_all THEN 1 ELSE 0 END) AS shots_all,
+                    SUM(CASE WHEN " . self::SQL_STRZAL . " THEN 1 ELSE 0 END) AS shots_all,
+                    -- W7-b: czy eksport W OGÓLE niesie gole i xG. Stal ma strzały
+                    -- i xG, a nie ma tagu gola — wynik z tagów to wtedy kreska, nie 0:0.
+                    SUM(CASE WHEN " . self::SQL_GOL . " THEN 1 ELSE 0 END) AS goals_all,
+                    SUM(CASE WHEN e.xg IS NOT NULL THEN 1 ELSE 0 END) AS xg_n,
                     COUNT(e.id) AS events
                FROM matches m
                LEFT JOIN clubs h  ON h.id = m.club_home_id
@@ -444,7 +448,7 @@ final class Stats
     {
         $warunek = $seasonId !== null ? 'AND m.season_id = :sid' : '';
         $parametrySkład = ['club' => $clubId];
-        $parametryZdarzen = ['club' => $clubId, 'tag' => self::TAG_STRZAL];
+        $parametryZdarzen = ['club' => $clubId];
         if ($seasonId !== null) {
             $parametrySkład['sid'] = $seasonId;
             $parametryZdarzen['sid'] = $seasonId;
@@ -476,7 +480,7 @@ final class Stats
         $zdarzenia = Db::all(
             "SELECT e.player,
                     COUNT(DISTINCT e.match_id) AS event_matches,
-                    SUM(CASE WHEN e.tag_name = :tag THEN 1 ELSE 0 END) AS shots,
+                    SUM(CASE WHEN " . self::SQL_STRZAL . " THEN 1 ELSE 0 END) AS shots,
                     SUM(CASE WHEN e.xg IS NOT NULL THEN e.xg ELSE 0 END) AS xg,
                     SUM(e.is_goal) AS goals,
                     COUNT(e.id) AS events,
@@ -543,13 +547,13 @@ final class Stats
     public static function rivalPlayers(int $clubId, ?int $seasonId = null): array
     {
         $warunek = $seasonId !== null ? 'AND m.season_id = :sid' : '';
-        $p = ['club' => $clubId, 'tag' => self::TAG_STRZAL] + ($seasonId !== null ? ['sid' => $seasonId] : []);
+        $p = ['club' => $clubId] + ($seasonId !== null ? ['sid' => $seasonId] : []);
         $rywal = "(CASE WHEN m.club_away_id = m.club_id AND (m.club_home_id IS NULL OR m.club_home_id <> m.club_id)
                         THEN 'us' ELSE 'them' END)";
         $wiersze = Db::all(
             "SELECT e.player,
                     COUNT(DISTINCT e.match_id) AS matches,
-                    SUM(CASE WHEN e.tag_name = :tag THEN 1 ELSE 0 END) AS shots,
+                    SUM(CASE WHEN " . self::SQL_STRZAL . " THEN 1 ELSE 0 END) AS shots,
                     SUM(CASE WHEN e.xg IS NOT NULL THEN e.xg ELSE 0 END) AS xg,
                     SUM(e.is_goal) AS goals,
                     COUNT(e.id) AS events
@@ -618,6 +622,48 @@ final class Stats
      * słownika. Dziś templat nie jest czytany przez warstwę żądań.
      */
     public const TAG_STRZAL = 'STRZAŁ';
+
+    /*
+     * ZNACZENIE ZAMIAST NAZWY (W7-b). Silnik zapisuje w `events.pojecie`
+     * rozstrzygnięte znaczenie tagu (Słownik → xG w komentarzu → nazwa po
+     * normalizacji). Stal taguje „Strzał" — po nazwie „STRZAŁ" Pulpit i Sezon
+     * pokazywały zero strzałów przy 33 w pliku. Wiersz sprzed W7 (`pojecie`
+     * NULL) liczy się po nazwie, jak dotąd — do czasu regeneracji raportu.
+     * Warunki na aliasie `e` tabeli `events`.
+     */
+    public const SQL_STRZAL = "(e.pojecie = 'shot' OR (e.pojecie IS NULL AND e.tag_name = 'STRZAŁ'))";
+    public const SQL_GOL = "(e.pojecie = 'goal' OR (e.pojecie IS NULL AND e.tag_name = 'Gol'))";
+
+    /**
+     * Kafel meczu (W7-b): co mecz NIESIE, z wiersza `seasonMatches`/`seasonRounds`.
+     *
+     * JEDNA REGUŁA dla Pulpitu i Sezonu, żeby dwa ekrany nie rozstrzygały
+     * inaczej. `null` = pojęcia nie ma w eksporcie meczu → kreska z podpowiedzią,
+     * nigdy 0:
+     *   - strzały — mecz ma zdarzenia o znaczeniu strzału,
+     *   - xG — któreś zdarzenie ma xG,
+     *   - wynik — ręczny (`score_us/score_them`), a bez niego z tagów WYŁĄCZNIE
+     *     wtedy, gdy eksport ma tag gola. Stal ma strzały i nie ma gola: do W7
+     *     pasek pokazywał tam 0:0.
+     *
+     * @param array<string,mixed> $r
+     * @return array{strzaly:?array{0:int,1:int}, xg:?array{0:float,1:float}, wynik:?array{0:int,1:int}, reczny:bool}
+     */
+    public static function kafelMeczu(array $r): array
+    {
+        $zdarzenia = (int) ($r['events'] ?? 0) > 0;
+        $reczny = ($r['score_us'] ?? null) !== null && ($r['score_them'] ?? null) !== null;
+        $zTagow = $zdarzenia && (int) ($r['goals_all'] ?? 0) > 0;
+        return [
+            'strzaly' => $zdarzenia && (int) ($r['shots_all'] ?? 0) > 0
+                ? [(int) $r['shots_us'], (int) $r['shots_them']] : null,
+            'xg'      => $zdarzenia && (int) ($r['xg_n'] ?? 0) > 0
+                ? [(float) $r['xg_us'], (float) $r['xg_them']] : null,
+            'wynik'   => $reczny ? [(int) $r['score_us'], (int) $r['score_them']]
+                : ($zTagow ? [(int) $r['goals_us'], (int) $r['goals_them']] : null),
+            'reczny'  => $reczny,
+        ];
+    }
 
     /** Czas w formacie DATETIME. Jedno miejsce, żeby testy mogły go przesunąć. */
     public static function now(string $modify = 'now'): string

@@ -109,6 +109,8 @@ function ca_test_db(string $file, bool $withData = true): PDO
     $pdo->exec('CREATE TABLE events (id INTEGER PRIMARY KEY AUTOINCREMENT,
         match_id INT NOT NULL, import_id INT NULL,
         tag_name TEXT NOT NULL, labels_json TEXT NULL,
+        -- Migracja 019 (W7-b): znaczenie tagu.
+        pojecie TEXT NULL, klucz TEXT NULL,
         team TEXT NULL, team_side TEXT NOT NULL, player TEXT NULL,
         t_ms INT NOT NULL, t_end_ms INT NULL, half INT NOT NULL, minute INT NOT NULL,
         xg REAL NULL, xg_source TEXT NULL,

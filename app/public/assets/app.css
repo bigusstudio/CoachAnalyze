@@ -1615,3 +1615,6 @@ div.ctx { cursor: default; }
 .uklad-lista__nr { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--tekst-slabszy); min-width: 2ch; }
 .uklad-lista__nazwa { flex: 1; font-weight: 600; }
 .sekcje-wybor label { display: inline-flex; gap: 4px; margin: 0 10px 4px 0; font-size: 13px; white-space: nowrap; }
+
+/* W7-b: kreska „nie występuje w eksporcie" — brak pojęcia w meczu, nie zero. */
+.brak-eksport { color: var(--tekst-slaby); cursor: help; border-bottom: 1px dotted var(--tekst-slaby); }

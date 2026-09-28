@@ -407,7 +407,8 @@ Zdarzenia meczu **pod nazwą, którą wpisał analityk** — bez tłumaczenia na
       "team": "KLUB A", "team_side": "us", "player": null,
       "t_ms": 200000, "t_end_ms": 210000, "half": 1, "minute": 4,
       "xg": null, "xg_source": null,
-      "x": 97.01, "y": 59.34, "tx": 95.68, "ty": 48.31, "is_goal": 0
+      "x": 97.01, "y": 59.34, "tx": 95.68, "ty": 48.31, "is_goal": 0,
+      "pojecie": "entry_sbz", "klucz": "ZDOBYCIE SBZ"
     }
   ]
 }
@@ -427,6 +428,13 @@ Trzy reguły, na których stoi to wyjście:
 | **minuta** | `max(1, ceil(t/60))`, **pierwsza połowa przycięta do 45**. Minuta zaczyna się od 1: pułapka 10 przycina ujemny `begin` do zera, więc bez tego tag sprzed pierwszego gwizdka lądował w 0. minucie, której nie ma ani w meczu, ani na osi czasu. Czas w eksporcie to czas wideo (pułapka 8), więc doliczony czas rośnie dalej, a przerwa nie zeruje licznika. Druga połowa bez przycięcia — górnej granicy meczu nie znamy |
 | **gol** | tag `Gol` przypisany do **najbliższego w czasie** `STRZAŁ` (okno 30 s); strzał dostaje `is_goal: 1`, a wiersz `Gol` **zostaje** ze skorygowaną drużyną. `team_uuid` przy golu w eksporcie bywa błędny — dlatego drużyna idzie ze strzału, nie z własnego wiersza |
 | **strona** | `us` / `them` wg `config.teams` (to samo dopasowanie, co w renderze); wiersz bez drużyny to `none`, nie zgadywanie (pułapka 5). Perspektywę klubu-tenanta interpretuje SZABLON, nie silnik |
+
+**`pojecie` i `klucz` (od 0.17.0, W7-b)** — rozstrzygnięte znaczenie tagu
+(`znaczenie.rozstrzygnij`) i tag wbudowany, który zdarzenie znaczy. `tag_name`
+zostaje SUROWY (zmienna 1:1); Pulpit i Sezon liczą strzały i gole po `pojecie`
+(`Stats::SQL_STRZAL`, `SQL_GOL`), metryki po `COALESCE(klucz, tag_name)`.
+To samo rozstrzygnięcie, co w raporcie (`PLIK.klucze`), więc tabela i raport
+dalej odpowiadają tą samą miarą. `null` = tag bez znaczenia.
 
 `xg_source` to zawsze `analyst`: ramka renderu niesie wyłącznie wartości odczytane
 z komentarza (pułapka 1). xG z modelu (M3) żyje w warstwie kanonicznej.

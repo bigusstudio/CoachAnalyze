@@ -87,17 +87,14 @@ $wartosc = static function (array $m) use ($dziesietna): string {
       $sumaStrzalyUs = 0; $sumaStrzalyThem = 0;
       // Mecz bez strzałów (golden layout W1) nie wchodzi do sum goli, xG
       // i strzałów — jego „0" nie jest liczbą, tylko brakiem danych.
-      $zeStrzalami = static fn(array $k): bool => (int) ($k['shots_all'] ?? 0) > 0;
+      // W7-b: każda kolumna sumuje mecze, które to pojęcie NIOSĄ
+      // (`Stats::kafelMeczu`) — mecz bez tagu gola nie dokłada 0:0.
+      $sumaG = 0; $sumaX = 0; $sumaS = 0;
       foreach ($kolejki as $k) {
-          if (!$zeStrzalami($k)) {
-              continue;
-          }
-          $sumaGoleUs += (int) $k['goals_us'];
-          $sumaGoleThem += (int) $k['goals_them'];
-          $sumaXgUs += (float) $k['xg_us'];
-          $sumaXgThem += (float) $k['xg_them'];
-          $sumaStrzalyUs += (int) $k['shots_us'];
-          $sumaStrzalyThem += (int) $k['shots_them'];
+          $km = \CoachAnalyze\Stats::kafelMeczu($k);
+          if ($km['wynik'] !== null) { $sumaGoleUs += $km['wynik'][0]; $sumaGoleThem += $km['wynik'][1]; $sumaG++; }
+          if ($km['xg'] !== null) { $sumaXgUs += $km['xg'][0]; $sumaXgThem += $km['xg'][1]; $sumaX++; }
+          if ($km['strzaly'] !== null) { $sumaStrzalyUs += $km['strzaly'][0]; $sumaStrzalyThem += $km['strzaly'][1]; $sumaS++; }
       }
     ?>
     <div class="tbl-scroll">
@@ -126,19 +123,19 @@ $wartosc = static function (array $m) use ($dziesietna): string {
                 <?= View::e((string) ($k['away_name'] ?? View::t('match.no_club'))) ?>
               </a>
             </td>
-            <?php $kr = View::t('common.dash'); $ok = $zeStrzalami($k); ?>
-            <td><?= View::e($ok ? (int) $k['goals_us'] . ':' . (int) $k['goals_them'] : $kr) ?></td>
-            <td class="num"><?= View::e($ok ? $dziesietna($k['xg_us']) . ' : ' . $dziesietna($k['xg_them']) : $kr) ?></td>
-            <td class="num"><?= View::e($ok ? (int) $k['shots_us'] . ' : ' . (int) $k['shots_them'] : $kr) ?></td>
+            <?php $km = \CoachAnalyze\Stats::kafelMeczu($k); ?>
+            <td><?= $km['wynik'] !== null ? View::e($km['wynik'][0] . ':' . $km['wynik'][1]) : View::brakWEksporcie() ?></td>
+            <td class="num"><?= $km['xg'] !== null ? View::e($dziesietna($km['xg'][0]) . ' : ' . $dziesietna($km['xg'][1])) : View::brakWEksporcie() ?></td>
+            <td class="num"><?= $km['strzaly'] !== null ? View::e($km['strzaly'][0] . ' : ' . $km['strzaly'][1]) : View::brakWEksporcie() ?></td>
           </tr>
         <?php endforeach; ?>
         </tbody>
         <tfoot>
           <tr>
             <td colspan="2"><b><?= View::e(View::t('dash.season_sum')) ?></b></td>
-            <td><b><?= View::e($sumaGoleUs . ':' . $sumaGoleThem) ?></b></td>
-            <td class="num"><b><?= View::e($dziesietna($sumaXgUs) . ' : ' . $dziesietna($sumaXgThem)) ?></b></td>
-            <td class="num"><b><?= View::e($sumaStrzalyUs . ' : ' . $sumaStrzalyThem) ?></b></td>
+            <td><b><?= $sumaG > 0 ? View::e($sumaGoleUs . ':' . $sumaGoleThem) : View::brakWEksporcie() ?></b></td>
+            <td class="num"><b><?= $sumaX > 0 ? View::e($dziesietna($sumaXgUs) . ' : ' . $dziesietna($sumaXgThem)) : View::brakWEksporcie() ?></b></td>
+            <td class="num"><b><?= $sumaS > 0 ? View::e($sumaStrzalyUs . ' : ' . $sumaStrzalyThem) : View::brakWEksporcie() ?></b></td>
           </tr>
         </tfoot>
       </table>

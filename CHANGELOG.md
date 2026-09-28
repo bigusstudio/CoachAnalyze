@@ -31,6 +31,13 @@ NULL i indeks w `imports`.
   CSV, zawodnicy z pliku na ekranie Zawodnicy; naruszenie → `niezmienniki_ok = 0`
   i alert admina `RAPORT_NIEZGODNY_Z_PLIKIEM`.
 - `config.json`: `match.score` (wynik ręczny), `profil`, `znane_druzyny`.
+- **Pulpit i Sezon po znaczeniu** (W7-b): `events.pojecie`/`klucz` (migracja 019)
+  — strzały i gole po `pojecie`, metryki (pressing, SBZ…) po
+  `COALESCE(klucz, tag_name)`. „Strzał" Stali liczy się jako strzał. Jedna
+  reguła kafla (`Stats::kafelMeczu`): pojęcia nieobecnego w eksporcie meczu nie
+  pokazujemy jako 0 — kreska z podpowiedzią „nie występuje w eksporcie"
+  (`View::brakWEksporcie`); wynik z tagów wyłącznie przy tagu gola w eksporcie.
+  Wiersze sprzed W7 (`pojecie` NULL) liczą się po nazwie do regeneracji.
 - **`app/bin/sprawdz_korpus.php`**: przegląd katalogów eksportów przez silnik
   bez bazy — parowanie CSV/JSON po zawartości, deduplikacja, profile, tabela
   niezmienników, nierozpoznanych tagów i anomalii (bez nazwisk i komentarzy).

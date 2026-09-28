@@ -208,7 +208,7 @@ $klasaWyniku = static function (?int $nas, ?int $ich): string {
           <?php foreach ($fakty as [$id, $etykieta, $procent]): ?>
             <?php $w = $liczbaMeczu($id, $procent); ?>
             <div class="hero__fact<?= $w === null ? ' hero__fact--pusty' : '' ?>">
-              <b><?= View::e($w ?? View::t('common.dash')) ?></b>
+              <b><?= $w !== null ? View::e($w) : View::brakWEksporcie() ?></b>
               <small><?= View::e($etykieta) ?></small>
             </div>
           <?php endforeach; ?>
@@ -301,8 +301,10 @@ $klasaWyniku = static function (?int $nas, ?int $ich): string {
              : '',
          'pusty' => ($mPoId['sbz_na_mecz']['value'] ?? null) === null],
         ['l' => View::t('dash.kpi.press'), 'v' => $metryka('pressing', true),
+         // W7-b: bez akcji pressingu w eksportach — powód zamiast pustego podpisu.
          'd' => ($mPoId['pressing']['d'] ?? null) !== null
-             ? View::t('dash.of_total', (int) $mPoId['pressing']['d']) : '',
+             ? View::t('dash.of_total', (int) $mPoId['pressing']['d'])
+             : View::t('w7.brak_w_eksporcie'),
          'pusty' => ($mPoId['pressing']['value'] ?? null) === null],
         ['l' => View::t('dash.kpi.reaction'), 'v' => $metryka('reakcja_na_strate', true),
          'd' => ($mPoId['reakcja_na_strate']['d'] ?? null) !== null
@@ -354,12 +356,14 @@ $klasaWyniku = static function (?int $nas, ?int $ich): string {
              * ma strzały albo gole (reguła W1: zdarzenia bez strzałów to „–",
              * nie 0:0). „–" tylko wtedy, gdy nie ma ani jednego, ani drugiego.
              */
-            $reczny = $r['score_us'] !== null && $r['score_them'] !== null;
-            $zTagow = (int) $r['events'] > 0
-                && ((int) ($r['shots_all'] ?? 0) > 0 || (int) $r['goals_us'] + (int) $r['goals_them'] > 0);
-            $ma  = $reczny || $zTagow;
-            $nas = $reczny ? (int) $r['score_us'] : ($zTagow ? (int) $r['goals_us'] : null);
-            $ich = $reczny ? (int) $r['score_them'] : ($zTagow ? (int) $r['goals_them'] : null);
+            // W7-b: wynik z tagów WYŁĄCZNIE, gdy eksport ma tag gola
+            // (`Stats::kafelMeczu`) — Stal ma strzały bez gola i miała tu 0:0.
+            $kafelMeczu = \CoachAnalyze\Stats::kafelMeczu($r);
+            $reczny = $kafelMeczu['reczny'];
+            $ma  = $kafelMeczu['wynik'] !== null;
+            $zTagow = $ma && !$reczny;
+            $nas = $ma ? $kafelMeczu['wynik'][0] : null;
+            $ich = $ma ? $kafelMeczu['wynik'][1] : null;
             $kl  = 'q';
             if ($r['status'] !== 'done' && !$reczny) {
                 $kl .= ' q--next';
@@ -372,7 +376,7 @@ $klasaWyniku = static function (?int $nas, ?int $ich): string {
                 : View::t('common.dash');
             $tytul = trim(((string) ($r['home_name'] ?? '?')) . ' – ' . ((string) ($r['away_name'] ?? '?')))
                 . ' · ' . ($r['played_at'] ?? View::t('match.no_date'))
-                . ($ma ? ' · ' . $nas . ':' . $ich : '');
+                . ($ma ? ' · ' . $nas . ':' . $ich : ' · ' . View::t('dash.col.result') . ': ' . View::t('w7.brak_w_eksporcie'));
           ?>
           <?php /*
             KOLEJKA Z PREFIKSEM, NUMER PORZĄDKOWY WYSZARZONY (Sesja 6).
@@ -434,9 +438,9 @@ $klasaWyniku = static function (?int $nas, ?int $ich): string {
           <tbody>
             <?php foreach (array_slice($seasonRows, 0, 8) as $r): ?>
               <?php
-                $ma  = (int) $r['events'] > 0 && (int) ($r['shots_all'] ?? 0) > 0;
-                $nas = $ma ? (int) $r['goals_us'] : null;
-                $ich = $ma ? (int) $r['goals_them'] : null;
+                $kafelMeczu = \CoachAnalyze\Stats::kafelMeczu($r);
+                $nas = $kafelMeczu['wynik'][0] ?? null;
+                $ich = $kafelMeczu['wynik'][1] ?? null;
               ?>
               <tr>
                 <td>
@@ -452,18 +456,18 @@ $klasaWyniku = static function (?int $nas, ?int $ich): string {
                 </td>
                 <td>
                   <span class="res<?= $klasaWyniku($nas, $ich) ?>">
-                    <?= $ma ? View::e($nas . ':' . $ich) : View::e(View::t('common.dash')) ?>
+                    <?= $kafelMeczu['wynik'] !== null ? View::e($nas . ':' . $ich) : View::brakWEksporcie() ?>
                   </span>
                 </td>
                 <td class="num">
-                  <?= $ma
-                      ? View::e($dziesietna((float) $r['xg_us']) . ' : ' . $dziesietna((float) $r['xg_them']))
-                      : View::e(View::t('common.dash')) ?>
+                  <?= $kafelMeczu['xg'] !== null
+                      ? View::e($dziesietna($kafelMeczu['xg'][0]) . ' : ' . $dziesietna($kafelMeczu['xg'][1]))
+                      : View::brakWEksporcie() ?>
                 </td>
                 <td class="num">
-                  <?= $ma
-                      ? View::e($r['shots_us'] . ' : ' . $r['shots_them'])
-                      : View::e(View::t('common.dash')) ?>
+                  <?= $kafelMeczu['strzaly'] !== null
+                      ? View::e($kafelMeczu['strzaly'][0] . ' : ' . $kafelMeczu['strzaly'][1])
+                      : View::brakWEksporcie() ?>
                 </td>
                 <?php
                   // Sesja 3: SBZ per mecz z tej samej definicji, co kafel.

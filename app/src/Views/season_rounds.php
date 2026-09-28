@@ -37,18 +37,19 @@ $przelacz = static fn(int $id): string => '/sezon?klub=' . (int) $club['id'] . '
 <?php
   $kreska = View::t('common.dash');
   $liczba = static fn($w): string => number_format((float) $w, 2, ',', ' ');
+  // W7-b: `null` (brak akcji pressingu w eksporcie) = kreska z podpowiedzią, gotowy HTML.
   $procent = static fn(array $m): string => $m['value'] === null
-      ? View::t('common.dash')
-      : round(100 * (float) $m['value']) . '% (' . (int) $m['n'] . '/' . (int) $m['d'] . ')';
-  // SUMA z tych samych wierszy, które widać — tylko mecze ze strzałami (W1).
-  $suma = ['gu' => 0, 'gt' => 0, 'xu' => 0.0, 'xt' => 0.0, 'su' => 0, 'st' => 0, 'n' => 0];
+      ? View::brakWEksporcie()
+      : View::e(round(100 * (float) $m['value']) . '% (' . (int) $m['n'] . '/' . (int) $m['d'] . ')');
+  // SUMA z tych samych komórek, które widać — każda kolumna z meczów, które
+  // to pojęcie NIOSĄ (`Stats::kafelMeczu`, W7-b). Mecz bez tagu gola nie
+  // dokłada 0:0 do wyniku sezonu.
+  $suma = ['gu' => 0, 'gt' => 0, 'g' => 0, 'xu' => 0.0, 'xt' => 0.0, 'x' => 0, 'su' => 0, 'st' => 0, 'n' => 0];
   foreach ($kolejki as $k) {
-      if ((int) $k['events'] > 0 && (int) ($k['shots_all'] ?? 0) > 0) {
-          $suma['gu'] += (int) $k['goals_us']; $suma['gt'] += (int) $k['goals_them'];
-          $suma['xu'] += (float) $k['xg_us']; $suma['xt'] += (float) $k['xg_them'];
-          $suma['su'] += (int) $k['shots_us']; $suma['st'] += (int) $k['shots_them'];
-          $suma['n']++;
-      }
+      $km = \CoachAnalyze\Stats::kafelMeczu($k);
+      if ($km['wynik'] !== null) { $suma['gu'] += $km['wynik'][0]; $suma['gt'] += $km['wynik'][1]; $suma['g']++; }
+      if ($km['xg'] !== null) { $suma['xu'] += $km['xg'][0]; $suma['xt'] += $km['xg'][1]; $suma['x']++; }
+      if ($km['strzaly'] !== null) { $suma['su'] += $km['strzaly'][0]; $suma['st'] += $km['strzaly'][1]; $suma['n']++; }
   }
 ?>
 <section class="panel">
@@ -73,7 +74,7 @@ $przelacz = static fn(int $id): string => '/sezon?klub=' . (int) $club['id'] . '
         </thead>
         <tbody>
         <?php foreach ($kolejki as $nr => $k): ?>
-          <?php $ma = (int) $k['events'] > 0 && (int) ($k['shots_all'] ?? 0) > 0; ?>
+          <?php $km = \CoachAnalyze\Stats::kafelMeczu($k); ?>
           <tr>
             <td>
               <?php /* „k. N" przy kolejce, numer porządkowy wyszarzony bez prefiksu —
@@ -93,13 +94,11 @@ $przelacz = static fn(int $id): string => '/sezon?klub=' . (int) $club['id'] . '
             <td><?= View::e((string) ($k['played_at'] ?? '') ?: $kreska) ?></td>
             <td><?= View::e($k['is_home'] === null ? $kreska
                     : View::t((int) $k['is_home'] === 1 ? 'card.home' : 'card.away')) ?></td>
-            <td><?= View::e($k['score_us'] !== null && $k['score_them'] !== null
-                    ? (int) $k['score_us'] . ':' . (int) $k['score_them']
-                    : ($ma ? (int) $k['goals_us'] . ':' . (int) $k['goals_them'] : $kreska)) ?></td>
-            <td class="num"><?= View::e($ma ? $liczba($k['xg_us']) . ' : ' . $liczba($k['xg_them']) : $kreska) ?></td>
-            <td class="num"><?= View::e($ma ? (int) $k['shots_us'] . ' : ' . (int) $k['shots_them'] : $kreska) ?></td>
+            <td><?= $km['wynik'] !== null ? View::e($km['wynik'][0] . ':' . $km['wynik'][1]) : View::brakWEksporcie() ?></td>
+            <td class="num"><?= $km['xg'] !== null ? View::e($liczba($km['xg'][0]) . ' : ' . $liczba($km['xg'][1])) : View::brakWEksporcie() ?></td>
+            <td class="num"><?= $km['strzaly'] !== null ? View::e($km['strzaly'][0] . ' : ' . $km['strzaly'][1]) : View::brakWEksporcie() ?></td>
             <td class="num"><?= View::e($k['sbz'] === null ? $kreska : (string) (int) $k['sbz']) ?></td>
-            <td class="num"><?= View::e($procent($k['pressing'])) ?></td>
+            <td class="num"><?= $procent($k['pressing']) ?></td>
             <td>
               <?php if ($k['w_toku']): ?>
                 <span class="pill pill--warn"><i></i><?= View::e(View::t('card.state.working')) ?></span>
@@ -117,11 +116,11 @@ $przelacz = static fn(int $id): string => '/sezon?klub=' . (int) $club['id'] . '
         <tfoot>
           <tr class="tbl__suma">
             <th colspan="4"><?= View::e(View::t('sezon.suma.row', $suma['n'])) ?></th>
-            <td><?= View::e($suma['n'] > 0 ? $suma['gu'] . ':' . $suma['gt'] : $kreska) ?></td>
-            <td class="num"><?= View::e($suma['n'] > 0 ? $liczba($suma['xu']) . ' : ' . $liczba($suma['xt']) : $kreska) ?></td>
-            <td class="num"><?= View::e($suma['n'] > 0 ? $suma['su'] . ' : ' . $suma['st'] : $kreska) ?></td>
+            <td><?= $suma['g'] > 0 ? View::e($suma['gu'] . ':' . $suma['gt']) : View::brakWEksporcie() ?></td>
+            <td class="num"><?= $suma['x'] > 0 ? View::e($liczba($suma['xu']) . ' : ' . $liczba($suma['xt'])) : View::brakWEksporcie() ?></td>
+            <td class="num"><?= $suma['n'] > 0 ? View::e($suma['su'] . ' : ' . $suma['st']) : View::brakWEksporcie() ?></td>
             <td class="num"><?= View::e($sumaSbz === null ? $kreska : (string) (int) $sumaSbz) ?></td>
-            <td class="num"><?= View::e($procent($sumaPressing)) ?></td>
+            <td class="num"><?= $procent($sumaPressing) ?></td>
             <td></td>
           </tr>
         </tfoot>

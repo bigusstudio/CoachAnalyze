@@ -104,7 +104,8 @@ final class Events
             return 0;
         }
 
-        $kolumny = ['match_id', 'import_id', 'tag_name', 'labels_json', 'team', 'team_side',
+        // `pojecie`, `klucz` — migracja 019 (W7-b): znaczenie tagu z silnika.
+        $kolumny = ['match_id', 'import_id', 'tag_name', 'pojecie', 'klucz', 'labels_json', 'team', 'team_side',
                     'player', 't_ms', 't_end_ms', 'half', 'minute', 'xg', 'xg_source',
                     'x', 'y', 'tx', 'ty', 'is_goal'];
 

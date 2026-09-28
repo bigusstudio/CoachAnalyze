@@ -648,6 +648,7 @@ return [
     'reupload.previous.none' => 'Ten mecz nie ma jeszcze żadnego wgranego eksportu.',
     'reupload.submit'      => 'Wgraj eksport',
     // W7 — metoda importu v3
+    'w7.brak_w_eksporcie'  => 'nie występuje w eksporcie',
     'import.duplikat'      => 'Ten mecz już jest — wgrany plik ma te same zdarzenia. Nowy mecz nie powstał; to jest mecz, który już masz.',
     'ust.kol.znaczenie'    => 'Znaczenie',
     'ust.kol.strona'       => 'Strona',

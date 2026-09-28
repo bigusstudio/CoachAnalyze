@@ -318,6 +318,9 @@ def test_tabela_zdarzen_gol_ze_strzalu_po_znaczeniu(write_csv, tmp_path, capsys)
     gol = next(w for w in ev["events"] if w["tag_name"] == "GOL")
     strzal = next(w for w in ev["events"] if w["tag_name"] == "Strzał")
     assert gol["team"] == "BETA" and gol["team_side"] == "them" and strzal["is_goal"] == 1
+    # W7-b: znaczenie obok surowej nazwy — Pulpit i Sezon liczą po nim.
+    assert (strzal["tag_name"], strzal["pojecie"], strzal["klucz"]) == ("Strzał", "shot", "STRZAŁ")
+    assert (gol["pojecie"], gol["klucz"]) == ("goal", "Gol")
 
 
 # =========================================================================== G

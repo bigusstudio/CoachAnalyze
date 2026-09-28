@@ -155,7 +155,7 @@ def strona_druzyny(raw_team, lookup):
 
 
 def build(frame, config=None, players=None, tagi_goli=(TAG_GOL,), tagi_strzalow=(TAG_STRZAL,),
-          przesuniecia=None):
+          przesuniecia=None, znaczenia=None):
     """Wiersze do tabeli `events`. Kolejność jak w eksporcie.
 
     `xg_source` to `analyst` przy każdym xG, bo ramka renderu niesie wyłącznie
@@ -192,8 +192,16 @@ def build(frame, config=None, players=None, tagi_goli=(TAG_GOL,), tagi_strzalow=
         zawodnik = players[i] if i < len(players) else None
         xg = e.get("xg")
 
+        z = (znaczenia or {}).get(e.get("tag")) or {}
         wiersze.append({
             "tag_name": e.get("tag"),
+            # W7-b: ROZSTRZYGNIĘTE ZNACZENIE obok surowej nazwy. `tag_name`
+            # zostaje z pliku (zmienna 1:1); Pulpit i Sezon liczą po `pojecie`
+            # (strzał, gol), metryki — po `klucz` (tag wbudowany, który to
+            # zdarzenie znaczy: „Strzał" → STRZAŁ, „1x1 DEF" → 1x1 DEF.).
+            # To samo rozstrzygnięcie, co w raporcie (`PLIK.klucze`).
+            "pojecie": z.get("pojecie"),
+            "klucz": z.get("klucz"),
             "labels": list(e.get("labels") or []),
             "team": raw_team,
             "team_side": strona_druzyny(raw_team, lookup),

@@ -129,6 +129,9 @@ for ($i = 0; $i < 15; $i++) { $zd($jdrz, 'SKUTECZNY', 'none', ['POSIADANIE']); $
 for ($i = 0; $i < 2; $i++) { $zd($jdrz, 'NISKUTECZNY', 'none'); $zdarzeniaRaportu[] = ['tag' => 'NISKUTECZNY', 'b' => 50 + $i, 'team' => null, 'labels' => []]; }
 for ($i = 0; $i < 11; $i++) { $zd($jdrz, 'ZDOBYCIE SBZ', 'us', $i === 0 ? ['PRESSING'] : ['POZYCYJNIE']); }
 $zd($jdrz, 'STRZAŁ', 'us', ['CELNY'], 1);
+// W7-b: wynik z tagów wymaga TAGU GOLA w eksporcie (JDRZ go ma) — sam `is_goal`
+// przy strzale bez taga gola to mecz w stylu Stali: wynik „–", nie 1:0.
+$zd($jdrz, 'Gol', 'us');
 $zd($jdrz, 'STRZAŁ', 'them', ['NIECELNY']);
 
 $reczny = $mecz('2026-09-13', 2, 1);          // wynik ręczny, bez zdarzeń
@@ -216,6 +219,48 @@ check('162 GB wolnego (7,1% dysku współdzielonego) — brak alertu', Alerts::p
 check('4 GB — ostrzeżenie', Alerts::poziomMiejsca(4 * $gb) === Alerts::LEVEL_WARN);
 check('0,5 GB — błąd', Alerts::poziomMiejsca(0.5 * $gb) === Alerts::LEVEL_ERROR);
 check('komunikat bez procentów', !str_contains(\CoachAnalyze\View::t('alert.disk', '4 GB'), '%'));
+
+// ===========================================================================
+echo "\n== 5. W7-b: Pulpit i Sezon po ZNACZENIU — mecz w stylu Stali ==\n";
+
+/*
+ * Stal taguje „Strzał" (nie „STRZAŁ") i NIE MA tagu gola ani pressingu.
+ * Silnik zapisuje znaczenie w `events.pojecie`/`klucz` (W7). Do W7-b Pulpit
+ * i Sezon liczyły po nazwie „STRZAŁ": zero strzałów, a wynik 0:0 z niczego.
+ */
+$stal = $mecz('2026-09-28');
+$zdStal = static function (int $m, string $tag, ?string $pojecie, ?string $klucz, string $strona, ?float $xg): void {
+    Db::run("INSERT INTO events (match_id, tag_name, pojecie, klucz, labels_json, team_side, t_ms, half, minute, xg, is_goal)
+             VALUES (:m, :t, :p, :k, '[]', :s, 1000, 1, 1, :x, 0)",
+        ['m' => $m, 't' => $tag, 'p' => $pojecie, 'k' => $klucz, 's' => $strona, 'x' => $xg]);
+};
+foreach ([0.2, 0.1, 0.3] as $x) { $zdStal($stal, 'Strzał', 'shot', 'STRZAŁ', 'us', $x); }
+foreach ([0.15, 0.05] as $x) { $zdStal($stal, 'Strzał', 'shot', 'STRZAŁ', 'them', $x); }
+$zdStal($stal, 'P2 Podanie', null, null, 'none', null);
+
+$brak = 'class="brak-eksport" title="' . \CoachAnalyze\View::t('w7.brak_w_eksporcie') . '"';
+$pulpit2 = http('GET', '/pulpit');
+$wierszP = preg_match('#<tr>(?:(?!</tr>).)*href="/mecze/' . $stal . '"(?:(?!</tr>).)*</tr>#s', $pulpit2['body'], $m) === 1 ? $m[0] : '';
+check('Pulpit, ostatnie mecze: strzały „Strzał" po znaczeniu — 3 : 2', str_contains($wierszP, '3 : 2'), $wierszP);
+check('Pulpit: xG 0,60 : 0,20', str_contains($wierszP, '0,60 : 0,20'), $wierszP);
+check('Pulpit: wynik bez tagu gola = kreska z podpowiedzią, nie 0:0',
+    str_contains($wierszP, $brak) && !str_contains($wierszP, '0:0'), $wierszP);
+$kS = $kafel($pulpit2['body'], $stal);
+check('Pulpit, pasek sezonu: wynik „brak" z podpowiedzią w tytule', str_contains($kS, 'data-zrodlo="brak"')
+    && str_contains($kS, \CoachAnalyze\View::t('w7.brak_w_eksporcie')), $kS);
+$hero = preg_match('#<div class="hero__facts">.*?</div>\s*</div>#s', $pulpit2['body'], $m) === 1 ? $m[0] : '';
+check('Pulpit, ostatni mecz: pressing nieobecny = kreska z podpowiedzią', str_contains($hero, $brak), $hero);
+
+$sezon2 = http('GET', '/sezon');
+$wierszS = preg_match('#<tr>(?:(?!</tr>).)*href="/mecze/' . $stal . '"(?:(?!</tr>).)*</tr>#s', $sezon2['body'], $m) === 1 ? $m[0] : '';
+check('Sezon: strzały 3 : 2 i xG po znaczeniu', str_contains($wierszS, '3 : 2') && str_contains($wierszS, '0,60 : 0,20'), $wierszS);
+check('Sezon: wynik i pressing nieobecne = kreski z podpowiedzią, nigdy 0',
+    substr_count($wierszS, $brak) >= 2 && !str_contains($wierszS, '0:0') && !str_contains($wierszS, '0%'), $wierszS);
+
+$km = \CoachAnalyze\Stats::kafelMeczu(array_values(array_filter(
+    \CoachAnalyze\Stats::seasonRounds(1, $sezon), static fn($r) => (int) $r['id'] === $stal))[0]);
+check('kafelMeczu: strzały i xG są, wynik null (nie występuje w eksporcie)',
+    $km['strzaly'] === [3, 2] && $km['xg'] !== null && $km['wynik'] === null, json_encode($km));
 
 echo "\n=== OK: {$ok}, BŁĘDÓW: {$fail} ===\n";
 exit($fail === 0 ? 0 : 1);

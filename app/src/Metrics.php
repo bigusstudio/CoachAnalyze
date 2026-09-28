@@ -253,7 +253,10 @@ final class Metrics
                 $miejsca[] = ':' . $klucz;
                 $params[$klucz] = (string) $tag;
             }
-            $where[] = 'e.tag_name IN (' . implode(', ', $miejsca) . ')';
+            // W7-b: po ZNACZENIU — `klucz` to tag wbudowany, który zdarzenie
+            // znaczy („Strzał" → STRZAŁ, „1x1 DEF" → 1x1 DEF.). Wiersz sprzed
+            // W7 (`klucz` NULL) liczy się po surowej nazwie, jak dotąd.
+            $where[] = 'COALESCE(e.klucz, e.tag_name) IN (' . implode(', ', $miejsca) . ')';
         }
 
         // ── etykiety ──────────────────────────────────────────────────────
