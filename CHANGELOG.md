@@ -3,6 +3,44 @@
 Format: [wersja silnika] — data — opis.
 Każda zmiana, która modyfikuje wyjście silnika, MUSI mieć tu wpis wraz z powodem.
 
+## Aplikacja — 2026-09-28 · W7: metoda importu v3 (migracja 019)
+
+**Migracja 019 PRZED wdrożeniem kodu** (app/migrations/README.md): pięć kolumn
+NULL i indeks w `imports`.
+
+- **Deduplikacja meczów** (G): `Upload::sha256Zdarzen` — bliźniak silnika, skrót
+  niezależny od kolejności wierszy (zgodność sprawdzona na 35 plikach korpusu).
+  Import duplikatu w tym samym klubie: bez nowego meczu, komunikat „Ten mecz już
+  jest" i przejście na kartę istniejącego meczu. Ponowne wgranie do tego samego
+  meczu działa jak dotąd.
+- **Profil analityka** (D, `ProfilAnalityka`): odcisk z `meta.profil` w
+  `imports.profil_json`; ocena Jaccard UUID ≥ 0,8, zapasowo nazw ≥ 0,8; nowy
+  profil → `config.profil.nowy` (baner w raporcie) i nota na karcie meczu.
+- **Słownik klubu** (C): kolumny „Znaczenie" (pojęcia kanoniczne + prezentacji:
+  gol, posiadanie, podanie, wprowadzenie, akcja defensywna) i „Strona" (nasza /
+  rywal / z kolumny team). Zapis dokłada `variables[].uuids` tagu z plików
+  klubu; `side` i `uuids` przechodzą przez każdy zapis templatu (bez nich
+  templat bajt w bajt jak przed W7). Normalizacja nazw zdejmuje też kropki
+  (`NazwaZmiennej::klucz` = `znaczenie.normalizuj`): „1x1 DEF" = „1x1 DEF.".
+- **Karta meczu** (G, H): anomalie importu, „raport niezgodny z plikiem",
+  tagi bez znaczenia — wyłącznie admin i analityk.
+- **Niezmienniki panelu** (H, `KontrolaImportu`): zdarzenia w bazie = wiersze
+  CSV, zawodnicy z pliku na ekranie Zawodnicy; naruszenie → `niezmienniki_ok = 0`
+  i alert admina `RAPORT_NIEZGODNY_Z_PLIKIEM`.
+- `config.json`: `match.score` (wynik ręczny), `profil`, `znane_druzyny`.
+- **`app/bin/sprawdz_korpus.php`**: przegląd katalogów eksportów przez silnik
+  bez bazy — parowanie CSV/JSON po zawartości, deduplikacja, profile, tabela
+  niezmienników, nierozpoznanych tagów i anomalii (bez nazwisk i komentarzy).
+- Narzędzia testu W7-T scalone (`engine/tools/karta_dowodowa.py`,
+  `sprawdz_mapowanie.py`).
+
+### Testy
+- nowy `app/tests/integracja/test_w7_import.php` (44): zgodność skrótu PHP ↔
+  silnik na plikach z pułapkami CSV, deduplikacja, profil, Słownik, pełny
+  przelot kolejki (anomalie, niezmienniki, gol ze strzału, alert).
+- testy wgrywające drugi mecz dostały plik z innymi zdarzeniami (ten sam plik
+  jest teraz duplikatem); test diffu i mapowań — „1x1 DEF" = „1x1 DEF.".
+
 ## [0.17.0] — 2026-09-28 · W7: metoda importu v3 — plik w całości, znaczenia bez zgadywania
 
 Każdy eksport LiveTag pokazany 1:1, znaczenia tagów bez AI. v17 i test złoty

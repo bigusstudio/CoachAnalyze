@@ -460,7 +460,8 @@ echo "\n== import kolejny: zignorowany na stałe NIE pyta ponownie ==\n";
 $formularz = http('GET', '/klub/1/import');
 $csrf2 = csrfZ($formularz['body']);
 $upload2 = http('POST', '/klub/1/import', ['multipart' => multipart(
-    ['csrf' => $csrf2], ['csv' => ['mecz3.csv', $csv]]
+    // W7: ten sam plik to duplikat meczu — drugi mecz musi mieć inne zdarzenia.
+    ['csrf' => $csrf2], ['csv' => ['mecz3.csv', rtrim($csv) . "\n" . substr((string) strrchr(rtrim($csv), "\n"), 1) . "\n"]]
 )]);
 check('drugi upload przyjęty', $upload2['status'] === 302);
 check('cron wykonał inspekcję', cron() === 0);

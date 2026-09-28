@@ -35,12 +35,14 @@ use CoachAnalyze\TagCatalog;
 use CoachAnalyze\Imports;
 use CoachAnalyze\IndexTerms;
 use CoachAnalyze\Jobs;
+use CoachAnalyze\KontrolaImportu;
 use CoachAnalyze\Mailer;
 use CoachAnalyze\Mappings;
 use CoachAnalyze\Matches;
 use CoachAnalyze\Notifications;
 use CoachAnalyze\ReportTemplates;
 use CoachAnalyze\PasswordReset;
+use CoachAnalyze\ProfilAnalityka;
 use CoachAnalyze\Rebuilds;
 use CoachAnalyze\RedisClient;
 use CoachAnalyze\Roster;
@@ -305,7 +307,7 @@ function uruchomSilnik(int $jobId, array $import, string $outHtml): array
     // byłoby drugim miejscem, w którym mogą się rozjechać.
     $match = Db::one(
         'SELECT m.club_home_id, m.club_away_id, m.club_id, m.played_at, m.round,
-                m.is_home, s.label AS season_label
+                m.is_home, m.score_us, m.score_them, s.label AS season_label
            FROM matches m
            LEFT JOIN seasons s ON s.id = m.season_id
           WHERE m.id = :id',
@@ -403,7 +405,22 @@ function uruchomSilnik(int $jobId, array $import, string $outHtml): array
         'roster'         => $clubIdTenanta !== null
             ? Roster::engineConfig($matchId, $clubIdTenanta)
             : [],
+        /*
+         * WYNIK WPISANY RĘCZNIE (W7 F). Raport pokazuje go, gdy eksport nie ma
+         * tagu gola (Stal, stara Pogoń) — zamiast 0:0 z braku danych. Strony jak
+         * w `matches.score_us/score_them`: tenant / rywal.
+         */
+        'score'          => ($match['score_us'] !== null && $match['score_them'] !== null)
+            ? ['us' => (int) $match['score_us'], 'them' => (int) $match['score_them']]
+            : null,
     ];
+
+    /*
+     * PROFIL ANALITYKA (W7 D): znany układ tagów czy nowy. Przy nowym raport
+     * dostaje baner „przypisz raz pojęcia w Słowniku". Import bez odcisku
+     * profilu (sprzed W7) — bez oceny i bez banera.
+     */
+    $ocenaProfilu = ProfilAnalityka::ocen((int) $import['id']);
 
     $configPath = $dir . '/config.json';
     file_put_contents($configPath, json_encode([
@@ -445,6 +462,13 @@ function uruchomSilnik(int $jobId, array $import, string $outHtml): array
          * świadomie pominięte (baner ostrzegawczy). Klub bez templatu — pusto.
          */
         'dictionary_notice' => zapowiedzSlownika($clubIdTenanta, (int) $import['id'], $templat !== null),
+        'profil'            => $ocenaProfilu,
+        // Anomalia „drużyna spoza meczu w nazwie tagu" (W7 G) potrzebuje listy
+        // klubów, które panel zna — silnik nie chodzi do bazy.
+        'znane_druzyny'     => array_map(
+            static fn(array $w): string => (string) $w['name'],
+            Db::all('SELECT name FROM clubs ORDER BY id')
+        ),
     ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
 
     $wynik = EngineRunner::build([
@@ -520,6 +544,25 @@ function zapiszZdarzenia(int $jobId, int $matchId, int $importId, ?string $sciez
             '[job %d] zapis zdarzeń meczu %d nie powiódł się: %s',
             $jobId, $matchId, $e->getMessage()
         ));
+    }
+}
+
+/**
+ * Domknięcie metody importu W7 po zapisie pokrycia: ocena profilu analityka
+ * i niezmienniki po stronie panelu (baza, ekran Zawodnicy).
+ *
+ * TA SAMA ZASADA, CO PRZY ZDARZENIACH: awaria kontroli nie unieważnia raportu.
+ * Brak wyniku kontroli jest widoczny (`niezmienniki_ok` zostaje NULL) i trafia
+ * do logu.
+ */
+function domknijW7(int $jobId, int $importId, int $matchId, array $meta): void
+{
+    try {
+        ProfilAnalityka::zapisz($importId, ProfilAnalityka::ocen($importId));
+        KontrolaImportu::sprawdz($importId, $matchId, $meta);
+    } catch (\Throwable $e) {
+        error_log(sprintf('[job %d] kontrola W7 importu %d nie powiodła się: %s',
+            $jobId, $importId, $e->getMessage()));
     }
 }
 
@@ -670,6 +713,7 @@ function wykonajRender(int $jobId, int $importId, array $import, array $payload 
         // (tam nie było konfiguracji klubów) — nadpisujemy je, z podpisem wersji.
         if ($meta !== []) {
             Imports::saveInspection($importId, $meta, ['rodzaj' => 'raport', 'template_version' => $templateVersion]);
+            domknijW7($jobId, $importId, $matchId, $meta);
         }
 
         Db::run('UPDATE matches SET status = :s, half_split_ms = :hs WHERE id = :id', [
@@ -832,6 +876,7 @@ function wykonajPrzeliczenie(int $jobId, int $importId, array $import, array $pa
      */
     if ($meta !== []) {
         Imports::saveInspection($importId, $meta, ['rodzaj' => 'raport', 'template_version' => $bieg['template_version']]);
+        domknijW7($jobId, $importId, $matchId, $meta);
     }
 
     // Stan meczu zostaje `done` — nie było go po co ruszać. Aktualizujemy

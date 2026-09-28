@@ -183,6 +183,49 @@ $czlony = array_values(array_filter([
     </dl>
   <?php endif; ?>
 
+  <?php
+  /*
+   * W7 (metoda importu v3): anomalie importu, niezgodność raportu z plikiem,
+   * tagi bez znaczenia. WYŁĄCZNIE admin i analityk ($mozeEdytowac) — trener
+   * dostaje raport, nie diagnostykę pliku. Źródło: pokrycie ostatniego importu.
+   */
+  if ($mozeEdytowac && $import !== null):
+      $anomalie = \CoachAnalyze\Imports::anomalie($import);
+      $naruszone = array_values(array_filter(\CoachAnalyze\Imports::niezmienniki($import),
+          static fn($n): bool => is_array($n) && empty($n['ok'])));
+      $pokrycieW7 = json_decode((string) ($import['coverage_json'] ?? ''), true);
+      $bezZnaczenia = is_array($pokrycieW7['nierozpoznane'] ?? null) ? $pokrycieW7['nierozpoznane'] : [];
+  ?>
+    <?php if ($naruszone !== []): ?>
+      <div class="panel--uwaga" role="alert" data-w7="niezmienniki">
+        <p><strong><?= View::e(View::t('card.w7.niezgodny')) ?></strong></p>
+        <ul class="warns">
+          <?php foreach ($naruszone as $n): ?>
+            <li class="warns__row"><span class="warns__msg"><?= View::e((string) ($n['opis'] ?? $n['kod'] ?? '')) ?></span></li>
+          <?php endforeach; ?>
+        </ul>
+      </div>
+    <?php endif; ?>
+    <?php if ((int) ($import['profil_nowy'] ?? 0) === 1): ?>
+      <p class="notice" data-w7="profil"><a href="/klub/ustawienia?zakladka=slownik"><?= View::e(View::t('card.w7.nowy_profil')) ?></a></p>
+    <?php endif; ?>
+    <?php if ($bezZnaczenia !== []): ?>
+      <p class="hint" data-w7="nierozpoznane"><a href="/klub/ustawienia?zakladka=slownik"><?= View::e(View::t('card.w7.nierozpoznane', count($bezZnaczenia))) ?></a></p>
+    <?php endif; ?>
+    <h2 class="h2"><?= View::e(View::t('card.w7.anomalie')) ?></h2>
+    <p class="hint"><?= View::e(View::t('card.w7.anomalie.hint')) ?></p>
+    <?php if ($anomalie === []): ?>
+      <p class="empty" data-w7="anomalie-brak"><?= View::e(View::t('card.w7.anomalie.brak')) ?></p>
+    <?php else: ?>
+      <ul class="warns" data-w7="anomalie">
+        <?php foreach ($anomalie as $a): ?>
+          <li class="warns__row"><span class="warns__msg"><?= View::e((string) ($a['opis'] ?? '')) ?></span>
+            <?php if ((int) ($a['count'] ?? 1) > 1): ?><span class="tag"><?= (int) $a['count'] ?></span><?php endif; ?></li>
+        <?php endforeach; ?>
+      </ul>
+    <?php endif; ?>
+  <?php endif; ?>
+
 <?php elseif ($zakladka === 'sklad'): ?>
   <?php if ($mozeEdytowac): ?>
     <form method="post" action="<?= View::e($karta . '/sklad') ?>">

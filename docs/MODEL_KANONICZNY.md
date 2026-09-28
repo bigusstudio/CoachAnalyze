@@ -81,6 +81,15 @@ i zawartość archiwum przestają znaczyć to samo.
 Nowa etykieta w eksporcie to **kwalifikator**, nie nowe pojęcie. Rozrost listy pojęć oznacza,
 że model zaczyna kopiować format LiveTag zamiast go tłumaczyć.
 
+**Pojęcia prezentacji (W7, silnik 0.17.0).** Słownik klubu może nadać tagowi
+także: gol (goal), posiadanie (possession), podanie (pass), wprowadzenie
+(zone_entry), akcja defensywna (defensive_action). To NIE są pojęcia modelu
+kanonicznego — nie trafiają do archiwum ani do metryk; Przegląd raportu v21
+pokazuje je jako kafle (`znaczenie.POJECIA_PREZENTACJI`,
+`Mappings::POJECIA_PREZENTACJI`). Tag drużynowy (posiadanie) dostaje w Słowniku
+**stronę** (`variables[].side`: us / them), nigdy nazwę klubu — nazwa tagu nie
+mówi, czyja to akcja.
+
 ## Profil mapowań
 
 ```json

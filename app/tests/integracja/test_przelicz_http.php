@@ -501,7 +501,9 @@ check('po ponownym wgraniu akcja Przelicz wraca',
 // ============================================================ F. zbiorczo
 echo "\n== F. przeliczenie zbiorcze: błąd jednego nie zatrzymuje reszty ==\n";
 
-$m2 = zrobRaport('mecz2.csv', $CSV, 'GKS Drugi', '2026-09-14');
+// W7: ten sam plik to duplikat meczu — drugi mecz musi mieć inne zdarzenia.
+$m2 = zrobRaport('mecz2.csv', rtrim($CSV) . "\n" . substr((string) strrchr(rtrim($CSV), "\n"), 1) . "\n",
+    'GKS Drugi', '2026-09-14');
 ca_test_db($baza);
 
 // Mecz 2 powstał już na v3, więc podbijamy templat jeszcze raz — dopiero wtedy

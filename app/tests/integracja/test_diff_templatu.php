@@ -204,16 +204,17 @@ check('SBZ PODAJĄCY znany przez alias silnika, nie nowy',
 check('WEJŚCIE W POLE jest nowy', in_array('WEJŚCIE W POLE', $noweNazwy, true));
 
 /*
- * PUŁAPKA 7 na poziomie diffu: `1x1 DEF` i `1x1 DEF.` to DWIE RÓŻNE pozycje.
- * Dopasowanie przez zawieranie uznałoby je za tę samą i tag z eksportu
- * przepadłby po cichu, mapując się na regułę, która go nie dotyczy.
+ * W7 (metoda importu v3): `1x1 DEF` i `1x1 DEF.` to TA SAMA nazwa po normalizacji
+ * (casefold, spacje, KROPKI — `NazwaZmiennej::klucz`, bliźniak
+ * `znaczenie.normalizuj`). Pułapka 7 dalej obowiązuje: to równość całej nazwy
+ * po normalizacji, nie zawieranie — `SBZ PODAJĄCY/OTRZYMUJĄCY` zostaje osobną.
  */
-check('1x1 DEF (bez kropki) jest NOWY mimo 1x1 DEF. w templacie',
-    in_array('1x1 DEF', $noweNazwy, true),
-    'dopasowanie musi być przez równość pełnej nazwy, nie zawieranie');
-check('1x1 DEF. z templatu NIE jest zaliczony jako obecny w eksporcie',
-    !in_array('1x1 DEF.', $noweNazwy, true) && !in_array('1x1 DEF.', $znaneNazwy, true),
-    'eksport go nie zawiera, więc nie ma prawa pojawić się w żadnym z koszyków');
+check('1x1 DEF (bez kropki) NIE jest nowy — to 1x1 DEF. z templatu po normalizacji',
+    !in_array('1x1 DEF', $noweNazwy, true),
+    'normalizacja W7 zdejmuje kropki');
+check('1x1 DEF. z templatu nie jest nowy',
+    !in_array('1x1 DEF.', $noweNazwy, true),
+    'eksport niesie tę nazwę bez kropki — koszyk „nowe" jej nie dostaje');
 
 // ---------------------------------------------------------------- ignorowane
 echo "\n== zignorowane na stałe nie wracają jako nowe ==\n";

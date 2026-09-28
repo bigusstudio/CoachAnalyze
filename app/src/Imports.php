@@ -26,6 +26,7 @@ final class Imports
         ?string $jsonPath,
         string $checksum,
         ?int $clubId = null,
+        ?string $sha256Zdarzen = null,
     ): int {
         /*
          * TENANT MECZU. `matches.club_id` jest NOT NULL od migracji 012, więc
@@ -78,13 +79,14 @@ final class Imports
             $matchId = (int) $pdo->lastInsertId();
 
             Db::run(
-                'INSERT INTO imports (match_id, csv_path, json_path, checksum_csv, created_at)
-                 VALUES (:mid, :csv, :json, :sum, :now)',
+                'INSERT INTO imports (match_id, csv_path, json_path, checksum_csv, sha256_zdarzen, created_at)
+                 VALUES (:mid, :csv, :json, :sum, :zd, :now)',
                 [
                     'mid'  => $matchId,
                     'csv'  => $csvPath,
                     'json' => $jsonPath,
                     'sum'  => $checksum,
+                    'zd'   => $sha256Zdarzen,
                     'now'  => Stats::now(),
                 ]
             );
@@ -120,15 +122,17 @@ final class Imports
         ?string $jsonPath,
         string $checksum,
         int $userId,
+        ?string $sha256Zdarzen = null,
     ): int {
         Db::run(
-            'INSERT INTO imports (match_id, csv_path, json_path, checksum_csv, created_at)
-             VALUES (:mid, :csv, :json, :sum, :now)',
+            'INSERT INTO imports (match_id, csv_path, json_path, checksum_csv, sha256_zdarzen, created_at)
+             VALUES (:mid, :csv, :json, :sum, :zd, :now)',
             [
                 'mid'  => $matchId,
                 'csv'  => $csvPath,
                 'json' => $jsonPath,
                 'sum'  => $checksum,
+                'zd'   => $sha256Zdarzen,
                 'now'  => Stats::now(),
             ]
         );
@@ -179,6 +183,46 @@ final class Imports
      *   powstało pokrycie (golden layout W1): inspekcja bez szablonu albo render
      *   z konkretną wersją szablonu — do podpisu „szablon vN · silnik X · data".
      */
+    /**
+     * Mecz klubu, który już ma TE SAME zdarzenia (W7 G) — albo null.
+     *
+     * Po skrócie zdarzeń niezależnym od kolejności wierszy (`sha256_zdarzen`),
+     * a dla importów sprzed W7 (bez skrótu) po skrócie samego pliku. Zasięg:
+     * mecze TEGO klubu — ten sam plik u dwóch klubów to dwie analizy.
+     *
+     * @return int|null id meczu
+     */
+    public static function duplikat(string $sha256Zdarzen, string $checksumCsv, int $clubId, ?int $pominMecz = null): ?int
+    {
+        $wiersz = Db::one(
+            'SELECT i.match_id
+               FROM imports i
+               JOIN matches m ON m.id = i.match_id
+              WHERE m.club_id = :club
+                AND (i.sha256_zdarzen = :zd OR (i.sha256_zdarzen IS NULL AND i.checksum_csv = :sum))
+                AND (:pomin IS NULL OR i.match_id <> :pomin2)
+              ORDER BY i.id DESC
+              LIMIT 1',
+            ['club' => $clubId, 'zd' => $sha256Zdarzen, 'sum' => $checksumCsv,
+             'pomin' => $pominMecz, 'pomin2' => $pominMecz]
+        );
+        return $wiersz === null ? null : (int) $wiersz['match_id'];
+    }
+
+    /** Anomalie importu (W7 G) z ostatniego pokrycia — pusta lista przed W7. */
+    public static function anomalie(?array $import): array
+    {
+        $cov = json_decode((string) ($import['coverage_json'] ?? ''), true);
+        return is_array($cov) && is_array($cov['anomalie'] ?? null) ? $cov['anomalie'] : [];
+    }
+
+    /** Niezmienniki (W7 H) z ostatniego pokrycia — pusta lista przed W7. */
+    public static function niezmienniki(?array $import): array
+    {
+        $cov = json_decode((string) ($import['coverage_json'] ?? ''), true);
+        return is_array($cov) && is_array($cov['niezmienniki'] ?? null) ? $cov['niezmienniki'] : [];
+    }
+
     public static function saveInspection(int $importId, array $meta, ?array $zrodlo = null): void
     {
         // Lista „dodane przy imporcie" (W5) przeżywa każdy kolejny zapis pokrycia —
@@ -244,6 +288,17 @@ final class Imports
                          * także wtedy, gdy klub miał w pliku projektu własną.
                          */
                         'palette'         => $meta['palette'] ?? null,
+
+                        /*
+                         * W7: anomalie importu, niezmienniki i znaczenia tagów —
+                         * na najwyższym poziomie `meta.json`, jak `dictionary`.
+                         * Karta meczu pokazuje je adminowi i analitykowi.
+                         */
+                        'anomalie'        => $meta['anomalie'] ?? null,
+                        'niezmienniki'    => $meta['niezmienniki'] ?? null,
+                        'znaczenia'       => $meta['znaczenia'] ?? null,
+                        'nierozpoznane'   => $meta['nierozpoznane'] ?? null,
+                        'wersja_livetag'  => $meta['wersja_livetag'] ?? null,
                     ]
                 )),
                 'warn' => self::encode($meta['warnings'] ?? null),
@@ -261,6 +316,26 @@ final class Imports
                 'id'   => $importId,
             ]
         );
+
+        /*
+         * W7 (migracja 019): skrót zdarzeń i odcisk profilu analityka z silnika.
+         * Silnik ma ostatnie słowo o skrócie — liczy go z tego samego pliku co
+         * panel przy wgraniu, więc wpis tylko potwierdza (albo uzupełnia import
+         * sprzed W7). Meta bez tych kluczy (silnik < 0.17) niczego nie kasuje.
+         */
+        if (isset($meta['sha256_zdarzen']) || isset($meta['profil'])) {
+            Db::run(
+                'UPDATE imports
+                    SET sha256_zdarzen = COALESCE(:zd, sha256_zdarzen),
+                        profil_json = COALESCE(:prof, profil_json)
+                  WHERE id = :id',
+                [
+                    'zd'   => isset($meta['sha256_zdarzen']) ? (string) $meta['sha256_zdarzen'] : null,
+                    'prof' => isset($meta['profil']) ? self::encode($meta['profil']) : null,
+                    'id'   => $importId,
+                ]
+            );
+        }
 
         $import = self::find($importId);
         if ($import !== null) {

@@ -200,6 +200,8 @@ $ostatni = count($sekcje) - 1;
           <th><?= View::e(View::t('ust.kol.tag')) ?></th>
           <th class="num"><?= View::e(View::t('ust.kol.sezon')) ?></th>
           <th><?= View::e(View::t('ust.kol.etykieta')) ?></th>
+          <th><?= View::e(View::t('ust.kol.znaczenie')) ?></th>
+          <th><?= View::e(View::t('ust.kol.strona')) ?></th>
           <th><?= View::e(View::t('ust.kol.sekcje')) ?></th>
         </tr></thead>
         <tbody>
@@ -214,6 +216,21 @@ $ostatni = count($sekcje) - 1;
               <td class="num"><?= (int) $w['sezon'] ?></td>
               <td><input class="field__input" type="text" maxlength="80" name="etykieta[<?= (int) $w['i'] ?>]"
                          value="<?= View::e($w['label']) ?>"></td>
+              <td><?php if ($w['typ'] === 'tag'): ?>
+                <select class="field__input" name="pojecie[<?= (int) $w['i'] ?>]" aria-label="<?= View::e(View::t('ust.kol.znaczenie')) ?>">
+                  <option value=""><?= View::e(View::t('ust.znaczenie.brak')) ?></option>
+                  <?php foreach (\CoachAnalyze\Mappings::POJECIA_SLOWNIKA as $p): ?>
+                    <option value="<?= View::e($p) ?>" <?= ($w['canon'] ?? null) === $p ? 'selected' : '' ?>><?= View::e(View::t('concept.' . $p)) ?></option>
+                  <?php endforeach; ?>
+                </select>
+              <?php endif; ?></td>
+              <td><?php if ($w['typ'] === 'tag'): ?>
+                <select class="field__input" name="strona[<?= (int) $w['i'] ?>]" aria-label="<?= View::e(View::t('ust.kol.strona')) ?>">
+                  <option value=""><?= View::e(View::t('ust.strona.z_pliku')) ?></option>
+                  <option value="us" <?= ($w['side'] ?? null) === 'us' ? 'selected' : '' ?>><?= View::e(View::t('ust.strona.us')) ?></option>
+                  <option value="them" <?= ($w['side'] ?? null) === 'them' ? 'selected' : '' ?>><?= View::e(View::t('ust.strona.them')) ?></option>
+                </select>
+              <?php endif; ?></td>
               <td class="sekcje-wybor">
                 <?php foreach (Configurator::SEKCJE as $s): ?>
                   <label><input type="checkbox" name="sekcje[<?= (int) $w['i'] ?>][]" value="<?= View::e($s) ?>"

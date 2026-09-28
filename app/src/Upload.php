@@ -146,6 +146,93 @@ final class Upload
      * (REQUIRED_COLUMNS w silniku); dla JSON — żeby dał się sparsować i miał
      * kształt projektu LiveTag.
      */
+    /**
+     * Skrót zbioru wierszy CSV NIEZALEŻNY OD KOLEJNOŚCI (W7 G) — deduplikacja meczów.
+     *
+     * BLIŹNIAK `parse.sha256_zdarzen` w silniku i musi dawać DOKŁADNIE ten sam
+     * wynik: silnik zapisuje skrót w `meta.json`, panel liczy go przy wgraniu,
+     * zanim powstanie mecz (warstwa żądań nie uruchamia silnika —
+     * disable_functions). Zgodność pilnuje test_w7_import.php na plikach
+     * z cudzysłowami, przecinkami w etykietach, znakami narodowymi i BOM.
+     *
+     * Algorytm silnika: wiersz `csv.DictReader` → `json.dumps(list(values),
+     * ensure_ascii=False)` (separator „, "), wiersze sortowane, każdy + "\n".
+     * Dlatego własny koder, a nie `json_encode`: inne ucieczki (`/`, U+2028)
+     * i inny separator dałyby inny skrót dla tego samego meczu.
+     *
+     * @return string|null 64 znaki hex; null, gdy pliku nie da się przeczytać
+     */
+    public static function sha256Zdarzen(string $path): ?string
+    {
+        $h = @fopen($path, 'rb');
+        if ($h === false) {
+            return null;
+        }
+        // utf-8-sig: BOM zdejmowany jak w silniku.
+        if (fread($h, 3) !== "\xEF\xBB\xBF") {
+            rewind($h);
+        }
+        $naglowek = fgetcsv($h, 0, ',', '"', '');
+        if (!is_array($naglowek) || $naglowek === [null]) {
+            fclose($h);
+            return null;
+        }
+        $linie = [];
+        while (($w = fgetcsv($h, 0, ',', '"', '')) !== false) {
+            if ($w === [null]) {
+                continue; // pusta linia — DictReader też ją pomija
+            }
+            // DictReader: klucze z nagłówka (powtórzona nazwa: pierwsza pozycja,
+            // ostatnia wartość), brak pola = None, nadmiar = lista pod kluczem None.
+            $wiersz = [];
+            foreach ($naglowek as $i => $kolumna) {
+                $wiersz[(string) $kolumna] = $w[$i] ?? null;
+            }
+            $wartosci = array_values($wiersz);
+            if (count($w) > count($naglowek)) {
+                $wartosci[] = array_slice($w, count($naglowek));
+            }
+            $linie[] = self::jsonJakPython($wartosci);
+        }
+        fclose($h);
+        sort($linie, SORT_STRING);
+        $ctx = hash_init('sha256');
+        foreach ($linie as $linia) {
+            hash_update($ctx, $linia . "\n");
+        }
+        return hash_final($ctx);
+    }
+
+    /** `json.dumps(obiekt, ensure_ascii=False)` dla list, napisów i None. */
+    private static function jsonJakPython(mixed $v): string
+    {
+        if ($v === null) {
+            return 'null';
+        }
+        if (is_array($v)) {
+            return '[' . implode(', ', array_map([self::class, 'jsonJakPython'], $v)) . ']';
+        }
+        $s = (string) $v;
+        $out = '';
+        $n = strlen($s);
+        for ($i = 0; $i < $n; $i++) {
+            $c = $s[$i];
+            $o = ord($c);
+            $out .= match (true) {
+                $c === '"'  => '\\"',
+                $c === '\\' => '\\\\',
+                $c === "\n" => '\\n',
+                $c === "\r" => '\\r',
+                $c === "\t" => '\\t',
+                $o === 0x08 => '\\b',
+                $o === 0x0C => '\\f',
+                $o < 0x20   => sprintf('\\u%04x', $o),
+                default     => $c,
+            };
+        }
+        return '"' . $out . '"';
+    }
+
     private static function looksLike(string $path, string $kind): bool
     {
         if ($kind === 'csv') {

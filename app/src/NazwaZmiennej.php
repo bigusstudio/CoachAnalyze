@@ -31,10 +31,12 @@ namespace CoachAnalyze;
  */
 final class NazwaZmiennej
 {
-    /** Klucz porównania: małe litery, łączniki jako spacje, jedna spacja, bez brzegów. */
+    /** Klucz porównania: małe litery, łączniki i kropki jako spacje, jedna spacja, bez brzegów. */
     public static function klucz(string $nazwa): string
     {
-        $bezLacznikow = preg_replace('/[\x{2010}-\x{2015}\-]+/u', ' ', $nazwa) ?? $nazwa;
+        // Kropki jak łączniki (W7): „1x1 DEF." = „1x1 def". Bliźniak w silniku:
+        // `znaczenie.normalizuj` — zmiana tutaj wymaga zmiany tam.
+        $bezLacznikow = preg_replace('/[\x{2010}-\x{2015}\-.]+/u', ' ', $nazwa) ?? $nazwa;
         $jednaSpacja = preg_replace('/\s+/u', ' ', $bezLacznikow) ?? $bezLacznikow;
         return mb_strtolower(trim($jednaSpacja), 'UTF-8');
     }

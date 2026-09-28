@@ -1575,6 +1575,37 @@ function serveReport(int $id): void
  * wskazywać TEN formularz, z którego przyszedł, inaczej błąd „za duży plik"
  * na scoped ekranie wyrzuciłby operatora do globalnego `/import`.
  */
+/**
+ * TEN MECZ JUŻ JEST (W7 G) — zatrzymanie importu duplikatu, zanim powstanie mecz.
+ *
+ * Skrót zdarzeń niezależny od kolejności wierszy (`Upload::sha256Zdarzen`,
+ * bliźniak silnika): w korpusie klienta ten sam mecz był wgrany do siedmiu
+ * razy, także w wersji z przestawionymi wierszami. Duplikat nie tworzy
+ * drugiego meczu — pliki są sprzątane, a użytkownik ląduje na karcie meczu,
+ * który już jest, z komunikatem.
+ *
+ * @return string|null skrót zdarzeń do zapisu w `imports` (null: nieczytelny plik —
+ *                     silnik i tak go odrzuci przy inspekcji)
+ */
+function zatrzymajDuplikat(array $csv, array $json, ?int $clubId, ?int $pominMecz = null): ?string
+{
+    $skrot = Upload::sha256Zdarzen((string) $csv['path']);
+    $klub = $clubId ?? Clubs::tenantDefault();
+    if ($skrot === null || $klub === null) {
+        return $skrot;
+    }
+    $mecz = Imports::duplikat($skrot, (string) $csv['sha256'], $klub, $pominMecz);
+    if ($mecz === null) {
+        return $skrot;
+    }
+    @unlink((string) $csv['path']);
+    if (!empty($json['path'])) {
+        @unlink((string) $json['path']);
+    }
+    Session::flash('notice', View::t('import.duplikat'));
+    redirect('/mecze/' . $mecz);
+}
+
 function handleImport(int $userId, ?int $clubId = null, string $formPath = '/import'): void
 {
     /*
@@ -1620,12 +1651,15 @@ function handleImport(int $userId, ?int $clubId = null, string $formPath = '/imp
      * Teraz zapisujemy import bez pokrycia i wstawiamy zadanie `inspect`
      * do kolejki. Podniesie je cron (co minutę, app/bin/run_job.php).
      */
+    $skrot = zatrzymajDuplikat($csv, $json, $clubId);
+
     $importId = Imports::create(
         $userId,
         (string) $csv['path'],
         $json['path'] ?? null,
         (string) $csv['sha256'],
-        $clubId
+        $clubId,
+        $skrot
     );
 
     $jobId = Imports::queueInspect($importId, $userId);
@@ -2308,12 +2342,16 @@ function handleMatchUpload(int $matchId, int $userId): void
         redirect($formPath);
     }
 
+    // Ten sam plik do TEGO meczu to zwykłe ponowne wgranie; do innego — duplikat.
+    $skrot = zatrzymajDuplikat($csv, $json, (int) $match['club_id'], $matchId);
+
     $importId = Imports::createForMatch(
         $matchId,
         (string) $csv['path'],
         $json['path'] ?? null,
         (string) $csv['sha256'],
-        $userId
+        $userId,
+        $skrot
     );
 
     // Pokrycie liczy cron, jak przy każdym imporcie — z przeglądarki nie da się
@@ -3628,12 +3666,15 @@ function handleConfiguratorImport(int $id, int $userId): void
         redirect($powrot);
     }
 
+    $skrot = zatrzymajDuplikat($csv, $json, $id);
+
     $importId = Imports::create(
         $userId,
         (string) $csv['path'],
         $json['path'] ?? null,
         (string) $csv['sha256'],
-        $id
+        $id,
+        $skrot
     );
     Imports::queueInspect($importId, $userId);
 
@@ -4924,6 +4965,13 @@ function saveClubDictionary(array $user): void
         (array) ($_POST['wlicz_nazwa'] ?? []),
         (array) ($_POST['wlicz_etykieta'] ?? []),
         array_values(array_filter([$club['color_primary'] ?? null, $club['color_secondary'] ?? null]))
+    );
+    // W7: znaczenie i strona — decyzja człowieka, stosowana po UUID tagu.
+    $zmienne = \CoachAnalyze\UstawieniaKlubu::zastosujZnaczenia(
+        $zmienne,
+        (array) ($_POST['pojecie'] ?? []),
+        (array) ($_POST['strona'] ?? []),
+        static fn(array $nazwy): array => \CoachAnalyze\ProfilAnalityka::uuidDlaNazw($id, $nazwy)
     );
 
     zapiszUstawieniaKlubu(

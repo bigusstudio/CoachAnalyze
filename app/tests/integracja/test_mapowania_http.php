@@ -274,7 +274,9 @@ echo "\n== świeży import: kreator MUSI zatrzymać ==\n";
  * w `Mappings::unknown()` — czyli dwieście linii dalej, w miejscu bez związku
  * z przyczyną. Wiersze przepisane 1:1, żeby asercje nie zmieniły znaczenia.
  *
- * SEDNO TYCH DANYCH: `AKCJA DEFENSYWNA`, `1x1 DEF` i `WYJŚCIE SPOD PRESJI` są
+ * (W7: dawny `1x1 DEF` rozpoznaje dziś silnik po nazwie znormalizowanej —
+ * „1x1 DEF.” — więc kreator o niego nie pyta; w jego miejscu tag naprawdę nieznany.)
+ * SEDNO TYCH DANYCH: `AKCJA DEFENSYWNA`, `POJEDYNEK W OBRONIE` i `WYJŚCIE SPOD PRESJI` są
  * dla silnika NIEZNANE, a `STRZAŁ` znany. Kreator ma się na tym zatrzymać.
  *
  * `SBZ PODAJĄCY` ZOSTAJE W PLIKU, ale od silnika 0.16.1 NIE JEST już nieznany:
@@ -288,7 +290,7 @@ $csvNoweTagi = ca_test_csv([
     ['STRZAŁ',           '10', '20', 'KLUB A', 'POZYCYJNIE, CELNY',        'X 0,5', '88', '31'],
     ['AKCJA DEFENSYWNA', '30', '40', 'KLUB A', 'UDANA, NASZA POŁOWA',      '',      '50', '30'],
     ['AKCJA DEFENSYWNA', '45', '55', 'KLUB A', 'NIEUDANA',                 '',      '52', '28'],
-    ['1x1 DEF',          '60', '70', 'KLUB A', 'WYGRANY, PRESSING WYSOKI', '',      '40', '20'],
+    ['POJEDYNEK W OBRONIE',          '60', '70', 'KLUB A', 'WYGRANY, PRESSING WYSOKI', '',      '40', '20'],
     ['WYJŚCIE SPOD PRESJI', '72', '78', 'KLUB A', 'UDANA',                 '',      '30', '25'],
     ['SBZ PODAJĄCY',     '80', '90', 'KLUB A', 'STRZAŁ',                   '',      '85', '33'],
     ['SBZ PODAJĄCY',     '95', '99', 'KLUB A', 'BRAK STRZAŁU',             '',      '86', '30'],
@@ -388,7 +390,7 @@ $decyzjeTagi = [];
 $decyzjeEtykiety = [];
 $nieznane = Mappings::unknown($meta, 1);
 foreach ($nieznane['tags'] as $t) {
-    $decyzjeTagi[$t['name']] = $t['name'] === '1x1 DEF' ? 'duel' : Mappings::NIE_ANALIZUJ;
+    $decyzjeTagi[$t['name']] = $t['name'] === 'POJEDYNEK W OBRONIE' ? 'duel' : Mappings::NIE_ANALIZUJ;
 }
 foreach ($nieznane['labels'] as $l) {
     $decyzjeEtykiety[$l['name']] = Mappings::NIE_ANALIZUJ;
@@ -432,7 +434,7 @@ check('raport zapisany', Db::one('SELECT id FROM reports ORDER BY id DESC LIMIT 
 $config = json_decode((string) @file_get_contents($magazyn . '/jobs/' . $jobBuild . '/config.json'), true);
 $regulaDuel = null;
 foreach ((array) ($config['mapping_profile']['rules'] ?? []) as $r) {
-    if (($r['match']['tag'] ?? '') === '1x1 DEF') {
+    if (($r['match']['tag'] ?? '') === 'POJEDYNEK W OBRONIE') {
         $regulaDuel = $r;
     }
 }

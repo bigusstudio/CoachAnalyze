@@ -448,7 +448,8 @@ check('komunikaty walidacji z pl.php przez data-*',
     && str_contains($form['body'], 'data-blad-typu-csv="To nie jest plik CSV'));
 $JSON = '{"project":{"name":"Mecz"},"tags":[]}';
 $up = http('POST', '/import', ['multipart' => multipartStrefa(['csrf' => csrfZ($form['body'])],
-    [['projekt.json', $JSON], ['mecz.csv', $CSV]])]);
+    // W7: $CSV jest już meczem w tym klubie — inne zdarzenia, żeby nie był duplikatem.
+    [['projekt.json', $JSON], ['mecz.csv', rtrim($CSV) . "\n" . substr((string) strrchr(rtrim($CSV), "\n"), 1) . "\n"]])]);
 // Administrator po wgraniu trafia na stronę zadania (W3) — analityk na „Przygotuj".
 check('CSV + JSON w jednej strefie przyjęte', $up['status'] === 302
     && preg_match('#^(/import/\d+/przygotuj|/zadania/\d+)$#', (string) $up['location']) === 1, (string) $up['location']);

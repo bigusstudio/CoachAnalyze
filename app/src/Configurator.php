@@ -617,7 +617,8 @@ final class Configurator
      */
     public static function dozwoloneCanon(string $typ): array
     {
-        return $typ === Suggester::ETYKIETA ? Mappings::KWALIFIKATORY : Mappings::POJECIA;
+        // W7: tag może dostać także pojęcie prezentacji (posiadanie, podanie…).
+        return $typ === Suggester::ETYKIETA ? Mappings::KWALIFIKATORY : Mappings::POJECIA_SLOWNIKA;
     }
 
     /**
@@ -647,6 +648,34 @@ final class Configurator
      * @param array<string,mixed> $progi
      * @return array<string,mixed>
      */
+    /**
+     * Pola metody importu W7, przenoszone przez każdy zapis — WYŁĄCZNIE gdy są.
+     *
+     * `side` (us / them): strona tagu drużynowego (posiadanie) — nazwa tagu nie
+     * mówi, czyja to akcja. `uuids`: UUID tagu z plików klubu, po których silnik
+     * stosuje przypisanie także po zmianie nazwy tagu. Bez tych pól templat
+     * zapisuje się bajt w bajt jak przed W7.
+     *
+     * @param array<string,mixed> $z
+     * @return array<string,mixed>
+     */
+    private static function polaW7(array $z): array
+    {
+        $out = [];
+        if (in_array($z['side'] ?? null, ['us', 'them'], true)) {
+            $out['side'] = (string) $z['side'];
+        }
+        $uuids = array_values(array_unique(array_filter(
+            array_map('strval', (array) ($z['uuids'] ?? [])),
+            static fn(string $u): bool => preg_match('/^[0-9a-fA-F-]{8,64}$/', $u) === 1
+        )));
+        if ($uuids !== []) {
+            sort($uuids);
+            $out['uuids'] = $uuids;
+        }
+        return $out;
+    }
+
     public static function config(
         array $zmienne,
         array $sekcje,
@@ -678,7 +707,7 @@ final class Configurator
                     static fn(string $a): bool => trim($a) !== ''
                 ))),
                 'visible'       => !empty($z['visible']),
-            ];
+            ] + self::polaW7($z);
         }
 
         $sekcjeUkladu = ReportLayout::normalizuj(

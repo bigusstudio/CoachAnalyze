@@ -35,6 +35,22 @@ final class Mappings
     ];
 
     /**
+     * Pojęcia PREZENTACJI (W7) — Słownik może je nadać tagowi, ale nie są
+     * pojęciami modelu kanonicznego (nie trafiają do archiwum ani metryk):
+     * gol (wynik meczu), posiadanie (czas po stronie), podanie, wprowadzenie,
+     * akcja defensywna. Przegląd raportu v21 pokazuje je jako kafle.
+     * Bliźniak: `znaczenie.POJECIA_PREZENTACJI` w silniku.
+     */
+    public const POJECIA_PREZENTACJI = ['goal', 'possession', 'pass', 'zone_entry', 'defensive_action'];
+
+    /** Wszystko, co Słownik klubu może nadać tagowi (W7). */
+    public const POJECIA_SLOWNIKA = [
+        'shot', 'entry_sbz', 'entry_third', 'duel', 'loss', 'recovery',
+        'press', 'transition', 'set_piece', 'foul', 'card', 'keeper_action',
+        'goal', 'possession', 'pass', 'zone_entry', 'defensive_action',
+    ];
+
+    /**
      * Kwalifikatory — słownik silnika (`canon.DEFAULT_LABEL_RULES`).
      *
      * Etykiety mapujemy na kwalifikatory, nie na pojęcia: nowa etykieta

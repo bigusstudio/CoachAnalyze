@@ -647,6 +647,20 @@ return [
     'reupload.previous.missing' => 'Poprzedni eksport nie jest dostępny na dysku.',
     'reupload.previous.none' => 'Ten mecz nie ma jeszcze żadnego wgranego eksportu.',
     'reupload.submit'      => 'Wgraj eksport',
+    // W7 — metoda importu v3
+    'import.duplikat'      => 'Ten mecz już jest — wgrany plik ma te same zdarzenia. Nowy mecz nie powstał; to jest mecz, który już masz.',
+    'ust.kol.znaczenie'    => 'Znaczenie',
+    'ust.kol.strona'       => 'Strona',
+    'ust.znaczenie.brak'   => '— z pliku (xG, nazwa) —',
+    'ust.strona.z_pliku'   => '— z kolumny team —',
+    'ust.strona.us'        => 'nasza drużyna',
+    'ust.strona.them'      => 'rywal',
+    'card.w7.anomalie'     => 'Anomalie importu',
+    'card.w7.anomalie.hint'=> 'Fakty o pliku, które warto znać, zanim uwierzy się liczbom. Raport liczy mimo nich — nic nie zostało „naprawione".',
+    'card.w7.anomalie.brak'=> 'Brak anomalii w ostatnim imporcie.',
+    'card.w7.niezgodny'    => 'Raport niezgodny z plikiem — zgłoszone administratorowi:',
+    'card.w7.nierozpoznane'=> 'Tagi bez znaczenia (%d): dane są w sekcji „Wszystkie tagi z pliku". Przypisz pojęcia raz w Słowniku klubu.',
+    'card.w7.nowy_profil'  => 'Nowy układ tagów — przypisz raz pojęcia w Słowniku klubu.',
     'reupload.queued'      => 'Eksport przyjęty. Pokrycie liczy się w tle — po jego zakończeniu raport da się przeliczyć.',
     'reupload.link'        => 'Wgraj eksport ponownie',
 
@@ -1205,6 +1219,12 @@ return [
     'concept.foul'          => 'faul',
     'concept.card'          => 'kartka',
     'concept.keeper_action' => 'interwencja bramkarza',
+    // W7: pojęcia prezentacji (Mappings::POJECIA_PREZENTACJI).
+    'concept.goal'             => 'gol',
+    'concept.possession'       => 'posiadanie',
+    'concept.pass'             => 'podanie',
+    'concept.zone_entry'       => 'wprowadzenie',
+    'concept.defensive_action' => 'akcja defensywna',
 
     // --- mapowania w ustawieniach klubu ---
     'mapping.club.link'    => 'Mapowania',

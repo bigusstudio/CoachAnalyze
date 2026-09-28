@@ -37,7 +37,9 @@ final class Alerts
      */
     public static function all(): array
     {
-        return array_merge(self::stuckJobs(), self::failedJobs(), self::diskSpace());
+        return array_merge(self::stuckJobs(), self::failedJobs(), self::diskSpace(),
+            // W7 H: raport niezgodny z plikiem (naruszony niezmiennik).
+            KontrolaImportu::alerty());
     }
 
     /**

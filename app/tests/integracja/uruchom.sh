@@ -209,10 +209,14 @@ if [ -x "$PYTHON" ]; then
   zestaw "test_kolejka" env PYTHONPATH="$KORZEN/engine" php "$TUTAJ/test_kolejka.php"
   # Regresja v6 Pogoni: naprawa templatu z przelotem przez silnik (raport v21).
   zestaw "test_naprawa_pogon" env PYTHONPATH="$KORZEN/engine" php "$TUTAJ/test_naprawa_pogon.php"
+  # W7: skrót zdarzeń PHP == silnik, deduplikacja, profil analityka, Słownik
+  # (znaczenie, strona), anomalie i niezmienniki przez pełny przelot kolejki.
+  zestaw "test_w7_import" env PYTHONPATH="$KORZEN/engine" php "$TUTAJ/test_w7_import.php"
 else
   pomin "pytest silnika" "brak $PYTHON"
   pomin "test_kolejka" "brak $PYTHON"
   pomin "test_naprawa_pogon" "brak $PYTHON"
+  pomin "test_w7_import" "brak $PYTHON"
 fi
 
 # --------------------------------------------------------------------------

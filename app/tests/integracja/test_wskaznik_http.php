@@ -372,7 +372,8 @@ echo "\n== G. partia: licznik X/N i JEDNA chmurka zbiorcza ==\n";
 // Drugi mecz, żeby partia miała dwie pozycje.
 $formularz2 = http('GET', '/klub/1/import');
 http('POST', '/klub/1/import', ['multipart' => multipart(
-    ['csrf' => csrfZ($formularz2['body'])], ['csv' => ['mecz2.csv', $CSV]]
+    // W7: ten sam plik to duplikat meczu — drugi mecz musi mieć inne zdarzenia.
+    ['csrf' => csrfZ($formularz2['body'])], ['csv' => ['mecz2.csv', rtrim($CSV) . "\n" . substr((string) strrchr(rtrim($CSV), "\n"), 1) . "\n"]]
 )]);
 cron();
 ca_test_db($baza);

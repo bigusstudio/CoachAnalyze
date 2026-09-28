@@ -141,6 +141,9 @@ function ca_test_db(string $file, bool $withData = true): PDO
         sections_json TEXT NULL, mapping_profile_id INT NULL,
         -- Migracja 013: znacznik „operator widzial ekran nowych tagow".
         diff_done_at TEXT NULL,
+        -- Migracja 019 (W7): deduplikacja, profil analityka, niezmienniki.
+        sha256_zdarzen TEXT NULL, profil_json TEXT NULL, profil_nowy INT NULL,
+        profil_import_id INT NULL, niezmienniki_ok INT NULL,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP)');
     $pdo->exec('CREATE TABLE notifications (id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INT NOT NULL, type TEXT NOT NULL, title TEXT NOT NULL, body TEXT NULL,

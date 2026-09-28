@@ -124,6 +124,9 @@ final class UstawieniaKlubu
                 'label'    => (string) ($z['display_label'] ?? ''),
                 'sections' => array_values(array_map('strval', (array) ($z['sections'] ?? []))),
                 'aliases'  => array_values(array_map('strval', (array) ($z['aliases'] ?? []))),
+                // W7: znaczenie (pojęcie) i strona tagu drużynowego.
+                'canon'    => isset($z['canon']) ? (string) $z['canon'] : null,
+                'side'     => in_array($z['side'] ?? null, ['us', 'them'], true) ? (string) $z['side'] : null,
             ];
         }
         return $out;
@@ -413,5 +416,61 @@ final class UstawieniaKlubu
             unset($zmienne[$i]);
         }
         return [array_values($zmienne), $odpomin];
+    }
+
+    /**
+     * Znaczenie i strona z formularza Słownika (W7 C, D) — decyzja człowieka.
+     *
+     * `pojecie[i]` — pojęcie z `Mappings::POJECIA_SLOWNIKA` albo pusto (bez
+     * znaczenia: silnik rozstrzyga wtedy regułami xG i nazwy). `strona[i]` —
+     * `us` / `them` / pusto; wyłącznie dla tagów. Strona zamiast nazwy klubu:
+     * „Posiadanie Górnik Strachocina" bywa szablonem skopiowanym z innego meczu.
+     *
+     * Przypisaniu dokładamy UUID tagu z plików klubu (`ProfilAnalityka::uuidDlaNazw`)
+     * — silnik stosuje je po UUID, więc przeżywa zmianę nazwy tagu w LiveTag.
+     * Indeksy spoza formularza (zmienne martwe) zostają nietknięte.
+     *
+     * @param list<array<string,mixed>>  $zmienne
+     * @param array<int|string,mixed>    $pojecia [indeks => pojęcie]
+     * @param array<int|string,mixed>    $strony  [indeks => us|them|'']
+     * @param callable(list<string>):list<string>|null $uuidDla nazwy -> UUID (test podaje własne)
+     * @return list<array<string,mixed>>
+     */
+    public static function zastosujZnaczenia(array $zmienne, array $pojecia, array $strony, ?callable $uuidDla = null): array
+    {
+        $zmienne = array_values($zmienne);
+        foreach ($zmienne as $i => $z) {
+            if (!array_key_exists($i, $pojecia) && !array_key_exists($i, $strony)) {
+                continue;
+            }
+            $typ = (string) ($z['source']['type'] ?? Suggester::TAG);
+            if (array_key_exists($i, $pojecia)) {
+                $p = trim((string) $pojecia[$i]);
+                $dozwolone = Configurator::dozwoloneCanon($typ);
+                if ($p === '') {
+                    $zmienne[$i]['canon'] = null;
+                } elseif (in_array($p, $dozwolone, true)) {
+                    $zmienne[$i]['canon'] = $p;
+                }
+            }
+            if ($typ === Suggester::TAG && array_key_exists($i, $strony)) {
+                $st = (string) $strony[$i];
+                if (in_array($st, ['us', 'them'], true)) {
+                    $zmienne[$i]['side'] = $st;
+                } else {
+                    unset($zmienne[$i]['side']);
+                }
+            }
+            $decyzja = ($zmienne[$i]['canon'] ?? null) !== null || isset($zmienne[$i]['side']);
+            if ($typ === Suggester::TAG && $decyzja && $uuidDla !== null) {
+                $nazwy = array_merge([(string) ($z['source']['raw'] ?? '')],
+                    array_map('strval', (array) ($z['aliases'] ?? [])));
+                $uuids = $uuidDla(array_values(array_filter($nazwy)));
+                if ($uuids !== []) {
+                    $zmienne[$i]['uuids'] = $uuids;
+                }
+            }
+        }
+        return $zmienne;
     }
 }
