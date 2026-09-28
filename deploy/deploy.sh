@@ -66,6 +66,8 @@ fi
 if [ "$TYLKO_KONTROLA" -eq 0 ]; then
 
 echo "==> Pobranie zmian"
+# Rewizja PRZED pobraniem — do komunikatu o regeneracji raportów na końcu.
+POPRZEDNIA=$(git -C "$BASE/repo" rev-parse HEAD 2>/dev/null || echo "")
 git -C "$BASE/repo" fetch --all --quiet
 git -C "$BASE/repo" checkout "$BRANCH" --quiet
 git -C "$BASE/repo" pull --ff-only --quiet
@@ -316,6 +318,18 @@ else
   fi
 fi
 
+# WERSJA SILNIKA DO STOPKI PANELU (golden layout W1) — z `__init__.py` wdrażanej
+# rewizji, nie z pamięci crona. Stopka pokazywała 0.16.1 na produkcji z 0.16.4:
+# cron wpisywał wersję interpretera, a panel trzymał ją dodatkowo w sesji.
+# Plik czyta `app/src/Engine.php`; to nie kontrola, więc nie ustawia FAIL.
+if [ -n "${STORAGE_REAL:-}" ]; then
+  WERSJA_SILNIKA=$(sed -n 's/^__version__ = "\([0-9.]*\)".*/\1/p' "$BASE/repo/engine/coachanalyze/__init__.py" | head -1)
+  if [ -n "$WERSJA_SILNIKA" ]; then
+    printf '%s' "$WERSJA_SILNIKA" > "$STORAGE_REAL/.engine_version"
+    echo "    wersja silnika do stopki: $WERSJA_SILNIKA"
+  fi
+fi
+
 # 3. LOG_PATH musi wskazywać katalog, w którym da się pisać. Bez tego przyczyna
 #    awarii nie ma gdzie trafić — dokładnie to kosztowało godzinę diagnostyki.
 LOG_PATH=$(grep -E '^LOG_PATH=' "$WEB/.env" 2>/dev/null | tail -1 | cut -d= -f2- || true)
@@ -489,3 +503,14 @@ if [ "$FAIL" -ne 0 ]; then
 fi
 
 echo "==> Gotowe: ${REV:-kontrola}"
+
+# RAPORTY WYRENDEROWANE STARYM SZABLONEM/SILNIKIEM (golden layout W1). Wdrożenie
+# ich nie przelicza — to decyzja o kolejce na kilkanaście minut — ale ma o nich
+# powiedzieć, zamiast zostawić do odkrycia na raporcie z nieaktualnym układem.
+if [ -n "${POPRZEDNIA:-}" ] && [ -n "${REV:-}" ]; then
+  if git -C "$BASE/repo" diff --name-only "$POPRZEDNIA" HEAD 2>/dev/null \
+       | grep -qE '^engine/coachanalyze/(templates/|[^/]+\.py$)'; then
+    echo "==> Zmienił się szablon/silnik: uruchom regeneruj_raporty.php --nieaktualne"
+    echo "    php $BASE/repo/app/repairs/regeneruj_raporty.php --nieaktualne --dry-run"
+  fi
+fi

@@ -51,3 +51,4 @@ Thumbs.db
 *.log
 app/logs/
 engine/tests/golden/*.html
+.claude/settings.local.json
