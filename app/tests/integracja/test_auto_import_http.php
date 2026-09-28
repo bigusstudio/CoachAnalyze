@@ -70,7 +70,7 @@ putenv('PYTHONPATH=' . $root . '/engine');
 file_put_contents($envFile, implode("\n", [
     'APP_ENV=test', 'DB_DRIVER=sqlite', 'DB_PATH=' . $baza,
     'STORAGE_PATH=' . $magazyn, 'LOG_PATH=' . $logFile,
-    'PYTHON_BIN=' . $python, 'ENGINE_TIMEOUT=60', 'HTML_TEMPLATE=v21',
+    'PYTHON_BIN=' . $python, 'ENGINE_TIMEOUT=60',
     'APP_URL=http://127.0.0.1:' . $port, 'SESSION_NAME=ca_test',
     'REDIS_SOCKET=' . $sock, 'REDIS_PREFIX=auto:',
     'ARGON_MEMORY_COST=8192', 'ARGON_TIME_COST=1', '',
@@ -299,26 +299,25 @@ check('nasza drużyna przypisana z eksportu',
     (int) $mecz['club_home_id'] === 1);
 
 // ---------------------------------------------------------------- zmienne
-/*
- * GOLDEN LAYOUT W3: NOWE TAGI NIE WCHODZĄ DO TEMPLATU PRZY IMPORCIE.
- * Czekają w Słowniku klubu („Nierozpoznane"), a raport mówi o nich banerem.
- * Do W3 (sesja 8) import dopisywał je tu sam jako zmienne.
- */
-echo "\n== sześć nowych tagów → sześć NIEROZPOZNANYCH, templat bez zmian ==\n";
+echo "\n== sześć nowych tagów → sześć nowych zmiennych ==\n";
 
-check('templat został na wersji 1', ReportTemplates::currentVersion(1) === 1,
+check('powstała wersja 2 templatu', ReportTemplates::currentVersion(1) === 2,
     'wersja: ' . ReportTemplates::currentVersion(1));
 
 $config = ReportTemplates::decodeConfig(ReportTemplates::current(1)['config']);
 $nazwy = array_column(array_column($config['variables'], 'source'), 'raw');
+
 foreach (NOWE_TAGI as $tag) {
-    check("tag {$tag} NIE jest w templacie", !in_array($tag, $nazwy, true));
+    check("tag {$tag} jest w templacie bez kliknięcia", in_array($tag, $nazwy, true));
 }
+check('dokładnie sześć zmiennych przybyło',
+    count($nazwy) === 2 + count(NOWE_TAGI),
+    'zmiennych: ' . count($nazwy) . ' — ' . implode(', ', $nazwy));
 check('wersja automatyczna NIE unieważnia raportów na v1',
     ReportTemplates::isOutdated(1, 1) === false);
 
 // ---------------------------------------------------------------- pokrycie
-echo "\n== ekran pokrycia: zero pytań, nowe tagi poza analizą ==\n";
+echo "\n== ekran pokrycia: zero pytań, zero zdarzeń poza analizą ==\n";
 
 $pokrycie = http('GET', '/import/' . $importId);
 check('pokrycie odpowiada OD RAZU — bez bramki meta i bez bramki diffu',
@@ -326,6 +325,9 @@ check('pokrycie odpowiada OD RAZU — bez bramki meta i bez bramki diffu',
     $pokrycie['status'] . ' → ' . (string) $pokrycie['location']);
 check('pokrycie mówi, że klub powstał automatycznie',
     str_contains($pokrycie['body'], 'klub założony automatycznie'));
+check('pokrycie wymienia zmienne dodane automatycznie',
+    str_contains($pokrycie['body'], 'Nowe zmienne dodane automatycznie')
+    && str_contains($pokrycie['body'], 'TRANSFORMACJA'));
 check('„Załóż klub" zniknął — nie ma czego zakładać',
     !str_contains($pokrycie['body'], 'kluby/nowy?nazwa='));
 
@@ -335,11 +337,16 @@ check('„Załóż klub" zniknął — nie ma czego zakładać',
  * z założenia. Klub z kompletem tagów w templacie widział więc „poza analizą"
  * komplet swoich zdarzeń, co było nieprawdą o raporcie, który je pokazywał.
  */
-// Od W3 nowe tagi są POZA analizą do decyzji w Słowniku — pokrycie mówi prawdę.
 $raportPokrycia = Imports::report(Imports::find($importId));
-check('zdarzenia nowych tagów są poza analizą',
-    $raportPokrycia['excluded']['count'] > 0,
+check('zdarzeń poza analizą: 0',
+    $raportPokrycia['excluded']['count'] === 0,
     'poza analizą: ' . var_export($raportPokrycia['excluded']['count'], true));
+check('lista tagów poza analizą pusta',
+    $raportPokrycia['excluded']['unrecognised'] === []
+    && $raportPokrycia['excluded']['ignored'] === [],
+    implode(',', $raportPokrycia['excluded']['unrecognised']));
+check('ekran mówi to wprost',
+    str_contains($pokrycie['body'], 'Wszystkie zdarzenia z eksportu wchodzą do analizy'));
 
 // ---------------------------------------------------------------- generowanie
 echo "\n== raport bez ani jednego kliknięcia w diffie ==\n";
@@ -347,12 +354,11 @@ echo "\n== raport bez ani jednego kliknięcia w diffie ==\n";
 check('ekran różnic nie był odwiedzony', empty($import['diff_done_at']),
     'ta asercja pilnuje, żeby test nie udowadniał czegoś innego, niż obiecuje');
 
-// Ekran różnic jest [op] (W2) — ścieżka BEZ diffu to ścieżka analityka.
-Db::run("UPDATE users SET role = 'operator' WHERE email = 'operator@example.com'");
 $generuj = http('POST', '/import/' . $importId . '/generuj',
     ['form' => ['csrf' => csrfZ($pokrycie['body'])]]);
 check('generowanie przyjęte, BEZ odbicia na /diff',
-    $generuj['status'] === 302 && !str_contains((string) $generuj['location'], '/diff'),
+    $generuj['status'] === 302
+    && preg_match('#^/zadania/(\d+)$#', (string) $generuj['location']) === 1,
     (string) $generuj['location']);
 check('cron wygenerował raport', cron() === 0);
 
@@ -361,19 +367,8 @@ $raport = Db::one('SELECT * FROM reports ORDER BY id DESC LIMIT 1');
 check('raport zapisany', $raport !== null);
 check('plik raportu powstał',
     $raport !== null && is_file((string) $raport['html_path']));
-// Katalog tagów klubu zapełnia render — dopiero teraz Słownik ma czym mówić.
-// ODBIÓR, III STREFA i SBZ PODAJĄCY (alias ZDOBYCIE SBZ) szablon liczy sam —
-// to tagi wbudowane, nie „nierozpoznane". Reszta czeka na decyzję klubu.
-$nierozpoznane = array_column(\CoachAnalyze\UstawieniaKlubu::nierozpoznane(1, $config), 'name');
-sort($nierozpoznane);
-check('w Słowniku klubu czekają DOKŁADNIE tagi, których raport nie liczy',
-    $nierozpoznane === ['DOŚRODKOWANIE', 'PRESSING WYSOKI', 'TRANSFORMACJA'], implode(', ', $nierozpoznane));
-$htmlRaportu = $raport !== null ? (string) @file_get_contents((string) $raport['html_path']) : '';
-check('raport ma baner niewliczonych z odsyłaczem do Słownika',
-    str_contains($htmlRaportu, 'class="baner baner--niewliczone')
-    && str_contains($htmlRaportu, '/klub/ustawienia?zakladka=slownik'));
-check('raport niesie wersję templatu v1',
-    $raport !== null && (int) $raport['template_version'] === 1,
+check('raport niesie wersję templatu v2',
+    $raport !== null && (int) $raport['template_version'] === 2,
     'template_version: ' . var_export($raport['template_version'] ?? null, true));
 
 // ---------------------------------------------------------------- import 2
@@ -404,8 +399,8 @@ check('NIE powstał drugi klub',
 check('drugi mecz wskazuje TEN SAM klub rywala',
     $rywal !== null && (int) $mecz2['club_away_id'] === (int) $rywal['id'],
     'club_away_id: ' . var_export($mecz2['club_away_id'], true));
-check('drugi import nie zakłada zmiennych',
-    ReportTemplates::currentVersion(1) === 1,
+check('drugi import nie zakłada zmiennych po raz drugi',
+    ReportTemplates::currentVersion(1) === 2,
     'wersja różniąca się wyłącznie numerem to szum w historii');
 
 $pokrycie2 = http('GET', '/import/' . (int) $import2['id']);

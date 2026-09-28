@@ -158,23 +158,32 @@ $ostatni = count($sekcje) - 1;
           </tr></thead>
           <tbody>
             <?php foreach ($nierozpoznane as $k => $n): ?>
+              <?php $pominiety = $n['powod'] === UstawieniaKlubu::POMINIETY; ?>
               <tr>
                 <td><code><?= View::e($n['name']) ?></code>
-                  <input type="hidden" name="wlicz_nazwa[<?= (int) $k ?>]" value="<?= View::e($n['name']) ?>"></td>
+                  <input type="hidden" name="wlicz_nazwa[<?= (int) $k ?>]" value="<?= View::e($n['name']) ?>">
+                  <br><span class="hint"><?= View::e($pominiety
+                      ? View::t('ust.powod.pominiety')
+                      : View::t('ust.powod.bez_znaczenia', implode(', ', array_map(
+                          static fn(string $s): string => View::t('sekcja.' . $s), $n['sekcje'])))) ?></span></td>
                 <td><?= View::e(View::t('ust.ile', $n['events'], $n['matches'])) ?></td>
                 <td>
                   <select class="field__input" name="wlicz[<?= (int) $k ?>]">
-                    <option value=""><?= View::e(View::t('ust.wlicz.nie')) ?></option>
-                    <option value="nowa"><?= View::e(View::t('ust.wlicz.nowa')) ?></option>
+                    <option value=""><?= View::e(View::t($pominiety ? 'ust.wlicz.nie' : 'ust.wlicz.zostaw')) ?></option>
+                    <?php if ($pominiety): ?>
+                      <option value="nowa"><?= View::e(View::t('ust.wlicz.nowa')) ?></option>
+                    <?php else: ?>
+                      <option value="bilans"><?= View::e(View::t('ust.wlicz.bilans')) ?></option>
+                    <?php endif; ?>
                     <?php foreach ($wliczane as $w): ?>
-                      <?php if ($w['typ'] === 'tag'): ?>
+                      <?php if ($w['typ'] === 'tag' && $w['i'] !== $n['i']): ?>
                         <option value="z:<?= (int) $w['i'] ?>"><?= View::e(View::t('ust.wlicz.kontynuacja', $w['label'] !== '' ? $w['label'] : $w['raw'])) ?></option>
                       <?php endif; ?>
                     <?php endforeach; ?>
                   </select>
                 </td>
-                <td><input class="field__input" type="text" maxlength="80" name="wlicz_etykieta[<?= (int) $k ?>]"
-                           placeholder="<?= View::e($n['name']) ?>"></td>
+                <td><?php if ($pominiety): ?><input class="field__input" type="text" maxlength="80" name="wlicz_etykieta[<?= (int) $k ?>]"
+                           placeholder="<?= View::e($n['name']) ?>"><?php endif; ?></td>
               </tr>
             <?php endforeach; ?>
           </tbody>

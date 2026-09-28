@@ -131,39 +131,71 @@ final class UstawieniaKlubu
     }
 
     /**
-     * Nierozpoznane: tagi z katalogu klubu, których templat nie zna (ani jako
-     * zmiennej, ani aliasu, ani aliasu silnika). Z liczbą zdarzeń i meczów —
-     * od najczęstszego, jak baner w raporcie.
+     * Sekcje budowane z pojęć wbudowanych szablonu — kopia
+     * `render.SEKCJE_ZNACZENIOWE`. Zmienna bez kanonu, niebędąca tagiem
+     * wbudowanym, daje tam „–" (przypadek z W1).
+     */
+    public const SEKCJE_ZNACZENIOWE = ['tl_sbz', 'tl_iii', 'duels'];
+
+    public const POMINIETY = 'pominiety';
+    public const BEZ_ZNACZENIA = 'bez_znaczenia';
+
+    /**
+     * NIEROZPOZNANE (W3-b) = to, czego raport NIE liczy, choć w eksportach jest:
+     *
+     *   pominięty      — tag z `club_ignored_tags` (świadome „pomiń"), którego
+     *                    templat nie zna i który nie jest tagiem wbudowanym,
+     *   bez znaczenia  — zmienna bez kanonu w sekcji znaczeniowej, niebędąca
+     *                    tagiem wbudowanym, z wystąpieniami w katalogu klubu.
+     *
+     * NOWE TAGI TU NIE TRAFIAJĄ: import dopisuje je do templatu sam (sesja 8),
+     * a raport mówi o nich banerem informacyjnym. Ta sama definicja co baner
+     * ostrzegawczy w silniku (`render.pominiete_tagi`, `render.bez_znaczenia`).
      *
      * @param array<string,mixed> $config
-     * @return list<array{name:string,events:int,matches:int,color:?string}>
+     * @return list<array<string,mixed>>
      */
     public static function nierozpoznane(int $clubId, array $config): array
     {
-        $indeks = Configurator::indeksNazw($config);
-        // Tagi wbudowane szablonu (i ich aliasy silnika) liczą się same — jak
-        // `render.niewliczone_tagi`: Słownik i baner mają mówić to samo.
-        $wbudowane = array_flip(self::wbudowane());
-        $out = [];
+        $katalog = [];
         foreach (TagCatalog::forClub($clubId) as $w) {
-            if ((string) $w['kind'] !== Suggester::TAG) {
-                continue;
+            if ((string) $w['kind'] === Suggester::TAG) {
+                $katalog[(string) $w['name']] = $w;
             }
-            $nazwa = (string) $w['name'];
-            if (Configurator::dopasuj(Suggester::TAG, $nazwa, $indeks) !== null) {
-                continue;
-            }
-            $glowna = NazwaZmiennej::aliasySilnika()[NazwaZmiennej::klucz($nazwa)] ?? null;
-            if (isset($wbudowane[$nazwa]) || ($glowna !== null && isset($wbudowane[$glowna]))) {
-                continue;
-            }
-            $out[] = [
-                'name'    => $nazwa,
-                'events'  => (int) $w['seen_events'],
-                'matches' => (int) $w['seen_matches'],
-                'color'   => $w['color'] !== null ? (string) $w['color'] : null,
-            ];
         }
+        $wbud = self::zAliasamiSilnika(self::wbudowane());
+        $indeks = Configurator::indeksNazw($config);
+        $wiersz = static fn(string $n, array $extra) => $extra + [
+            'name'    => $n,
+            'events'  => (int) ($katalog[$n]['seen_events'] ?? 0),
+            'matches' => (int) ($katalog[$n]['seen_matches'] ?? 0),
+            'color'   => isset($katalog[$n]['color']) ? (string) $katalog[$n]['color'] : null,
+        ];
+
+        $out = [];
+        foreach (array_keys(IgnoredTags::lookup($clubId)[IgnoredTags::TAG] ?? []) as $nazwa) {
+            $nazwa = (string) $nazwa;
+            if (in_array($nazwa, $wbud, true) || Configurator::dopasuj(Suggester::TAG, $nazwa, $indeks) !== null) {
+                continue;
+            }
+            $out[] = $wiersz($nazwa, ['powod' => self::POMINIETY, 'sekcje' => [], 'i' => null]);
+        }
+
+        foreach (array_values((array) ($config['variables'] ?? [])) as $i => $z) {
+            if (!is_array($z) || (string) ($z['source']['type'] ?? Suggester::TAG) !== Suggester::TAG
+                || ($z['canon'] ?? null) !== null) {
+                continue;
+            }
+            $nazwy = array_merge([(string) ($z['source']['raw'] ?? '')], array_map('strval', (array) ($z['aliases'] ?? [])));
+            if (array_intersect($nazwy, $wbud) !== [] || array_intersect($nazwy, array_keys($katalog)) === []) {
+                continue;
+            }
+            $sekcje = array_values(array_intersect(self::SEKCJE_ZNACZENIOWE, (array) ($z['sections'] ?? [])));
+            if ($sekcje !== []) {
+                $out[] = $wiersz($nazwy[0], ['powod' => self::BEZ_ZNACZENIA, 'sekcje' => $sekcje, 'i' => $i]);
+            }
+        }
+
         usort($out, static fn(array $a, array $b): int
             => [$b['events'], $a['name']] <=> [$a['events'], $b['name']]);
         return $out;
@@ -182,23 +214,46 @@ final class UstawieniaKlubu
     }
 
     /**
+     * Nazwy + aliasy silnika prowadzące do którejś z nich — jak `_z_aliasami_silnika`.
+     *
+     * @param list<string> $nazwy
+     * @return list<string>
+     */
+    private static function zAliasamiSilnika(array $nazwy): array
+    {
+        $dane = json_decode((string) @file_get_contents(NazwaZmiennej::plikAliasow()), true);
+        $out = $nazwy;
+        foreach ($nazwy as $n) {
+            foreach (is_array($dane[$n] ?? null) ? $dane[$n] : [] as $a) {
+                $out[] = trim((string) $a);
+            }
+        }
+        return array_values(array_unique($out));
+    }
+
+    /**
      * Zmienne po zapisie Słownika klubu.
      *
      * Z FORMULARZA PRZYJMUJEMY WYŁĄCZNIE etykietę i sekcje istniejących zmiennych
-     * oraz decyzję „wlicz" dla nazw z listy nierozpoznanych — surowej nazwy,
-     * typu, barwy i kanonu tu nie zmienia nikt (to [op], Zaawansowane).
-     * Nazwa spoza listy nierozpoznanych jest ignorowana: podmiana pola nie
-     * wstawi do templatu tagu, którego na ekranie nie było.
+     * oraz decyzje dla pozycji z listy nierozpoznanych — surowej nazwy, typu,
+     * barwy i kanonu tu nie zmienia nikt (to [op], Zaawansowane). Nazwa spoza
+     * listy jest ignorowana: podmiana pola nie wstawi do templatu tagu, którego
+     * na ekranie nie było.
+     *
+     * Decyzje:
+     *   pominięty      — 'nowa' (nowa zmienna) | 'z:<i>' (kontynuacja zmiennej i),
+     *   bez znaczenia  — 'bilans' (zdejmij z sekcji znaczeniowych)
+     *                    | 'z:<j>' (to ta sama seria co zmienna j — scal).
      *
      * @param list<array<string,mixed>> $zmienne     `variables` bieżącej wersji
-     * @param array<string,?string>     $nierozpoznane {nazwa: barwa z katalogu} z `nierozpoznane()`
+     * @param list<array<string,mixed>> $nierozpoznane z `nierozpoznane()`
      * @param array<int|string,mixed>   $etykiety    [indeks => etykieta]
      * @param array<int|string,mixed>   $sekcje      [indeks => [sekcja, …]]
-     * @param array<int|string,mixed>   $wlicz       [nr => 'nowa' | 'z:<indeks>' | '']
+     * @param array<int|string,mixed>   $wlicz       [nr => decyzja]
      * @param array<int|string,mixed>   $nazwyWlicz  [nr => surowa nazwa]
      * @param array<int|string,mixed>   $etykietyNowych [nr => etykieta]
      * @param list<string>              $barwyKlubu
-     * @return list<array<string,mixed>>
+     * @return array{0:list<array<string,mixed>>, 1:list<string>} zmienne, nazwy do zdjęcia z „pominiętych"
      */
     public static function zastosujSlownik(
         array $zmienne,
@@ -224,6 +279,11 @@ final class UstawieniaKlubu
             }
         }
 
+        $poNazwie = [];
+        foreach ($nierozpoznane as $n) {
+            $poNazwie[(string) $n['name']] = $n;
+        }
+
         $nr = 0;
         foreach ($zmienne as $z) {
             if (preg_match('/^v_(\d+)$/', (string) ($z['id'] ?? ''), $m) === 1) {
@@ -232,18 +292,46 @@ final class UstawieniaKlubu
         }
 
         $kolejka = 0;
+        $doUsuniecia = [];
+        $odpomin = [];
         foreach ($wlicz as $k => $decyzja) {
             $decyzja = (string) $decyzja;
             $nazwa = (string) ($nazwyWlicz[$k] ?? '');
-            if ($decyzja === '' || !array_key_exists($nazwa, $nierozpoznane)) {
+            $poz = $poNazwie[$nazwa] ?? null;
+            if ($decyzja === '' || $poz === null) {
                 continue;
             }
-            if (preg_match('/^z:(\d+)$/', $decyzja, $m) === 1 && isset($zmienne[(int) $m[1]])) {
-                // Kontynuacja zmiennej X: ta sama seria, inna nazwa w eksporcie.
-                $cel = (int) $m[1];
+            $cel = preg_match('/^z:(\d+)$/', $decyzja, $m) === 1 && isset($zmienne[(int) $m[1]]) ? (int) $m[1] : null;
+
+            if ($poz['powod'] === self::BEZ_ZNACZENIA) {
+                $i = (int) $poz['i'];
+                if (!isset($zmienne[$i])) {
+                    continue;
+                }
+                if ($decyzja === 'bilans') {
+                    $zmienne[$i]['sections'] = array_values(array_diff(
+                        (array) ($zmienne[$i]['sections'] ?? []), self::SEKCJE_ZNACZENIOWE
+                    ));
+                } elseif ($cel !== null && $cel !== $i) {
+                    // Ta sama seria pod inną nazwą: nazwy zmiennej i przechodzą
+                    // do aliasów zmiennej docelowej, a zmienna i znika.
+                    $aliasy = array_merge(
+                        array_map('strval', (array) ($zmienne[$cel]['aliases'] ?? [])),
+                        [(string) ($zmienne[$i]['source']['raw'] ?? '')],
+                        array_map('strval', (array) ($zmienne[$i]['aliases'] ?? []))
+                    );
+                    $zmienne[$cel]['aliases'] = array_values(array_unique(array_filter($aliasy)));
+                    $doUsuniecia[$i] = true;
+                }
+                continue;
+            }
+
+            // Pominięty: wchodzi do analizy — jako kontynuacja albo nowa zmienna.
+            if ($cel !== null) {
                 $aliasy = array_map('strval', (array) ($zmienne[$cel]['aliases'] ?? []));
                 $aliasy[] = $nazwa;
                 $zmienne[$cel]['aliases'] = array_values(array_unique($aliasy));
+                $odpomin[] = $nazwa;
                 continue;
             }
             if ($decyzja !== 'nowa') {
@@ -255,12 +343,17 @@ final class UstawieniaKlubu
                 'source'        => ['type' => Suggester::TAG, 'raw' => $nazwa],
                 'canon'         => null,
                 'display_label' => $e !== '' ? mb_substr($e, 0, 80) : $nazwa,
-                'color'         => Configurator::barwaZapasowa($barwyKlubu, $kolejka++, $nierozpoznane[$nazwa]),
+                'color'         => Configurator::barwaZapasowa($barwyKlubu, $kolejka++, $poz['color'] ?? null),
                 'sections'      => Configurator::SEKCJE_GENERYCZNE,
                 'visible'       => true,
                 'aliases'       => [],
             ];
+            $odpomin[] = $nazwa;
         }
-        return $zmienne;
+
+        foreach (array_keys($doUsuniecia) as $i) {
+            unset($zmienne[$i]);
+        }
+        return [array_values($zmienne), $odpomin];
     }
 }

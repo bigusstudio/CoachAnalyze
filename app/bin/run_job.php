@@ -32,6 +32,7 @@ use CoachAnalyze\Db;
 use CoachAnalyze\EngineRunner;
 use CoachAnalyze\Events;
 use CoachAnalyze\TagCatalog;
+use CoachAnalyze\IgnoredTags;
 use CoachAnalyze\Imports;
 use CoachAnalyze\IndexTerms;
 use CoachAnalyze\Jobs;
@@ -436,6 +437,13 @@ function uruchomSilnik(int $jobId, array $import, string $outHtml): array
         // wtedy stopki nie ma i wyjście jest bajt w bajt jak przed Sesją 5.
         'template_version' => $templateVersion,
         'generated_at'     => Stats::now(),
+        /*
+         * BANER SŁOWNIKA (golden layout W3-b, docs/KONTRAKT_CLI.md). Silnik nie
+         * zna historii templatu ani decyzji „pomiń" — dostaje je gotowe:
+         * zmienne dopisane przez TEN import (baner informacyjny) i tagi
+         * świadomie pominięte (baner ostrzegawczy). Klub bez templatu — pusto.
+         */
+        'dictionary_notice' => zapowiedzSlownika($clubIdTenanta, (int) $import['id'], $templat !== null),
     ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
 
     $wynik = EngineRunner::build([
@@ -540,6 +548,23 @@ function zapiszKatalogTagow(int $jobId, ?int $clubId, int $importId, ?array $met
         error_log(sprintf('[job %d] katalog tagow klubu %d nie zapisany: %s',
             $jobId, $clubId, $e->getMessage()));
     }
+}
+
+/**
+ * `config.dictionary_notice` — {auto_added: [...], ignored: [...]}.
+ *
+ * @return array{auto_added:list<string>, ignored:list<string>}
+ */
+function zapowiedzSlownika(?int $clubId, int $importId, bool $maTemplat): array
+{
+    if ($clubId === null || !$maTemplat) {
+        return ['auto_added' => [], 'ignored' => []];
+    }
+    $auto = ReportTemplates::autoForImport($clubId, $importId);
+    return [
+        'auto_added' => array_values((array) ($auto['added'] ?? [])),
+        'ignored'    => array_map('strval', array_keys(IgnoredTags::lookup($clubId)[IgnoredTags::TAG] ?? [])),
+    ];
 }
 
 /** Pełny render HTML wraz z artefaktami. Powstaje NOWY wiersz w `reports`. */

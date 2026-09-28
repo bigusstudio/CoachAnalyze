@@ -89,9 +89,10 @@ def test_render_nie_zmienia_niczego_poza_placeholderami(generacja):
             "them": {"name": "ZzBeta", "short": "ZzBetaSkrot", "color": "#11CCFF"},
         },
         "match": {"season": "ZzSezon", "round": "ZzKolejka", "date": "ZzData"},
+        # Baner musi być NIEPUSTY, z tego samego powodu co `__BANER__` niżej
+        # (golden layout W3-b): zmienna dodana automatycznie + tag pominięty.
+        "dictionary_notice": {"auto_added": ["ZzTag"], "ignored": ["ZzNiewliczony"]},
     }
-    # TAG SPOZA SŁOWNIKA I SPOZA `VARS` szablonu — baner niewliczonych musi być
-    # NIEPUSTY, z tego samego powodu co `__BANER__` niżej (golden layout W3).
     ramka = dict(RAMKA, events=[dict(RAMKA["events"][0], tag="ZzNiewliczony")])
     # KIERUNEK PODANY JAWNIE, a nie wykryty z `RAMKA`: znaczniki grupy `kierunek`
     # przy nieznanym kierunku są PUSTYMI napisami, a pustego napisu nie da się
@@ -130,7 +131,7 @@ def test_render_nie_zmienia_niczego_poza_placeholderami(generacja):
     slots, _ = render.team_slots(ramka, config["teams"])
     slots.update(render.match_slots(config))
     slots.update(render.baner_slot(kierunek.get("warnings")))
-    slots.update(render.baner_niewliczone_slot(ramka, templat, render.wbudowane_tagi(szablon)))
+    slots.update(render.baner_niewliczone_slot(ramka, templat, render.wbudowane_tagi(szablon), config))
     slots.update(render.progi_slot())
     slots.update(render.vars_slot(templat))
     slots.update(render.roster_slot(config))
@@ -740,7 +741,7 @@ def test_v17_nie_ma_klipsa():
     assert "__POWROT_URL__" not in html and "ca-klips" not in html
 
 
-# ------------------------------------------------------------------ golden layout W3
+# ------------------------------------------------------------------ golden layout W3 / W3-b
 def _templat_w3(zmienne=("STRZAŁ",), uklad=("przeglad", "makro", "siatka")):
     return {
         "schema_version": 2,
@@ -748,44 +749,76 @@ def _templat_w3(zmienne=("STRZAŁ",), uklad=("przeglad", "makro", "siatka")):
                      for i, w in enumerate(uklad)],
         "variables": [{"id": "v_%03d" % (i + 1), "source": {"type": "tag", "raw": z},
                        "display_label": z, "color": "#112233", "sections": ["bilans"],
-                       "visible": True, "aliases": []} for i, z in enumerate(zmienne)],
+                       "visible": True, "aliases": [], "canon": None} for i, z in enumerate(zmienne)],
     }
 
 
-def test_niewliczone_tagi_od_najczestszego():
-    ramka = {"events": [{"tag": t} for t in ("STRZAŁ", "WYMYŚLONY", "WYMYŚLONY", "ZZZ", "AAA")]}
-    assert render.niewliczone_tagi(ramka, _templat_w3()) == [("WYMYŚLONY", 2), ("AAA", 1), ("ZZZ", 1)]
+def _ramka(*tagi):
+    return dict(RAMKA, events=RAMKA["events"] + [dict(RAMKA["events"][0], tag=t) for t in tagi])
 
 
-def test_niewliczone_bez_templatu_puste():
-    """Słownik domyślny nie jest decyzją klubu — bez templatu banera nie ma."""
-    assert render.niewliczone_tagi(RAMKA, None) == []
+WBUD = render.wbudowane_tagi(render.load_template(render.template_path_for("v21")))
 
 
-def test_alias_zmiennej_jest_wliczony():
-    t = _templat_w3()
-    t["variables"][0]["aliases"] = ["STRZAL STARY"]
-    assert render.niewliczone_tagi({"events": [{"tag": "STRZAL STARY"}]}, t) == []
+def _baner(html, rodzaj):
+    m = re.search(r'<div class="baner baner--%s[^>]*>(.*?)</div>' % rodzaj, html, re.S)
+    return m.group(1) if m else None
 
 
-def test_baner_niewliczone_tylko_gdy_cos_nie_wliczone():
-    html, raport = render.render(RAMKA, template_path="v21", report_template=_templat_w3())
-    assert 'class="baner baner--niewliczone' not in html
-    assert "__BANER_NIEWLICZONE__" not in html
+def test_dodane_automatycznie_tylko_obecne_w_templacie():
+    t = _templat_w3(("STRZAŁ", "WYMYŚLONY"))
+    cfg = {"dictionary_notice": {"auto_added": ["WYMYŚLONY", "USUNIĘTY"]}}
+    assert render.dodane_automatycznie(t, cfg) == ["WYMYŚLONY"]
+    assert render.dodane_automatycznie(None, cfg) == []
+
+
+def test_baner_informacyjny_przy_zmiennych_dodanych_automatycznie():
+    t = _templat_w3(("STRZAŁ", "WYMYŚLONY"))
+    cfg = {"dictionary_notice": {"auto_added": ["WYMYŚLONY"]}}
+    html, raport = render.render(_ramka("WYMYŚLONY"), template_path="v21", report_template=t, config=cfg)
+    info = _baner(html, "info")
+    assert info is not None and "1 nowy rodzaj zdarzeń dodany automatycznie: WYMYŚLONY" in info
+    assert render.ADRES_SLOWNIKA in info and "baner__zamknij" in info
+    assert _baner(html, "niewliczone") is None, "wliczony tag nie jest ostrzeżeniem"
+    assert "ca-baner-info:" in html, "zamknięcie zapamiętane per raport"
     assert raport["unresolved_placeholders"] == []
 
-    ramka = dict(RAMKA, events=RAMKA["events"] + [dict(RAMKA["events"][0], tag="WYMYŚLONY")])
-    html, _ = render.render(ramka, template_path="v21", report_template=_templat_w3())
-    assert html.count('class="baner baner--niewliczone') == 1
-    assert "WYMYŚLONY" in html and render.ADRES_SLOWNIKA in html
+
+def test_baner_ostrzegawczy_dla_pominietych():
+    cfg = {"dictionary_notice": {"ignored": ["POMINIĘTY", "NISKUTECZNY"]}}
+    html, _ = render.render(_ramka("POMINIĘTY", "POMINIĘTY", "NISKUTECZNY"), template_path="v21",
+                            report_template=_templat_w3(), config=cfg)
+    ostrz = _baner(html, "niewliczone")
+    assert ostrz is not None and "POMINIĘTY (2) — pominięty" in ostrz
+    assert "NISKUTECZNY" not in ostrz, "tag wbudowany liczy się mimo decyzji — nie kłamiemy"
+    assert _baner(html, "info") is None
 
 
-def test_inne_zdarzenia_znikaja_gdy_wszystko_wliczone():
-    """Kafel „Inne zdarzenia" (siatka) ma sens tylko przy nierozpoznanych tagach."""
+def test_bez_znaczenia_w_sekcjach_znaczeniowych():
+    t = _templat_w3(("STRZAŁ", "MOJE SBZ", "ZDOBYCIE SBZ"))
+    t["variables"][1]["sections"] = ["bilans", "tl_sbz"]
+    t["variables"][2]["sections"] = ["tl_sbz"]          # wbudowany — ma znaczenie
+    ramka = _ramka("MOJE SBZ", "ZDOBYCIE SBZ")
+    assert render.bez_znaczenia(ramka, t, WBUD) == [("MOJE SBZ", ["tl_sbz"])]
+    t["variables"][1]["canon"] = "sbz_entry"
+    assert render.bez_znaczenia(ramka, t, WBUD) == []
+    t["variables"][1]["canon"] = None
+    assert render.bez_znaczenia(RAMKA, t, WBUD) == [], "bez zdarzeń — „–” zasłużona"
+    html, _ = render.render(ramka, template_path="v21", report_template=t)
+    assert "MOJE SBZ — bez znaczenia: oś SBZ" in (_baner(html, "niewliczone") or "")
+
+
+def test_bez_templatu_bez_banerow():
+    cfg = {"dictionary_notice": {"auto_added": ["X"], "ignored": ["STRZAŁ"]}}
+    html, _ = render.render(RAMKA, template_path="v21", config=cfg)
+    assert _baner(html, "info") is None and _baner(html, "niewliczone") is None
+
+
+def test_inne_zdarzenia_tylko_gdy_cos_nie_wliczone():
     html, _ = render.render(RAMKA, template_path="v21", report_template=_templat_w3())
     assert 'data-widget="siatka"' not in html
-    ramka = dict(RAMKA, events=RAMKA["events"] + [dict(RAMKA["events"][0], tag="WYMYŚLONY")])
-    html, _ = render.render(ramka, template_path="v21", report_template=_templat_w3())
+    cfg = {"dictionary_notice": {"ignored": ["POMINIĘTY"]}}
+    html, _ = render.render(_ramka("POMINIĘTY"), template_path="v21", report_template=_templat_w3(), config=cfg)
     assert 'data-widget="siatka"' in html
 
 
@@ -798,19 +831,12 @@ def test_znaczniki_trybu_i_karty_przechodza_nietkniete():
 
 
 def test_v17_bez_znacznikow_w3():
-    html, _ = render.render(RAMKA, template_path="v17")
-    assert "__TRYB__" not in html and "__KARTA_URL__" not in html and 'class="baner baner--niewliczone' not in html
+    html, _ = render.render(RAMKA, template_path="v17",
+                            config={"dictionary_notice": {"auto_added": ["STRZAŁ"]}},
+                            report_template=_templat_w3())
+    assert "__TRYB__" not in html and "__KARTA_URL__" not in html and 'data-baner=' not in html
 
 
-def test_tagi_wbudowane_szablonu_nie_sa_niewliczone():
-    """NISKUTECZNY liczy pressing, DRUGI KONTAKT — pojedynki, bez słownika klubu.
-    Baner nazywający je „nie wliczonymi" kłamałby o liczbach pod spodem."""
-    wbud = render.wbudowane_tagi(render.load_template(render.template_path_for("v21")))
-    assert "NISKUTECZNY" in wbud and "DRUGI KONTAKT" in wbud
+def test_tagi_wbudowane_szablonu():
+    assert "NISKUTECZNY" in WBUD and "DRUGI KONTAKT" in WBUD
     assert render.wbudowane_tagi(render.load_template(render.template_path_for("v17"))) == ()
-    ramka = dict(RAMKA, events=RAMKA["events"] + [dict(RAMKA["events"][0], tag=t)
-                                                  for t in ("NISKUTECZNY", "SBZ PODAJĄCY", "WYMYŚLONY")])
-    assert render.niewliczone_tagi(ramka, _templat_w3(), wbud) == [("WYMYŚLONY", 1)]
-    html, _ = render.render(ramka, template_path="v21", report_template=_templat_w3())
-    baner = re.search(r'<div class="baner baner--niewliczone[^>]*>(.*?)</div>', html, re.S).group(1)
-    assert "WYMYŚLONY" in baner and "NISKUTECZNY" not in baner and "SBZ PODAJĄCY" not in baner

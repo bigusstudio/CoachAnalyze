@@ -121,6 +121,9 @@ if (preg_match("/const VARS = \\{(.*?)\\n\\};/s", $szablonV21, $mv) === 1) {
 check('kopia tagi_wbudowane.json = klucze VARS szablonu v21',
     $kluczeVars !== [] && \CoachAnalyze\UstawieniaKlubu::wbudowane() === $kluczeVars,
     'odśwież app/src/data/tagi_wbudowane.json z render.wbudowane_tagi()');
+check('sekcje znaczeniowe PHP = render.SEKCJE_ZNACZENIOWE',
+    preg_match('/^SEKCJE_ZNACZENIOWE = \\{(.*)\\}$/m', (string) file_get_contents($root . '/engine/coachanalyze/render.py'), $ms) === 1
+    && preg_match_all('/"([a-z_]+)":/', $ms[1], $mz) > 0 && $mz[1] === \CoachAnalyze\UstawieniaKlubu::SEKCJE_ZNACZENIOWE);
 check('alias silnika SBZ PODAJĄCY → ZDOBYCIE SBZ',
     (NazwaZmiennej::aliasySilnika()[NazwaZmiennej::klucz('SBZ PODAJĄCY')] ?? '') === 'ZDOBYCIE SBZ');
 
@@ -171,16 +174,14 @@ check('ekran różnic: nowe to dokładnie DRUGI KONTAKT i REAKCJA',
     $nowePrzed === ['DRUGI KONTAKT', 'REAKCJA'], implode(', ', $nowePrzed));
 
 [$dodane, $wersja] = AutoImport::autoZmienne($importId, Imports::find($importId));
-// Golden layout W3: nowe tagi NIE wchodzą do templatu przy imporcie — czekają
-// w Słowniku klubu („Nierozpoznane"). Wersja powstaje wyłącznie z aliasów.
-check('auto (W3): import nie dopisuje nowych zmiennych — DRUGI KONTAKT i REAKCJA czekają w Słowniku',
-    $dodane === [], implode(', ', $dodane));
+check('auto: dodane DRUGI KONTAKT i REAKCJA — i nic więcej',
+    $dodane === ['DRUGI KONTAKT', 'REAKCJA'], implode(', ', $dodane));
 check('auto: wersja 2', $wersja === 2, var_export($wersja, true));
 
 $config = ReportTemplates::decodeConfig(ReportTemplates::current(1)['config']);
 $z = poNazwie($config);
-check('auto (W3): DRUGI KONTAKT nie jest zmienną templatu',
-    !isset($z['tag|DRUGI KONTAKT']) && !isset($z['label|REAKCJA']));
+check('auto: nowa zmienna ma etykietę = surowa nazwa',
+    ($z['tag|DRUGI KONTAKT']['display_label'] ?? '') === 'DRUGI KONTAKT');
 check('auto: „INNE" dopisane jako alias zmiennej „Inne", bez drugiej zmiennej',
     !isset($z['label|INNE']) && in_array('INNE', $z['label|Inne']['aliases'] ?? [], true));
 check('auto: SBZ PODAJĄCY → alias ZDOBYCIE SBZ, bez osobnej zmiennej',
@@ -188,13 +189,11 @@ check('auto: SBZ PODAJĄCY → alias ZDOBYCIE SBZ, bez osobnej zmiennej',
     && in_array('SBZ PODAJĄCY', $z['tag|ZDOBYCIE SBZ']['aliases'] ?? [], true));
 check('auto: III STREFA PODAJĄCY/OTRZYMUJĄCY → alias III STREFA',
     in_array('III STREFA PODAJĄCY/OTRZYMUJĄCY', $z['tag|III STREFA']['aliases'] ?? [], true));
-check('auto: notka wersji dosłowna — ekran pokrycia ją znajduje (bez dodanych zmiennych)',
-    ReportTemplates::autoForImport(1, $importId) !== null
-    && (ReportTemplates::autoForImport(1, $importId)['added'] ?? []) === []);
+check('auto: notka wersji dosłowna — ekran pokrycia ją znajduje',
+    (ReportTemplates::autoForImport(1, $importId)['added'] ?? null) === ['DRUGI KONTAKT', 'REAKCJA']);
 
 $po = TemplateDiff::policz($meta, $config, ['tag' => [], 'label' => []]);
-check('po imporcie poza templatem zostają DOKŁADNIE nowe tagi — do decyzji w Słowniku',
-    array_column($po['nowe'], 'name') === ['DRUGI KONTAKT', 'REAKCJA'],
+check('po imporcie „Poza templatem klubu" jest puste', $po['nowe'] === [],
     implode(', ', array_column($po['nowe'], 'name')));
 
 [$dodane2, $wersja2] = AutoImport::autoZmienne($importId, Imports::find($importId));

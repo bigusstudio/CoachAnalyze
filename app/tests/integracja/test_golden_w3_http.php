@@ -8,8 +8,10 @@ declare(strict_types=1);
  * 1. Wgraj → Przygotuj → Postęp → Raport, BEZ ekranu różnic i bez pustej mety:
  *    rywal podpowiedziany z kolumny drużyn, ostrzeżenie o podobnym klubie,
  *    data wymagana, wynik opcjonalny.
- * 2. Raport z tagiem spoza słownika ma baner „nie wliczone → Słownik klubu";
- *    po „Wlicz jako… nowa zmienna" i przeliczeniu w tle — nie ma.
+ * 2. W3-b: wymyślony tag dopisuje się do templatu SAM przy imporcie — raport
+ *    ma baner INFORMACYJNY i tag jest wierszem tabeli makro. Tag świadomie
+ *    pominięty i zmienna bez znaczenia w osi SBZ dają baner OSTRZEGAWCZY;
+ *    po „Wlicz jako…" w Słowniku klubu i odświeżeniu w tle — ostrzeżenia nie ma.
  * 3. Przestawienie sekcji 04 → 02 w Układzie raportu zmienia kolejność
  *    zakładek raportu po przeliczeniu. Przegląd zostaje pierwszy.
  * 4. Trener: bez Wgraj i bez Ustawień klubu (404), raport w trybie „trener".
@@ -200,6 +202,10 @@ function eksport(): string
         ['STRATA',        '30', '40', 'KLUB B ZAMOŚĆ', '', '',      '50', '30'],
         ['WYMYŚLONY TAG', '50', '60', 'KLUB A',        '', '',      '60', '25'],
         ['WYMYŚLONY TAG', '70', '80', 'KLUB A',        '', '',      '62', '28'],
+        ['POMIJANY',      '90', '91', 'KLUB A',        '', '',      '40', '20'],
+        ['POMIJANY',      '95', '96', 'KLUB A',        '', '',      '41', '21'],
+        ['POMIJANY',      '99', '99', 'KLUB A',        '', '',      '42', '22'],
+        ['MOJE SBZ',     '120','121', 'KLUB A',        '', '',      '88', '34'],
     ];
     $out = "tag_name,begin,end,team,labels,comment,pos_x_meters,pos_y_meters\n";
     foreach ($wiersze as $w) {
@@ -224,8 +230,12 @@ $konfig = \CoachAnalyze\Configurator::config([
      'display_label' => 'Strzały', 'color' => '#E8590C', 'sections' => ['bilans', 'mapy'], 'visible' => true],
     ['id' => 'v_002', 'source' => ['type' => 'tag', 'raw' => 'STRATA'], 'canon' => null,
      'display_label' => 'Straty', 'color' => '#8899AA', 'sections' => ['bilans', 'tl_bilans'], 'visible' => true],
-], ['bilans', 'mapy', 'tl_bilans'], ['NASZA', 'MASZA'], $uklad);
+    // Bez kanonu w osi SBZ i niewbudowana — przypadek „–" z W1.
+    ['id' => 'v_003', 'source' => ['type' => 'tag', 'raw' => 'MOJE SBZ'], 'canon' => null,
+     'display_label' => 'Moje SBZ', 'color' => '#A8780A', 'sections' => ['bilans', 'tl_sbz'], 'visible' => true],
+], ['bilans', 'mapy', 'tl_bilans', 'tl_sbz'], ['NASZA', 'MASZA'], $uklad);
 check('templat v1 klubu 1', ReportTemplates::saveNewVersion(1, $konfig, 1) === 1);
+\CoachAnalyze\IgnoredTags::add(1, 'tag', 'POMIJANY', 1);   // świadome „pomiń" sprzed importu
 
 $hash = Auth::hashPassword('bardzo-dlugie-haslo-testowe');
 Db::run("INSERT INTO users (email, pass_hash, display_name, role, club_id) VALUES ('trener@example.com', :h, 'Trener', 'viewer', 1)", ['h' => $hash]);
@@ -313,29 +323,55 @@ check('po zbudowaniu Postęp przenosi na raport',
 $raportId = (int) ($mr[1] ?? 0);
 
 // ---------------------------------------------------------------- 3. Raport
-echo "\n== 3. Raport: tryb, zakładki, baner niewliczonych ==\n";
+echo "\n== 3. Raport: tryb, zakładki, baner informacyjny i ostrzegawczy ==\n";
 
 $raport = http('GET', '/raport/' . $raportId);
 check('raport odpowiada', $raport['status'] === 200);
 check('tryb odbiorcy: analityk', str_contains($raport['body'], 'data-tryb="analityk"'));
 check('znaczniki serwowania wypełnione', !str_contains($raport['body'], '__TRYB__')
     && !str_contains($raport['body'], '__KARTA_URL__') && !str_contains($raport['body'], '__POWROT_URL__'));
-check('baner: 1 rodzaj zdarzeń nie wliczony, z odsyłaczem do Słownika',
-    str_contains($raport['body'], 'class="baner baner--niewliczone')
-    && str_contains($raport['body'], 'WYMYŚLONY TAG')
-    && str_contains($raport['body'], '/klub/ustawienia?zakladka=slownik'));
+ca_test_db($baza);
+$v2 = ReportTemplates::decodeConfig(ReportTemplates::current(1)['config']);
+$nazwy2 = array_column(array_column($v2['variables'], 'source'), 'raw');
+check('import dopisał WYMYŚLONY TAG sam (wersja 2), POMIJANY — nie',
+    ReportTemplates::currentVersion(1) === 2 && in_array('WYMYŚLONY TAG', $nazwy2, true)
+    && !in_array('POMIJANY', $nazwy2, true), implode(', ', $nazwy2));
+
+$info = preg_match('#<div class="baner baner--info[^>]*>(.*?)</div>#s', $raport['body'], $mi2) === 1 ? $mi2[1] : '';
+check('baner INFORMACYJNY: dodany automatycznie + Słownik + zamknięcie',
+    str_contains($info, '1 nowy rodzaj zdarzeń dodany automatycznie: WYMYŚLONY TAG')
+    && str_contains($info, 'sprawdź etykiety w Słowniku klubu')
+    && str_contains($info, '/klub/ustawienia?zakladka=slownik') && str_contains($info, 'baner__zamknij'), $info);
+check('zamknięcie zapamiętane per raport', str_contains($raport['body'], "'ca-baner-info:'+location.pathname"));
+
+// Tabela makro ma wiersz na każdy klucz VARS obecny w zdarzeniach; templat klubu
+// dokłada klucze przez `__VARS_TEMPLATU__`.
+$vars = preg_match('#Object\.entries\((\{.*?\})\)\.forEach\(\(\[k,v\]\)=>\{VARS\[k\]#s', $raport['body'], $mv) === 1
+    ? json_decode($mv[1], true) : null;
+$dane = preg_match('#const DATA = (\{.*?\});\n#s', $raport['body'], $md) === 1 ? json_decode($md[1], true) : null;
+check('WYMYŚLONY TAG wliczony w tabeli makro (klucz VARS + zdarzenia w danych)',
+    is_array($vars) && isset($vars['WYMYŚLONY TAG'])
+    && is_array($dane) && count(array_filter($dane['events'], static fn($e) => ($e['tag'] ?? '') === 'WYMYŚLONY TAG')) === 2);
+
+$ostrz = preg_match('#<div class="baner baner--niewliczone[^>]*>(.*?)</div>#s', $raport['body'], $mo) === 1 ? $mo[1] : '';
+check('baner OSTRZEGAWCZY: pominięty tag i zmienna bez znaczenia',
+    str_contains($ostrz, 'POMIJANY (3) — pominięty') && str_contains($ostrz, 'MOJE SBZ — bez znaczenia: oś SBZ')
+    && str_contains($ostrz, 'Wlicz w Słowniku klubu'), $ostrz);
+check('nowy (wliczony) tag NIE jest w ostrzeżeniu', !str_contains($ostrz, 'WYMYŚLONY'));
 check('kolejność zakładek z Układu', kolejnosc($raport['body']) === ['przeglad', 'makro', 'bilans', 'mapy', 'tl_bilans'],
     implode(',', kolejnosc($raport['body'])));
 
 // ---------------------------------------------------------------- 4. Słownik
-echo "\n== 4. Słownik klubu: Nierozpoznane → „Wlicz jako…” ==\n";
+echo "\n== 4. Słownik klubu: Nierozpoznane = pominięte + bez znaczenia ==\n";
 
 $slownik = http('GET', '/klub/ustawienia?zakladka=slownik');
 check('Słownik odpowiada', $slownik['status'] === 200);
-check('WYMYŚLONY TAG w Nierozpoznanych z liczbą', str_contains($slownik['body'], 'Nierozpoznane (1)')
-    && str_contains($slownik['body'], 'WYMYŚLONY TAG') && str_contains($slownik['body'], '2 zdarzeń'));
-check('Wliczane: surowa nazwa + etykieta', str_contains($slownik['body'], 'Wliczane (2)')
-    && str_contains($slownik['body'], 'value="Strzały"'));
+check('Nierozpoznane (2): POMIJANY i MOJE SBZ, z powodem i liczbą', str_contains($slownik['body'], 'Nierozpoznane (2)')
+    && str_contains($slownik['body'], 'POMIJANY') && str_contains($slownik['body'], '3 zdarzeń')
+    && str_contains($slownik['body'], 'bez znaczenia w: Oś SBZ'));
+check('nowy tag NIE jest „nierozpoznany" — jest w Wliczanych', str_contains($slownik['body'], 'Wliczane (4)')
+    && preg_match('#name="wlicz_nazwa\[\d+\]" value="WYMYŚLONY TAG"#', $slownik['body']) !== 1
+    && str_contains($slownik['body'], 'value="WYMYŚLONY TAG"'));
 check('kontynuacja zmiennej jako opcja', str_contains($slownik['body'], 'kontynuacja zmiennej Strzały'));
 check('[op] Zaawansowane niewidoczne dla analityka', !str_contains($slownik['body'], 'zakladka=zaawansowane'));
 check('analityk nie wejdzie w Zaawansowane (spada na Układ)',
@@ -343,26 +379,32 @@ check('analityk nie wejdzie w Zaawansowane (spada na Układ)',
 
 $zapis = http('POST', '/klub/ustawienia/slownik', ['form' => [
     'csrf' => csrfZ($slownik['body']),
-    'wlicz' => ['0' => 'nowa'], 'wlicz_nazwa' => ['0' => 'WYMYŚLONY TAG'],
-    'wlicz_etykieta' => ['0' => 'Wymyślony'],
-    // Podmiana nazwy spoza listy nie wstawia tagu do templatu.
-    'etykieta' => ['0' => 'Strzały', '1' => 'Straty'],
-    'sekcje' => ['0' => ['bilans', 'mapy'], '1' => ['bilans', 'tl_bilans']],
+    'wlicz' => ['0' => 'nowa', '1' => 'bilans', '2' => 'nowa'],
+    'wlicz_nazwa' => ['0' => 'POMIJANY', '1' => 'MOJE SBZ', '2' => 'PODRZUCONY'],   // spoza listy — bez skutku
+    'wlicz_etykieta' => ['0' => 'Pomijany'],
+    'etykieta' => ['3' => 'Wymyślony'],
+    'sekcje' => ['3' => ['bilans']],
 ]]);
-check('zapis → Słownik z partią przeliczeń',
+check('zapis → Słownik z partią odświeżania',
     $zapis['status'] === 302 && str_starts_with((string) $zapis['location'], '/klub/ustawienia?zakladka=slownik&partia='),
     (string) $zapis['location']);
 ca_test_db($baza);
-$v2 = ReportTemplates::decodeConfig(ReportTemplates::current(1)['config']);
-$nazwy = array_column(array_column($v2['variables'], 'source'), 'raw');
-check('nowa wersja templatu z WYMYŚLONY TAG (surowa nazwa), etykieta „Wymyślony"',
-    ReportTemplates::currentVersion(1) === 2 && in_array('WYMYŚLONY TAG', $nazwy, true)
-    && end($v2['variables'])['display_label'] === 'Wymyślony');
+$v3 = ReportTemplates::decodeConfig(ReportTemplates::current(1)['config']);
+$poRaw = [];
+foreach ($v3['variables'] as $z) { $poRaw[$z['source']['raw']] = $z; }
+check('wersja 3: POMIJANY wliczony („Pomijany"), MOJE SBZ bez osi SBZ, etykieta „Wymyślony"',
+    ReportTemplates::currentVersion(1) === 3
+    && ($poRaw['POMIJANY']['display_label'] ?? '') === 'Pomijany'
+    && ($poRaw['MOJE SBZ']['sections'] ?? null) === ['bilans']
+    && ($poRaw['WYMYŚLONY TAG']['display_label'] ?? '') === 'Wymyślony'
+    && !isset($poRaw['PODRZUCONY']));
+check('POMIJANY zdjęty z „pominiętych"', empty(\CoachAnalyze\IgnoredTags::lookup(1)['tag']['POMIJANY']));
 
 cronDoKonca();
 $raport2 = http('GET', '/raport/' . $raportId);
-check('po przeliczeniu w tle baneru nie ma', $raport2['status'] === 200
+check('po odświeżeniu w tle ostrzeżenia nie ma', $raport2['status'] === 200
     && !str_contains($raport2['body'], 'class="baner baner--niewliczone'));
+check('baner informacyjny zostaje (zamyka go analityk)', str_contains($raport2['body'], 'class="baner baner--info'));
 $chmurka = Db::one("SELECT * FROM notifications WHERE entity = 'club' AND entity_id = 1 ORDER BY id DESC LIMIT 1");
 check('chmurka po zakończeniu odświeżania, adres dostępny dla analityka (nie [op])',
     $chmurka !== null && str_starts_with((string) $chmurka['url'], '/klub/ustawienia?partia='),
@@ -401,8 +443,8 @@ check('zapis układu → partia przeliczeń',
     $zUkl['status'] === 302 && str_contains((string) $zUkl['location'], 'partia='), (string) $zUkl['location']);
 ca_test_db($baza);
 $v3 = ReportTemplates::decodeConfig(ReportTemplates::current(1)['config']);
-check('templat v3: mapy na 02, Przegląd na 01',
-    ReportTemplates::currentVersion(1) === 3
+check('templat v4: mapy na 02, Przegląd na 01',
+    ReportTemplates::currentVersion(1) === 4
     && \CoachAnalyze\ReportLayout::widgety($v3['sections']) === ['przeglad', 'mapy', 'makro', 'bilans', 'tl_bilans'],
     implode(',', \CoachAnalyze\ReportLayout::widgety($v3['sections'])));
 

@@ -94,7 +94,7 @@ Znaczniki **tylko w generacji v21**, opcjonalne całą grupą (v17 nie ma żadne
 | `__TEAM_*_COLOR_L__` · `__TEAM_*_DIM_L__` | `motyw_jasny` | Barwa klubu dla `data-theme="light"` — `color_light` albo przyciemnienie `color` |
 | `__SEZON__` · `__KOLEJKA__` · `__DATA_MECZU__` | `meta_meczu` | Meta meczu z `config.match`; brak wartości = pusty napis |
 | `__BANER__` | `baner` | Pasek nad raportem. Dziś jeden przypadek: `KIERUNEK_ZMIANA_POLOWY`. Brak powodu = pusty napis |
-| `__BANER_NIEWLICZONE__` | `baner_niewliczone` | Od 0.16.6 (golden layout W3). „N rodzajów zdarzeń nie wliczone: … → Wlicz w Słowniku klubu" — tagi zdarzeń spoza zmiennych templatu (`render.niewliczone_tagi`). Bez templatu albo gdy wszystko wliczone = pusty napis. Odsyłacz stały: `/klub/ustawienia?zakladka=slownik`; w raporcie publicznym i u trenera schowany przez `data-tryb` |
+| `__BANER_NIEWLICZONE__` | `baner_niewliczone` | Od 0.16.6, treść od 0.16.7 (golden layout W3-b). Do dwóch pasków: **informacyjny** (`.baner--info`, `data-baner="info"`) — „N nowych rodzajów zdarzeń dodanych automatycznie: … → sprawdź etykiety w Słowniku klubu", zamykany, zamknięcie w `localStorage` pod `ca-baner-info:{adres raportu}`; **ostrzegawczy** (`.baner--niewliczone`) — tagi z `config.dictionary_notice.ignored` obecne w zdarzeniach (bez tagów wbudowanych szablonu) i zmienne bez kanonu w sekcjach znaczeniowych (`render.SEKCJE_ZNACZENIOWE`: oś SBZ, oś III strefy, pojedynki), które mają zdarzenia i nie są tagiem wbudowanym. Bez templatu albo bez powodu = pusty napis. Odsyłacz: `/klub/ustawienia?zakladka=slownik`; w raporcie publicznym i u trenera schowane przez `data-tryb` |
 | `__PROGI__` | `progi` | Progi faktów Przeglądu jako literał obiektu JS — patrz niżej |
 | `__VARS_TEMPLATU__` | `vars_templatu` | Nadpisania słownika zmiennych szablonu (`display`, `aliases`) — patrz niżej |
 
@@ -593,6 +593,18 @@ zostawiać „kolejka  · ". Operator widzi, że mety nie wypełniono, a nie ozd
 Wartości wpisuje człowiek, a raport wisi pod publicznym adresem — przechodzą więc
 przez ucieczkę HTML plus usunięcie grawisu i `${`, bo w szablonie v21 lądują
 jednocześnie w treści HTML i w literale szablonowym JS.
+
+### `config.dictionary_notice` (od silnika 0.16.7)
+
+Opcjonalny obiekt w `config.json`, wypełniany przez `run_job.php` (`zapowiedzSlownika`):
+
+| Klucz | Treść |
+|---|---|
+| `auto_added` | surowe nazwy zmiennych, które templat dostał automatycznie przy TYM imporcie (`ReportTemplates::autoForImport`); silnik pokazuje tylko te, które templat nadal ma |
+| `ignored` | tagi klubu z `club_ignored_tags` („pomiń na stałe") |
+
+Brak klucza = oba pusto (raport bez baneru słownika). Silnik nie chodzi do bazy —
+dostaje decyzje gotowe.
 
 ### Znaczniki serwowania (od silnika 0.16.4)
 

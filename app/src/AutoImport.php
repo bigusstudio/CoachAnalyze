@@ -253,20 +253,13 @@ final class AutoImport
             return [[], null];
         }
 
-        /*
-         * NOWE TAGI NIE WCHODZĄ DO TEMPLATU PRZY IMPORCIE (golden layout W3).
-         *
-         * Zapis słownika dzieje się wyłącznie w Słowniku klubu („Wlicz jako…").
-         * Tag, którego klub nie wliczył, trafia do „Nierozpoznanych", a raport
-         * mówi o nim banerem — zamiast po cichu dokładać zmienną, której nikt
-         * nie nazwał ani nie przypisał do sekcji. Wcześniej (sesja 8) import
-         * dopisywał tu `Configurator::autoZmienne()`.
-         *
-         * ZOSTAJĄ ALIASY niżej: wariant zapisu nazwy, która JUŻ jest zmienną
-         * („INNE" przy „Inne"), to nie nowa decyzja, a bez aliasu baner w raporcie
-         * (porównanie dosłowne) i Słownik (po normalizacji) mówiłyby co innego.
-         */
-        $nowe = [];
+        $nowe = Configurator::autoZmienne(
+            $meta,
+            $config,
+            IgnoredTags::lookup($clubId),
+            is_array($meta['palette'] ?? null) ? $meta['palette'] : [],
+            self::BARWY
+        );
 
         $zmienne = array_merge(array_values((array) $config['variables']), $nowe);
 

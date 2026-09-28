@@ -581,63 +581,161 @@ def wbudowane_tagi(szablon_html):
     return tuple(_KLUCZ_VARS_RE.findall(m.group(1))) if m else ()
 
 
-def niewliczone_tagi(frame, template=None, wbudowane=()):
-    """[(tag, liczba)] zdarzeń, których tag NIE jest liczony w raporcie.
+# Sekcje budowane z POJĘĆ wbudowanych szablonu (ZDOBYCIE SBZ, III STREFA, 1x1…).
+# Zmienna bez kanonu, która nie jest tagiem wbudowanym, nie ma tam czego
+# pokazać — raport daje „–" (przypadek z W1). Nazwy do banera, po polsku.
+SEKCJE_ZNACZENIOWE = {"tl_sbz": "oś SBZ", "tl_iii": "oś III strefy", "duels": "pojedynki"}
 
-    Golden layout W3: raport mówi wprost, że część zdarzeń nie weszła do
-    analizy, zamiast udawać kompletność. Znane są: surowe nazwy zmiennych-tagów,
-    ich aliasy, tagi wbudowane szablonu (`wbudowane_tagi`) i aliasy silnika
-    prowadzące do którejkolwiek z nich (szablon je przemianowuje).
-    Bez templatu — pusta lista: słownik domyślny nie jest decyzją klubu.
 
-    Kolejność: od najczęstszego, przy remisie alfabetycznie — wyjście powtarzalne.
-    """
+def _nazwy_zmiennej(z):
+    """Surowa nazwa zmiennej-tagu i jej aliasy; pusto dla etykiet."""
+    if not isinstance(z, dict):
+        return set()
+    zrodlo = z.get("source") or {}
+    if zrodlo.get("type") not in (None, "tag"):
+        return set()
+    nazwy = {str(zrodlo.get("raw") or "").strip()}
+    nazwy.update(str(a).strip() for a in (z.get("aliases") or ()) if str(a or "").strip())
+    nazwy.discard("")
+    return nazwy
+
+
+def _z_aliasami_silnika(nazwy):
+    """Nazwy + aliasy silnika prowadzące do którejś z nich (szablon je przemianowuje)."""
+    from . import aliasy
+    out = set(nazwy)
+    for glowna, lista in aliasy.domyslne().items():
+        if glowna in out:
+            out.update(lista)
+    return out
+
+
+def _zmienne(template):
     zmienne = (template or {}).get("variables")
-    if not isinstance(zmienne, list):
+    return zmienne if isinstance(zmienne, list) else None
+
+
+def _powiadomienie(config):
+    wpis = (config or {}).get("dictionary_notice") or {}
+    return wpis if isinstance(wpis, dict) else {}
+
+
+def dodane_automatycznie(template=None, config=None):
+    """Surowe nazwy zmiennych, które TEN import dopisał do templatu sam.
+
+    Listę podaje panel (`config.dictionary_notice.auto_added`, z notki wersji
+    „auto: import #N"); silnik zostawia tylko te, które templat nadal ma —
+    zmienna usunięta w Słowniku klubu nie jest już „nowa".
+    """
+    zmienne = _zmienne(template)
+    if zmienne is None:
+        return []
+    obecne = set()
+    for z in zmienne:
+        obecne.update(_nazwy_zmiennej(z))
+    out = []
+    for n in _powiadomienie(config).get("auto_added") or ():
+        n = str(n)
+        if n in obecne and n not in out:
+            out.append(n)
+    return out
+
+
+def pominiete_tagi(frame, template=None, config=None, wbudowane=()):
+    """[(tag, liczba)] zdarzeń tagów ŚWIADOMIE POMINIĘTYCH (club_ignored_tags).
+
+    Tag wbudowany szablonu liczy się mimo decyzji — nie nazywamy go pominiętym,
+    bo liczby pod banerem by temu przeczyły. Od najczęstszego, potem alfabetycznie.
+    """
+    zmienne = _zmienne(template)
+    if zmienne is None:
+        return []
+    pominiete = {str(n) for n in (_powiadomienie(config).get("ignored") or ())}
+    if not pominiete:
         return []
     znane = set(wbudowane)
     for z in zmienne:
-        if not isinstance(z, dict):
-            continue
-        zrodlo = z.get("source") or {}
-        if zrodlo.get("type") not in (None, "tag"):
-            continue
-        raw = str(zrodlo.get("raw") or "").strip()
-        if raw:
-            znane.add(raw)
-        znane.update(str(a).strip() for a in (z.get("aliases") or ()) if str(a or "").strip())
-    from . import aliasy
-    for glowna, lista in aliasy.domyslne().items():
-        if glowna in znane:
-            znane.update(lista)
+        znane.update(_nazwy_zmiennej(z))
+    znane = _z_aliasami_silnika(znane)
     licznik = {}
     for e in frame.get("events") or []:
         tag = e.get("tag")
-        if tag and tag not in znane:
+        if tag in pominiete and tag not in znane:
             licznik[tag] = licznik.get(tag, 0) + 1
     return sorted(licznik.items(), key=lambda kv: (-kv[1], kv[0]))
+
+
+def bez_znaczenia(frame, template=None, wbudowane=()):
+    """[(surowa nazwa, [sekcje])] zmiennych bez kanonu w sekcjach znaczeniowych.
+
+    Tylko zmienne, które mają zdarzenia w tym meczu: zmienna bez zdarzeń daje
+    „–" zasłużenie i nie ma o czym ostrzegać.
+    """
+    zmienne = _zmienne(template)
+    if zmienne is None:
+        return []
+    wbud = _z_aliasami_silnika(set(wbudowane))
+    tagi = {e.get("tag") for e in frame.get("events") or []}
+    out = []
+    for z in zmienne:
+        nazwy = _nazwy_zmiennej(z)
+        if not nazwy or z.get("canon") is not None or nazwy & wbud or not nazwy & tagi:
+            continue
+        sekcje = [s for s in (z.get("sections") or ()) if s in SEKCJE_ZNACZENIOWE]
+        if sekcje:
+            out.append((str((z.get("source") or {}).get("raw")), sekcje))
+    return out
+
+
+def niewliczone(frame, template=None, config=None, wbudowane=()):
+    """Czy raport ma co ostrzegać: pominięte tagi albo zmienne bez znaczenia."""
+    return bool(pominiete_tagi(frame, template, config, wbudowane)
+                or bez_znaczenia(frame, template, wbudowane))
 
 
 # Adres Słownika klubu w panelu — stała ścieżka, nie zależy od meczu.
 ADRES_SLOWNIKA = "/klub/ustawienia?zakladka=slownik"
 
 
-def baner_niewliczone_slot(frame, template=None, wbudowane=()):
-    """`{'__BANER_NIEWLICZONE__': '…'}` — baner albo pusty napis (W3)."""
-    tagi = niewliczone_tagi(frame, template, wbudowane)
-    if not tagi:
-        return {"__BANER_NIEWLICZONE__": ""}
-    nazwy = ", ".join(
-        "{} ({})".format(html_mod.escape(t), n) for t, n in tagi[:6]
-    ) + (", …" if len(tagi) > 6 else "")
-    rodzaje = len(tagi)
-    slowo = "rodzaj zdarzeń nie wliczony" if rodzaje == 1 else (
-        "rodzaje zdarzeń nie wliczone" if 2 <= rodzaje % 10 <= 4 and not 12 <= rodzaje % 100 <= 14
-        else "rodzajów zdarzeń nie wliczonych")
-    return {"__BANER_NIEWLICZONE__": (
-        '<div class="baner baner--niewliczone tylko-analityk" role="status">'
-        '{} {}: {} → <a href="{}">Wlicz w Słowniku klubu</a></div>'
-    ).format(rodzaje, slowo, nazwy, ADRES_SLOWNIKA)}
+def _odmiana(n, jeden, kilka, wiele):
+    if n == 1:
+        return jeden
+    return kilka if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14 else wiele
+
+
+def baner_niewliczone_slot(frame, template=None, wbudowane=(), config=None):
+    """`{'__BANER_NIEWLICZONE__': '…'}` — baner informacyjny, ostrzegawczy, oba albo nic.
+
+    INFORMACYJNY (W3-b): import dopisał nowe zmienne sam — liczą się, ale nikt
+    nie sprawdził ich nazw. Zamykany; zamknięcie zapamiętane per raport
+    (`localStorage`, klucz z adresu raportu).
+    OSTRZEGAWCZY: zdarzenia pominięte świadomie i zmienne bez znaczenia
+    w sekcjach, które go wymagają — to, czego raport NIE liczy.
+    """
+    czesci = []
+    nowe = dodane_automatycznie(template, config)
+    if nowe:
+        n = len(nowe)
+        czesci.append(
+            '<div class="baner baner--info tylko-analityk" role="status" data-baner="info">'
+            '{} {}: {} → <a href="{}">sprawdź etykiety w Słowniku klubu</a>'
+            '<button type="button" class="baner__zamknij" aria-label="Zamknij">×</button></div>'.format(
+                n, _odmiana(n, "nowy rodzaj zdarzeń dodany automatycznie",
+                            "nowe rodzaje zdarzeń dodane automatycznie",
+                            "nowych rodzajów zdarzeń dodanych automatycznie"),
+                ", ".join(html_mod.escape(t) for t in nowe[:6]) + (", …" if n > 6 else ""),
+                ADRES_SLOWNIKA))
+    pozycje = ["{} ({}) — pominięty".format(html_mod.escape(t), k)
+               for t, k in pominiete_tagi(frame, template, config, wbudowane)]
+    pozycje += ["{} — bez znaczenia: {}".format(
+                    html_mod.escape(r), ", ".join(SEKCJE_ZNACZENIOWE[s] for s in sek))
+                for r, sek in bez_znaczenia(frame, template, wbudowane)]
+    if pozycje:
+        czesci.append(
+            '<div class="baner baner--niewliczone tylko-analityk" role="status" data-baner="ostrzezenie">'
+            'Nie wliczone: {} → <a href="{}">Wlicz w Słowniku klubu</a></div>'.format(
+                "; ".join(pozycje[:6]) + ("; …" if len(pozycje) > 6 else ""), ADRES_SLOWNIKA))
+    return {"__BANER_NIEWLICZONE__": "".join(czesci)}
 
 
 def baner_slot(ostrzezenia=None):
@@ -1297,7 +1395,7 @@ def render(frame, palette=None, metrics=None, canon_result=None, config=None,
     slots.update(match_slots(config))
     slots.update(baner_slot((direction or {}).get("warnings")))
     wbudowane = wbudowane_tagi(template)
-    slots.update(baner_niewliczone_slot(frame, report_template, wbudowane))
+    slots.update(baner_niewliczone_slot(frame, report_template, wbudowane, config))
     slots.update(progi_slot(report_template))
     slots.update(vars_slot(report_template))
     slots.update(roster_slot(config, pokaz=pokaz_zawodnikow))
@@ -1329,7 +1427,7 @@ def render(frame, palette=None, metrics=None, canon_result=None, config=None,
     # Wyłącznie przy układzie schematu 2 — o tej sekcji decyduje ekran Układu
     # raportu; templat schematu 1 ma dawać raport bez zmian w kolejności.
     if (report_template is not None and report_template_layout(report_template)
-            and not niewliczone_tagi(frame, report_template, wbudowane)):
+            and not niewliczone(frame, report_template, config, wbudowane)):
         html, dodatkowo = drop_sections(html, ["siatka"])
         sekcje_usuniete = list(sekcje_usuniete) + [s for s in dodatkowo if s not in sekcje_usuniete]
 

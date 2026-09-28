@@ -3,6 +3,38 @@
 Format: [wersja silnika] — data — opis.
 Każda zmiana, która modyfikuje wyjście silnika, MUSI mieć tu wpis wraz z powodem.
 
+## [0.16.7] + aplikacja — 2026-09-28 · Golden layout W3-b: auto-dopisywanie wraca, baner zmienia charakter
+
+**Cofnięta zmiana zachowania z W3.** Import znów dopisuje nowe tagi do templatu sam
+(`AutoImport` jak w sesji 8) i dalej dopisuje aliasy wariantów pisowni (0.16.3).
+Pięć zestawów przepisanych w W3 wróciło do stanu z W2 (`test_auto_import_http`,
+`test_import_n1_http`, `test_rewizja_http`, `test_nazwy_zmiennych` — plus
+kontrole kopii list silnika —, `test_golden_w1`).
+
+### Silnik 0.16.7 — zmiana wyjścia v21 (v17 i test złoty nietknięte)
+- `__BANER_NIEWLICZONE__` niesie do dwóch pasków:
+  - **informacyjny** — „N nowych rodzajów zdarzeń dodanych automatycznie: A, B →
+    sprawdź etykiety w Słowniku klubu"; zamykany (×), zamknięcie zapamiętane per
+    raport (`localStorage`, klucz z adresu raportu);
+  - **ostrzegawczy** — tylko tagi świadomie pominięte (`club_ignored_tags`) obecne
+    w meczu i zmienne bez kanonu w sekcjach znaczeniowych (oś SBZ, oś III strefy,
+    pojedynki — przypadek „–" z W1). Tag wbudowany szablonu nie jest ani jednym, ani drugim.
+- Nowe wejście `config.dictionary_notice` {`auto_added`, `ignored`} — wypełnia panel
+  (`docs/KONTRAKT_CLI.md`). Powód: silnik nie zna historii templatu ani decyzji „pomiń".
+- „Inne zdarzenia" znikają, gdy nie ma czego ostrzegać (definicja jak baner ostrzegawczy).
+
+### Słownik klubu
+- **„Nierozpoznane" = pominięte + bez znaczenia** (nie nowe). Pominięty: „Wlicz jako…
+  nowa zmienna / kontynuacja X" — zdjęty z `club_ignored_tags` PO zapisie wersji.
+  Bez znaczenia: „tylko bilans i osie" (zdjęcie z sekcji znaczeniowych) albo
+  „kontynuacja X" (scalenie z zmienną X).
+
+### Testy
+- `test_golden_w3_http` (60): wymyślony tag → baner informacyjny i wiersz w tabeli
+  makro (klucz `VARS` + zdarzenia w `DATA`); pominięty tag i zmienna bez znaczenia →
+  baner ostrzegawczy; po „Wlicz jako…" ostrzeżenia nie ma, informacyjny zostaje.
+- pytest: baner informacyjny/ostrzegawczy, `bez_znaczenia`, `dodane_automatycznie`.
+
 ## [0.16.6] + aplikacja — 2026-09-27 · Golden layout W3: Wgraj → Postęp → Raport, Ustawienia klubu
 
 ### Silnik 0.16.6 — zmiana wyjścia v21 (v17 i test złoty nietknięte)

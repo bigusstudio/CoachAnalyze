@@ -69,8 +69,10 @@ Wgraj (/import) ──► Przygotuj (/import/{id}/przygotuj) ──► Postęp (
   plik CSV [+JSON]     rywal · data* · wynik (opc.)         „Czytam plik → Buduję raport"
 ```
 - Bez ekranu różnic i bez kreatora mapowań na drodze analityka (to [op]).
-- Import **nie zapisuje słownika klubu** — nowe tagi trafiają do „Nierozpoznanych"
-  i na baner raportu. Zapis słownika: Ustawienia klubu → Słownik klubu.
+- Import **dopisuje nowe tagi do templatu sam** (surowa nazwa = etykieta) i mówi o tym
+  banerem informacyjnym w raporcie („sprawdź etykiety w Słowniku klubu", zamykany per
+  raport). Baner ostrzegawczy — tylko tagi świadomie pominięte i zmienne bez znaczenia
+  w osi SBZ / osi III strefy / pojedynkach.
 - Administrator po wgraniu trafia na stronę zadania (mechanika w tle).
 
 ## 6. Lista ekranów
@@ -101,7 +103,7 @@ Wgraj (/import) ──► Przygotuj (/import/{id}/przygotuj) ──► Postęp (
 - **Układ raportu** — kolejność (strzałki), Ukryj/Pokaż; numery 01–NN bez luk;
   Przegląd zawsze pierwszy i widoczny; „Inne zdarzenia" tylko przy nierozpoznanych tagach.
 - **Słownik klubu** — Wliczane (tag → nazwa w raporcie → sekcje, kontynuacje)
-  i Nierozpoznane (z liczbą zdarzeń) z „Wlicz jako… nowa zmienna / kontynuacja X".
+  i Nierozpoznane = pominięte + bez znaczenia (nie nowe), z „Wlicz jako…".
   Tag wbudowany szablonu (`VARS`, np. SKUTECZNY) liczy się sam i nie jest „nierozpoznany".
 - **[op] Zaawansowane** — historia wersji z „Przywróć", zmienne martwe, konfigurator
   (typ, barwa, kanon), mapowania, szerokości kafli, dane klubu.

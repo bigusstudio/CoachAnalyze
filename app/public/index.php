@@ -4799,8 +4799,9 @@ function showClubSettings(array $user): void
  * @param list<array<string,mixed>> $zmienne
  * @param list<array<string,mixed>> $sekcje
  */
-function zapiszUstawieniaKlubu(int $id, int $userId, array $config, array $zmienne, array $sekcje, string $zakladka): void
-{
+function zapiszUstawieniaKlubu(
+    int $id, int $userId, array $config, array $zmienne, array $sekcje, string $zakladka, ?callable $poZapisie = null
+): void {
     $powrot = '/klub/ustawienia?zakladka=' . $zakladka;
     $bledy = \CoachAnalyze\ReportLayout::bledy($sekcje);
     $nowy = \CoachAnalyze\Configurator::config(
@@ -4818,6 +4819,9 @@ function zapiszUstawieniaKlubu(int $id, int $userId, array $config, array $zmien
 
     $wersja = \CoachAnalyze\ReportTemplates::saveNewVersion($id, $nowy, $userId);
     \CoachAnalyze\ReportLayout::clearDraft();
+    if ($poZapisie !== null) {
+        $poZapisie();
+    }
 
     $wynik = \CoachAnalyze\Rebuilds::queueClub($id, $userId);
     Session::flash('notice', $wynik['queued'] > 0
@@ -4878,14 +4882,9 @@ function saveClubDictionary(array $user): void
     }
     $config = \CoachAnalyze\ReportTemplates::decodeConfig($templat['config']);
 
-    $nierozpoznane = [];
-    foreach (\CoachAnalyze\UstawieniaKlubu::nierozpoznane($id, $config) as $n) {
-        $nierozpoznane[$n['name']] = $n['color'];
-    }
-
-    $zmienne = \CoachAnalyze\UstawieniaKlubu::zastosujSlownik(
+    [$zmienne, $odpomin] = \CoachAnalyze\UstawieniaKlubu::zastosujSlownik(
         array_values((array) ($config['variables'] ?? [])),
-        $nierozpoznane,
+        \CoachAnalyze\UstawieniaKlubu::nierozpoznane($id, $config),
         (array) ($_POST['etykieta'] ?? []),
         (array) ($_POST['sekcje'] ?? []),
         (array) ($_POST['wlicz'] ?? []),
@@ -4897,7 +4896,14 @@ function saveClubDictionary(array $user): void
     zapiszUstawieniaKlubu(
         $id, (int) $user['id'], $config, $zmienne,
         \CoachAnalyze\UstawieniaKlubu::przegladPierwszy(\CoachAnalyze\ReportLayout::zConfigu($config)),
-        'slownik'
+        'slownik',
+        // Wliczony tag przestaje być „pominięty" — PO zapisie wersji, żeby
+        // odrzucony przez walidację zapis nie zdjął decyzji bez skutku.
+        static function () use ($id, $odpomin, $user): void {
+            foreach ($odpomin as $nazwa) {
+                \CoachAnalyze\IgnoredTags::remove($id, \CoachAnalyze\IgnoredTags::TAG, $nazwa, (int) $user['id']);
+            }
+        }
     );
 }
 

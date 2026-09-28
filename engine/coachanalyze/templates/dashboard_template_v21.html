@@ -67,11 +67,14 @@ html[data-tryb="trener"] .tylko-analityk{display:none!important}
   border:1px solid var(--line);border-radius:50%;font:600 10px 'IBM Plex Mono',monospace;color:var(--ink3);cursor:pointer;list-style:none}
 .sub details.wiecej>summary::-webkit-details-marker{display:none}
 .sub details.wiecej[open]>summary{color:var(--ink)}
-.baner.baner--niewliczone{background:var(--panel2);border:1px solid var(--line);border-left:4px solid var(--ink3);border-radius:10px;padding:10px 14px;margin:10px 0;
+.baner.baner--niewliczone,.baner.baner--info{background:var(--panel2);border:1px solid var(--line);border-left:4px solid var(--bad);border-radius:10px;padding:10px 14px;margin:10px 0;
   font-size:13px;color:var(--ink2)}
-.baner--niewliczone a{color:var(--ink)}
+.baner.baner--info{border-left-color:var(--ink3);display:flex;gap:10px;align-items:baseline}
+.baner--niewliczone a,.baner--info a{color:var(--ink)}
+.baner__zamknij{margin-left:auto;background:none;border:0;color:var(--ink3);font-size:18px;line-height:1;cursor:pointer;padding:0 2px}
+.baner__zamknij:hover{color:var(--ink)}
 @media print{
-  #theme-toggle,#topbar,#btn-pdf,#btn-slides,.pngbtn,.ca-klips,#pasek,.baner--niewliczone{display:none!important}
+  #theme-toggle,#topbar,#btn-pdf,#btn-slides,.pngbtn,.ca-klips,#pasek,.baner--niewliczone,.baner--info{display:none!important}
   :root{--bg:#fff;--panel:#fff;--panel2:#f1f3f1;--line:#d5dcd6;--ink:#111;--ink2:#444;--ink3:#777;--pitch:#eef2ee;--pitchline:#b5c2b8;--ok:#1F8A4C;--bad:#C6423A;--neut:#7C8F86;--ctx-poz:#1F8A4C;--ctx-pre:#C6423A;--ctx-kon:#7A4BD6;--ctx-sfg:#0B7FA8;--stroke:#fff;--stripe:#000;--sel:#1E4D3A;--sel-ink:#fff;--nav-bg:#fff;--tip-bg:#fff}
   body{background:#fff;font-size:11px}
   .wrap{max-width:none;padding:0}
@@ -1745,6 +1748,16 @@ async function exportSlidesPNG(){
     await new Promise(r=>setTimeout(r,350));}
   pr.textContent=`pobrano ${defs.length} slajdów`;setTimeout(()=>pr.style.display='none',4000);
 }
+/* Baner informacyjny „dodane automatycznie" (W3-b): zamknięcie zapamiętane
+   per raport — klucz z adresu, pod którym raport otwarto. Bez dostępu do
+   localStorage baner po prostu wraca przy następnym otwarciu. */
+(function(){
+  const b=document.querySelector('[data-baner="info"]'); if(!b) return;
+  const k='ca-baner-info:'+location.pathname;
+  try{ if(localStorage.getItem(k)==='1'){ b.remove(); return; } }catch(e){}
+  const x=b.querySelector('.baner__zamknij');
+  if(x) x.addEventListener('click',()=>{ b.remove(); try{ localStorage.setItem(k,'1'); }catch(e){} });
+})();
 </script>
 </body>
 </html>
